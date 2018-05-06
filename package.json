@@ -9,10 +9,15 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "debug": "^3.1.0",
     "deep-extend": "^0.5.1",
     "express": "^4.16.3",
     "ipfs": "^0.28.2",
-    "logplease": "^1.2.14",
+    "morgan": "^1.9.0",
+    "morgan-debug": "^2.0.0",
     "orbit-db": "^0.19.7"
+  },
+  "devDependencies": {
+    "logplease": "^1.2.14"
   }
 }

@@ -4,11 +4,7 @@ const EventEmitter = require('events')
 const extend = require('deep-extend')
 const path = require('path')
 const os = require('os')
-const Logger  = require('logplease')
-
-let logger = Logger.create('record-node', { color: Logger.Colors.Magenta })
-
-logger.info('test')
+const debug = require('debug')
 
 const api = require('./api')
 
@@ -63,12 +59,14 @@ class RecordNode extends EventEmitter {
     this._orbitdb = null
     this._options = extend(defaults, options || {})
 
+    this.logger = debug('record:node')
+
     this._start()
   }
 
 
   _start() {
-    logger.info('Starting RecordNode')
+    this.logger('Starting RecordNode')
     this._ipfs = new IPFS(this._options.ipfsConfig)
 
     this._ipfs.on('error', (e) => this.emit('error', e))
@@ -80,17 +78,17 @@ class RecordNode extends EventEmitter {
 
       const ipfsConfig = await self._ipfs.config.get()
       const ipfsInfo = await self._ipfs.id()
-      logger.info(`IPFS ID: ${ipfsInfo.id}`)
-      logger.info(`IPFS Config: ${JSON.stringify(ipfsConfig, null, 2)}`)
-      logger.info(`Orbit ID: ${self._orbitdb.id}`)
-      logger.info(`Orbit Dir: ${self._orbitdb.directory}`)
+      self.logger(`IPFS ID: ${ipfsInfo.id}`)
+      self.logger(`IPFS Config: ${JSON.stringify(ipfsConfig, null, 2)}`)
+      self.logger(`Orbit ID: ${self._orbitdb.id}`)
+      self.logger(`Orbit Dir: ${self._orbitdb.directory}`)
 
       self._log = new RecordLog(self._orbitdb)
       await self._log.load()
 
       const logEntries = self._log.logs.all()
 
-      logger.info('RecordNode Ready')
+      self.logger('RecordNode Ready')
       self.emit('ready')
 
       self._logs = []
@@ -103,7 +101,7 @@ class RecordNode extends EventEmitter {
 
     this._api = api(this)
 
-    this._api.listen(3000, () => logger.info('RecordNode API listening on port 3000'))
+    this._api.listen(3000, () => self.logger('RecordNode API listening on port 3000'))
   }
 
 }

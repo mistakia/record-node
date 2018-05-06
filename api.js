@@ -1,11 +1,14 @@
 const express = require('express')
+const morgan = require('morgan-debug')
+const debug = require('debug')
 
-const orbitdbRouter = require('./routes/orbitdb')
 const ipfsRouter = require('./routes/ipfs')
 const tracksRouter = require('./routes/tracks')
 
 module.exports = (self) => {
   const app = express()
+
+  app.use(morgan('record:node:api', 'combined'))
 
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
@@ -20,7 +23,6 @@ module.exports = (self) => {
     next()
   })
 
-  app.use('/orbitdb', orbitdbRouter)
   app.use('/ipfs', ipfsRouter)
   app.use('/tracks', tracksRouter)
 
