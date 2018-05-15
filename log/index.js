@@ -12,7 +12,7 @@ class RecordLog {
 
   async load() {
     this._log  = await this._orbitdb.docs(this._address)
-    await this._log.load()    
+    await this._log.load()
   }  
 }
 

@@ -24,7 +24,7 @@ module.exports = function logs(self) {
     },
 
     get: (key) => {
-      const data = self._log.get(key).map((e) => e.payload.value)
+      const data = self._log.get(key)
       return data
     },
 

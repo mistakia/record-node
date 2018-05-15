@@ -17,6 +17,18 @@ module.exports = function tracks(self) {
       return all
     },
 
+    findOrCreate: async function (data) {
+      const entry = new TrackEntry().create(data)
+      let track = this.get(entry._id)
+
+      if (track.length)
+	return track
+
+      const hash = await this.add(data)
+      track = this.get(entry._id)
+      return track
+    },
+
     add: async (data) => {
       const entry = new TrackEntry().create(data)
       const hash = await self._log.put(entry)
@@ -24,7 +36,7 @@ module.exports = function tracks(self) {
     },
 
     get: (key) => {
-      const data = self._log.get(key).map((e) => e.payload.value)
+      const data = self._log.get(key)
       return data
     },
 
