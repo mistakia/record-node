@@ -93,7 +93,7 @@ class RecordNode extends EventEmitter {
 
       self._logs = []
       logEntries.forEach(async (logEntry) => {
-	const log = new RecordLog(logEntry.address)
+	const log = new RecordLog(logEntry.content.address)
 	await log.load()
 	self._logs.push(log)
       })

@@ -1,3 +1,5 @@
+const LogEntry = require('./LogEntry')
+
 module.exports = function logs(self) {
 
   function filterEntries(mapper) {
@@ -16,8 +18,8 @@ module.exports = function logs(self) {
     },
     
     add: async (data) => {
-      data.type = 'log'
-      const hash = await self._log.put(data)
+      const entry = new LogEntry().create(data)
+      const hash = await self._log.put(entry)
       return hash
     },
 
