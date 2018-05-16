@@ -4,16 +4,23 @@ const EventEmitter = require('events')
 const extend = require('deep-extend')
 const path = require('path')
 const os = require('os')
+const fs = require('fs')
 const debug = require('debug')
 
 const api = require('./api')
 
 const RecordLog = require('./log')
 
+const recorddir = path.resolve(os.homedir(), './.record')
+
+if (!fs.existsSync(recorddir)){
+  fs.mkdirSync(recorddir);
+}
+
 const defaults = {
-  orbitPath: path.resolve(os.tmpdir(), './orbitdb'),
+  orbitPath: path.resolve(recorddir, './orbitdb'),
   ipfsConfig: {
-    repo: path.resolve(os.tmpdir(), './ipfs'),
+    repo: path.resolve(recorddir, './ipfs'),
     init: true,
     pass: '2662d47e3d692fe8c2cdb70b907ebb12b216a9d9ca5110dd336d12e7bf86073b',
     EXPERIMENTAL: {

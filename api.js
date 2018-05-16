@@ -3,7 +3,7 @@ const morgan = require('morgan-debug')
 const debug = require('debug')
 
 const ipfsRouter = require('./routes/ipfs')
-const tracksRouter = require('./routes/tracks')
+const logsRouter = require('./routes/logs')
 
 module.exports = (self) => {
   const app = express()
@@ -24,8 +24,7 @@ module.exports = (self) => {
   })
 
   app.use('/ipfs', ipfsRouter)
-  app.use('/tracks', tracksRouter)
-
+  app.use('/logs', logsRouter)
   app.get('/', async (req, res) => {
     const ipfsInfo = await req.ipfs.id()
 
