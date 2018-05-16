@@ -4,7 +4,7 @@ const logs = require('./logs')
 class RecordLog {
   constructor(orbitdb, address) {
     this._orbitdb = orbitdb 
-    this._address = `/record/${address || orbitdb.id}`
+    this._address = address || 'record'
 
     this.tracks = tracks(this)
     this.logs = logs(this)
