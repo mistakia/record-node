@@ -93,6 +93,8 @@ class RecordNode extends EventEmitter {
       self._log = new RecordLog(self._orbitdb)
       await self._log.load()
 
+      self.logger(`Log Address: ${self._log._log.address}`)
+
       const logEntries = self._log.logs.all()
 
       self.logger('RecordNode Ready')
