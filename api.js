@@ -8,6 +8,10 @@ const logsRouter = require('./routes/logs')
 module.exports = (self) => {
   const app = express()
 
+  app.locals.orbitdb = self._orbitdb
+  app.locals.ipfs = self._ipfs
+  app.locals.log = self._log
+
   app.use(morgan('record:node:api', 'combined'))
 
   app.use((req, res, next) => {
@@ -16,20 +20,13 @@ module.exports = (self) => {
     next()
   })
 
-  app.use((req, res, next) => {
-    req.orbitdb = self._orbitdb
-    req.ipfs = self._ipfs
-    req.log = self._log
-    next()
-  })
-
   app.use('/ipfs', ipfsRouter)
   app.use('/logs', logsRouter)
   app.get('/', async (req, res) => {
-    const ipfsInfo = await req.ipfs.id()
+    const ipfsInfo = await req.app.locals.ipfs.id()
 
     res.send({
-      id: req.orbitdb.id,
+      id: req.app.locals.orbitdb.id,
       addresses: ipfsInfo.addresses
     })
   })

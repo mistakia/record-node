@@ -4,41 +4,41 @@ const router = express.Router()
 const RecordLog = require('../log')
 
 const loadLog = async (req, res, next) => {
-  const logAddress = req.params.logAddress
+  const logAddress = `/${req.params.logAddress}`
 
-  if (!logAddress || logAddress === 'me') {
-    req._log = req.log
+  if (!logAddress || logAddress === '/me') {
+    res.locals.log = req.app.locals.log
     return next()
   }
 
-  req._log = new RecordLog(req.orbitdb, logAddress)
-  await req._log.load()
+  res.locals.log = new RecordLog(req.app.locals.orbitdb, logAddress)
+  await res.locals.log.load()
   next()
 }
 
-router.get('/:logAddress/tracks', loadLog, (req, res) => {
-  const data = req._log.tracks.all()
+router.get('/tracks/:logAddress(*)', loadLog, (req, res) => {
+  const data = res.locals.log.tracks.all()
   return res.send(data)
 })
 
-router.post('/:logAddress/tracks', loadLog, (req, res) => {
+router.post('/tracks/:logAddress(*)', loadLog, (req, res) => {
   //TODO: validate title
   //TODO: validate if you have write permissions for database
 
   const { title, url } = req.query
 
-  const data = req._log.tracks.add({ url, title })
+  const data = res.locals.log.tracks.add({ url, title })
   return res.send(data)
 })
 
-router.get('/:logAddress/logs', loadLog, (req, res) => {
-  const data = req._log.logs.all()
+router.get('/logs/:logAddress(*)', loadLog, (req, res) => {
+  const data = res.locals.log.logs.all()
   return res.send(data)
 })
 
-router.post('/:logAddress/logs', loadLog, (req, res) => {
+router.post('/logs/:logAddress(*)', loadLog, (req, res) => {
   const address = req.query.address
-  const data = req._log.logs.add({ address })
+  const data = res.locals.log.logs.add({ address })
   return res.send(data)
 })
 

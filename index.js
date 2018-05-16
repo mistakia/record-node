@@ -8,16 +8,15 @@ const fs = require('fs')
 const debug = require('debug')
 
 const api = require('./api')
-
 const RecordLog = require('./log')
 
 const recorddir = path.resolve(os.homedir(), './.record')
+if (!fs.existsSync(recorddir))
+  fs.mkdirSync(recorddir)
 
-if (!fs.existsSync(recorddir)){
-  fs.mkdirSync(recorddir);
-}
 
 const defaults = {
+  apiPort: 3000,
   orbitPath: path.resolve(recorddir, './orbitdb'),
   ipfsConfig: {
     repo: path.resolve(recorddir, './ipfs'),
@@ -94,21 +93,24 @@ class RecordNode extends EventEmitter {
       await self._log.load()
       self.logger(`Log Address: ${self._log._log.address}`)
 
+      self._api = api(self)
+      const { apiPort } = self._options
+      self._api.listen(apiPort, () => self.logger(`RecordNode API listening on port ${apiPort}`))
+
       self.logger('RecordNode Ready')
       self.emit('ready')
 
       const logEntries = self._log.logs.all()
+      self.logger(`Found ${logEntries.length} logs to load/sync`)
       self._logs = []
       logEntries.forEach(async (logEntry) => {
-	const log = new RecordLog(logEntry.content.address)
+	const log = new RecordLog(self._orbitdb, logEntry.content.address)
 	await log.load()
 	self._logs.push(log)
       })
+      self.logger(`All logs loaded`)
+
     })
-
-    this._api = api(this)
-
-    this._api.listen(3000, () => self.logger('RecordNode API listening on port 3000'))
   }
 
 }
