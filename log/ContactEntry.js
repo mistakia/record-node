@@ -2,11 +2,11 @@ const crypto = require('crypto')
 
 const Entry = require('./Entry')
 
-class LogEntry extends Entry {
+class ContactEntry extends Entry {
   constructor(data) {
     super(data)
 
-    this._type = 'log'
+    this._type = 'contact'
   }
 
   create(data) {
@@ -16,4 +16,4 @@ class LogEntry extends Entry {
   }
 }
 
-module.exports = LogEntry
+module.exports = ContactEntry

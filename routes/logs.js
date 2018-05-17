@@ -21,24 +21,24 @@ router.get('/tracks/:logAddress(*)', loadLog, (req, res) => {
   return res.send(data)
 })
 
-router.post('/tracks/:logAddress(*)', loadLog, (req, res) => {
+router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
   //TODO: validate title
   //TODO: validate if you have write permissions for database
 
   const { title, url } = req.query
 
-  const data = res.locals.log.tracks.add({ url, title })
+  const data = await res.locals.log.tracks.findOrCreate({ url, title })
   return res.send(data)
 })
 
-router.get('/logs/:logAddress(*)', loadLog, (req, res) => {
-  const data = res.locals.log.logs.all()
+router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
+  const data = res.locals.log.contacts.all()
   return res.send(data)
 })
 
-router.post('/logs/:logAddress(*)', loadLog, (req, res) => {
-  const address = req.query.address
-  const data = res.locals.log.logs.add({ address })
+router.post('/contacts/:logAddress(*)', loadLog, async (req, res) => {
+  const { address, alias } = req.query
+  const data = await res.locals.log.contacts.findOrCreate({ address, alias })
   return res.send(data)
 })
 

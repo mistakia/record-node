@@ -1,6 +1,6 @@
 const TrackEntry = require('./TrackEntry')
 
-module.exports = function tracks(self) {
+module.exports = function(self) {
 
   function filterEntries(mapper) {
     return (doc) => {

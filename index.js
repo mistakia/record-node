@@ -49,7 +49,7 @@ const defaults = {
 	Swarm: [
 	  '/ip4/0.0.0.0/tcp/4002',
 	  '/ip4/0.0.0.0/tcp/4003/ws',
-	  '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
+	  //'/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
 	  '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
 	]
       }
@@ -100,15 +100,15 @@ class RecordNode extends EventEmitter {
       self.logger('RecordNode Ready')
       self.emit('ready')
 
-      const logEntries = self._log.logs.all()
-      self.logger(`Found ${logEntries.length} logs to load/sync`)
-      self._logs = []
-      logEntries.forEach(async (logEntry) => {
-	const log = new RecordLog(self._orbitdb, logEntry.content.address)
+      const contacts = self._log.contacts.all()
+      self.logger(`Found ${contacts.length} contacts to load/sync`)
+      self._contacts = []
+      contacts.forEach(async (contact) => {
+	const log = new RecordLog(self._orbitdb, contact.content.address)
 	await log.load()
-	self._logs.push(log)
+	self._contacts.push(log)
       })
-      self.logger(`All logs loaded`)
+      self.logger(`All contacts loaded`)
 
     })
   }

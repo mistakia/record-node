@@ -1,10 +1,10 @@
-const LogEntry = require('./LogEntry')
+const ContactEntry = require('./ContactEntry')
 
-module.exports = function logs(self) {
+module.exports = function(self) {
 
   function filterEntries(mapper) {
     return (doc) => {
-      if (doc.type !== 'log')
+      if (doc.type !== 'contact')
 	return false
 
       return mapper ? mapper(doc) : true
@@ -16,9 +16,21 @@ module.exports = function logs(self) {
       const all = self._log.query(filterEntries(mapper))
       return all
     },
+
+    findOrCreate: async function (data) {
+      const entry = new ContactEntry().create(data)
+      let contact = this.get(entry._id)
+
+      if (contact.length)
+	return contact
+
+      const hash = await this.add(data)
+      contact = this.get(entry._id)
+      return contact
+    },
     
     add: async (data) => {
-      const entry = new LogEntry().create(data)
+      const entry = new ContactEntry().create(data)
       const hash = await self._log.put(entry)
       return hash
     },

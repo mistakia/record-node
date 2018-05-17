@@ -1,5 +1,5 @@
 const tracks = require('./tracks')
-const logs = require('./logs')
+const contacts = require('./contacts')
 
 class RecordLog {
   constructor(orbitdb, address) {
@@ -7,7 +7,7 @@ class RecordLog {
     this._address = address || 'record'
 
     this.tracks = tracks(this)
-    this.logs = logs(this)
+    this.contacts = contacts(this)
   }
 
   async load() {
