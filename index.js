@@ -67,6 +67,8 @@ class RecordNode extends EventEmitter {
     this._options = extend(defaults, options || {})
 
     this.logger = debug('record:node')
+    this.logger.log = console.log.bind(console) // log to stdout instead of stderr
+    this.logger.err = debug('record:node:err')
 
     this._start()
   }
