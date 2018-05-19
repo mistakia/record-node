@@ -70,49 +70,57 @@ class RecordNode extends EventEmitter {
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
 
+    this._log = null
+    this._contacts = {}
+
     this._start()
   }
-
 
   _start() {
     this.logger('Starting RecordNode')
 
-    const self = this
     this._ipfs = new IPFS(this._options.ipfsConfig)
     this._ipfs.on('error', (e) => this.emit('error', e))
     this._ipfs.on('ready', async () => {
 
-      self._orbitdb = new OrbitDB(self._ipfs, self._options.orbitPath)
+      this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
 
-      const ipfsConfig = await self._ipfs.config.get()
-      const ipfsInfo = await self._ipfs.id()
-      self.logger(`IPFS ID: ${ipfsInfo.id}`)
-      self.logger(`IPFS Config: ${JSON.stringify(ipfsConfig, null, 2)}`)
-      self.logger(`Orbit ID: ${self._orbitdb.id}`)
-      self.logger(`Orbit Dir: ${self._orbitdb.directory}`)
+      const ipfsConfig = await this._ipfs.config.get()
+      const ipfsInfo = await this._ipfs.id()
+      this.logger(`IPFS ID: ${ipfsInfo.id}`)
+      this.logger(`IPFS Config: ${JSON.stringify(ipfsConfig, null, 2)}`)
+      this.logger(`Orbit ID: ${this._orbitdb.id}`)
+      this.logger(`Orbit Dir: ${this._orbitdb.directory}`)
 
-      self._log = new RecordLog(self._orbitdb)
-      await self._log.load()
-      self.logger(`Log Address: ${self._log._log.address}`)
+      this._log = new RecordLog(this._orbitdb)
+      await this._log.load()
+      this.logger(`Log Address: ${this._log._log.address}`)
 
-      self._api = api(self)
-      const { apiPort } = self._options
-      self._api.listen(apiPort, () => self.logger(`RecordNode API listening on port ${apiPort}`))
+      this._api = api(this)
+      const { apiPort } = this._options
+      this._api.listen(apiPort, () => this.logger(`API listening on port ${apiPort}`))
 
-      self.logger('RecordNode Ready')
-      self.emit('ready')
+      this.logger('RecordNode Ready')
+      this.emit('ready')
 
-      const contacts = self._log.contacts.all()
-      self.logger(`Found ${contacts.length} contacts to load/sync`)
-      self._contacts = []
-      contacts.forEach(async (contact) => {
-	const log = new RecordLog(self._orbitdb, contact.content.address)
-	await log.load()
-	self._contacts.push(log)
-      })
-      self.logger(`All contacts loaded`)
-
+      this.loadContacts()
     })
+  }
+
+  loadContacts() {
+    this.logger('Loading Contacts')
+
+    this._log.contacts.all().forEach(async (contact) => {
+      const { address } = contact.content
+      if (this._contacts[address])
+	return
+
+      this.logger(`Loading contact: ${address}`)
+      const log = new RecordLog(this._orbitdb, address)
+      await log.load()
+      this._contacts[address] = log
+    })
+    this.logger(`All contacts loaded`)
   }
 
 }

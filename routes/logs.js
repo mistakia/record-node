@@ -39,6 +39,7 @@ router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
 router.post('/contacts/:logAddress(*)', loadLog, async (req, res) => {
   const { address, alias } = req.query
   const data = await res.locals.log.contacts.findOrCreate({ address, alias })
+  req.app.locals.loadContacts()
   return res.send(data)
 })
 

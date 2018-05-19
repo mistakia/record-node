@@ -11,6 +11,7 @@ module.exports = (self) => {
   app.locals.orbitdb = self._orbitdb
   app.locals.ipfs = self._ipfs
   app.locals.log = self._log
+  app.locals.loadContacts = self.loadContacts.bind(self)
 
   app.use(morgan('record:node:api', 'combined'))
 
