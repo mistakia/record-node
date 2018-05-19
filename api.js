@@ -2,8 +2,9 @@ const express = require('express')
 const morgan = require('morgan-debug')
 const debug = require('debug')
 
-const ipfsRouter = require('./routes/ipfs')
 const logsRouter = require('./routes/logs')
+const infoRouter = require('./routes/info')
+const ipfsRouter = require('./routes/ipfs')
 
 module.exports = (self) => {
   const app = express()
@@ -23,14 +24,7 @@ module.exports = (self) => {
 
   app.use('/ipfs', ipfsRouter)
   app.use('/logs', logsRouter)
-  app.get('/', async (req, res) => {
-    const ipfsInfo = await req.app.locals.ipfs.id()
-
-    res.send({
-      id: req.app.locals.orbitdb.id,
-      addresses: ipfsInfo.addresses
-    })
-  })
+  app.use('/info', infoRouter)
 
   return app
 }

@@ -4,12 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-      "test": "echo \"Error: no test specified\" && exit 1",
-      "start": "node --trace-warnings bin/run.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node --trace-warnings bin/run.js"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "async": "^2.6.0",
     "debug": "^3.1.0",
     "deep-extend": "^0.5.1",
     "express": "^4.16.3",
