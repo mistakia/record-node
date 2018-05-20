@@ -31,7 +31,7 @@ const defaults = {
       Addresses: {
         Swarm: [
           '/ip4/0.0.0.0/tcp/4002',
-          '/ip4/0.0.0.0/tcp/4003/ws',
+          // '/ip4/0.0.0.0/tcp/4003/ws',
           // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
           '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
         ]

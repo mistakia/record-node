@@ -5,6 +5,14 @@ const router = express.Router()
 router.get('/?', async (req, res) => {
   async.parallel({
 
+    orbitdb: (done) => {
+      // TODO: return manifest & access Controller dag objects
+      done(null, {
+        address: req.app.locals.log.address.toString(),
+        publicKey: req.app.locals.log.key.getPublic('hex')
+      })
+    },
+
     ipfs: (done) => {
       req.app.locals.ipfs.id(done)
     },
@@ -45,11 +53,12 @@ router.get('/?', async (req, res) => {
       return res.send({ error: err })
     }
 
-    const { ipfs, peers, subs } = results
+    const { ipfs, peers, subs, orbitdb } = results
     res.send({
       ipfs,
       peers,
-      subs
+      subs,
+      orbitdb
     })
   })
 })
