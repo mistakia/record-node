@@ -16,7 +16,7 @@
     "debug": "^3.1.0",
     "deep-extend": "^0.5.1",
     "express": "^4.16.3",
-    "ipfs": "^0.28.2",
+    "ipfs": "github:mistakia/js-ipfs",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
     "orbit-db": "github:mistakia/orbit-db"
