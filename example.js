@@ -1,7 +1,7 @@
 const RecordNode = require('./index')
 const path = require('path')
 const os = require('os')
-const Logger  = require('logplease')
+const Logger = require('logplease')
 const debug = require('debug')
 
 debug.enable('record:*,jsipfs')
@@ -17,6 +17,6 @@ const node = new RecordNode({
   orbitPath: path.resolve(tmpDataPath, './orbitdb')
 })
 
-node.on('ready', function() {
-  //ready
+node.on('ready', function () {
+  // ready
 })

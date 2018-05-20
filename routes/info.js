@@ -3,7 +3,6 @@ const async = require('async')
 const router = express.Router()
 
 router.get('/?', async (req, res) => {
-
   async.parallel({
 
     ipfs: (done) => {
@@ -12,29 +11,32 @@ router.get('/?', async (req, res) => {
 
     peers: (done) => {
       req.app.locals.ipfs.swarm.peers((err, peerInfos) => {
-	const peers = []
-	peerInfos.forEach((peerInfo) => {
-	  peers.push({
-	    id: peerInfo.peer.id.toB58String(),
-	    address: peerInfo.addr.toString()
-	  })
-	})
-	done(null, peers)
+        if (err) { return done(err) }
+        const peers = []
+        peerInfos.forEach((peerInfo) => {
+          peers.push({
+            id: peerInfo.peer.id.toB58String(),
+            address: peerInfo.addr.toString()
+          })
+        })
+        done(null, peers)
       })
     },
 
     subs: (done) => {
       req.app.locals.ipfs.pubsub.ls((err, subInfos) => {
-	let subs = {}
+        if (err) { return done(err) }
 
-	async.each(subInfos, (subInfo, next) => {
-	  req.app.locals.ipfs.pubsub.peers(subInfo, (err, peerIds) => {
-	    subs[subInfo] = peerIds
-	    next(err)
-	  })
-	}, (err) => {
-	  done(err, subs)
-	})
+        let subs = {}
+
+        async.each(subInfos, (subInfo, next) => {
+          req.app.locals.ipfs.pubsub.peers(subInfo, (err, peerIds) => {
+            subs[subInfo] = peerIds
+            next(err)
+          })
+        }, (err) => {
+          done(err, subs)
+        })
       })
     }
 

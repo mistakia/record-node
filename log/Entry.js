@@ -1,9 +1,9 @@
 class Entry {
-  constructor(data) {
+  constructor (data) {
     this._data = data
   }
 
-  create(id, type, data) {
+  create (id, type, data) {
     this._data = {
       _id: id,
       type,
@@ -14,7 +14,7 @@ class Entry {
     return this._data
   }
 
-  get() {
+  get () {
     return this._data
   }
 }

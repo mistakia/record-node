@@ -1,16 +1,14 @@
 const TrackEntry = require('./TrackEntry')
 
-module.exports = function(self) {
-
-  function filterEntries(mapper) {
+module.exports = function (self) {
+  function filterEntries (mapper) {
     return (doc) => {
-      if (doc.type !== 'track')
-	return false
+      if (doc.type !== 'track') { return false }
 
       return mapper ? mapper(doc) : true
     }
   }
-  
+
   return {
     all: (mapper) => {
       const all = self._log.query(filterEntries(mapper))
@@ -21,8 +19,7 @@ module.exports = function(self) {
       const entry = new TrackEntry().create(data)
       let track = this.get(entry._id)
 
-      if (track.length)
-	return track
+      if (track.length) { return track }
 
       const hash = await this.add(data)
       track = this.get(entry._id)
@@ -44,7 +41,6 @@ module.exports = function(self) {
       const hash = await self._log.del(key)
       return hash
     },
-
 
     crate: () => {
       return this.all((doc) => doc.content.crate = true)

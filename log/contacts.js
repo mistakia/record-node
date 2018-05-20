@@ -1,15 +1,13 @@
 const ContactEntry = require('./ContactEntry')
 
-module.exports = function(self) {
-
-  function filterEntries(mapper) {
+module.exports = function (self) {
+  function filterEntries (mapper) {
     return (doc) => {
-      if (doc.type !== 'contact')
-	return false
+      if (doc.type !== 'contact') { return false }
 
       return mapper ? mapper(doc) : true
     }
-  }  
+  }
 
   return {
     all: (mapper) => {
@@ -21,14 +19,13 @@ module.exports = function(self) {
       const entry = new ContactEntry().create(data)
       let contact = this.get(entry._id)
 
-      if (contact.length)
-	return contact
+      if (contact.length) { return contact }
 
       const hash = await this.add(data)
       contact = this.get(entry._id)
       return contact
     },
-    
+
     add: async (data) => {
       const entry = new ContactEntry().create(data)
       const hash = await self._log.put(entry)

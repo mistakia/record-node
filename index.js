@@ -11,9 +11,7 @@ const api = require('./api')
 const RecordLog = require('./log')
 
 const recorddir = path.resolve(os.homedir(), './.record')
-if (!fs.existsSync(recorddir))
-  fs.mkdirSync(recorddir)
-
+if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
 
 const defaults = {
   apiPort: 3000,
@@ -26,40 +24,21 @@ const defaults = {
       dht: true,
       pubsub: true
     },
-
-    /* config: {
-     *   Addresses: {
-     *     Swarm: [
-     *   	"/ip4/0.0.0.0/tcp/4002",
-     *   	"/ip4/127.0.0.1/tcp/4003/ws",
-     *   	"/dns4/wrtc-star.discovery.libp2p.io/tcp/443/wss/p2p-webrtc-star"
-     *     ]
-     *   }
-     * },
-     * libp2p: {
-     *   modules: {
-     *     transport: [wstar],
-     *     discovery: [wstar.discovery]
-     *   }
-     * }
-     */
-
     config: {
       Addresses: {
-	Swarm: [
-	  '/ip4/0.0.0.0/tcp/4002',
-	  '/ip4/0.0.0.0/tcp/4003/ws',
-	  //'/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
-	  '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
-	]
+        Swarm: [
+          '/ip4/0.0.0.0/tcp/4002',
+          '/ip4/0.0.0.0/tcp/4003/ws',
+          // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
+          '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
+        ]
       }
     }
   }
 }
 
-
 class RecordNode extends EventEmitter {
-  constructor(options) {
+  constructor (options) {
     super()
 
     this._ipfs = null
@@ -76,13 +55,12 @@ class RecordNode extends EventEmitter {
     this._start()
   }
 
-  _start() {
+  _start () {
     this.logger('Starting RecordNode')
 
     this._ipfs = new IPFS(this._options.ipfsConfig)
     this._ipfs.on('error', (e) => this.emit('error', e))
     this._ipfs.on('ready', async () => {
-
       this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
 
       const ipfsConfig = await this._ipfs.config.get()
@@ -107,13 +85,12 @@ class RecordNode extends EventEmitter {
     })
   }
 
-  loadContacts() {
+  loadContacts () {
     this.logger('Loading Contacts')
 
     this._log.contacts.all().forEach(async (contact) => {
       const { address } = contact.content
-      if (this._contacts[address])
-	return
+      if (this._contacts[address]) { return }
 
       this.logger(`Loading contact: ${address}`)
       const log = new RecordLog(this._orbitdb, address)
@@ -122,7 +99,6 @@ class RecordNode extends EventEmitter {
     })
     this.logger(`All contacts loaded`)
   }
-
 }
 
 module.exports = RecordNode

@@ -22,8 +22,8 @@ router.get('/tracks/:logAddress(*)', loadLog, (req, res) => {
 })
 
 router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
-  //TODO: validate title
-  //TODO: validate if you have write permissions for database
+  // TODO: validate title
+  // TODO: validate if you have write permissions for database
 
   const { title, url } = req.query
 

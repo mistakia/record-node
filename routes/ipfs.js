@@ -4,7 +4,7 @@ const router = express.Router()
 router.post('/swarm/connect', (req, res) => {
   const multiaddr = req.query.multiaddr
   req.app.locals.ipfs.swarm.connect(multiaddr, (err, data) => {
-    res.send( err ? { error: err } : { data : data })
+    res.send(err ? { error: err } : { data: data })
   })
 })
 

@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "lint": "./node_modules/.bin/standard '**/*.js'",
+    "lint:fix": "./node_modules/.bin/standard --fix '**/*.js'",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node --trace-warnings bin/run.js"
   },
@@ -20,6 +22,7 @@
     "orbit-db": "^0.19.7"
   },
   "devDependencies": {
-    "logplease": "^1.2.14"
+    "logplease": "^1.2.14",
+    "standard": "^11.0.1"
   }
 }

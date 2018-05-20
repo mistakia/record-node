@@ -1,6 +1,5 @@
 const express = require('express')
 const morgan = require('morgan-debug')
-const debug = require('debug')
 
 const logsRouter = require('./routes/logs')
 const infoRouter = require('./routes/info')
