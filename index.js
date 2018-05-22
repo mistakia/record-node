@@ -20,7 +20,6 @@ const getDefaultConfig = (recorddir) => {
     ipfsConfig: {
       repo: path.resolve(recorddir, './ipfs'),
       init: true,
-      pass: '2662d47e3d692fe8c2cdb70b907ebb12b216a9d9ca5110dd336d12e7bf86073b',
       EXPERIMENTAL: {
         dht: true,
         relay: {
