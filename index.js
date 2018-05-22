@@ -69,7 +69,7 @@ class RecordNode extends EventEmitter {
   }
 
   _start () {
-    this.logger('Starting RecordNode')
+    this.logger('starting')
 
     this._ipfs = new IPFS(this._options.ipfsConfig)
     this._ipfs.on('error', (e) => this.emit('error', e))
@@ -91,7 +91,7 @@ class RecordNode extends EventEmitter {
       const { apiPort } = this._options
       this._api.listen(apiPort, () => this.logger(`API listening on port ${apiPort}`))
 
-      this.logger('RecordNode Ready')
+      this.logger('ready')
       this.emit('ready')
 
       this.loadContacts()
