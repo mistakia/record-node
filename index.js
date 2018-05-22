@@ -50,18 +50,18 @@ class RecordNode extends EventEmitter {
 
     options = options || {}
 
-    this._ipfs = null
-    this._orbitdb = null
-
-    const defaults = getDefaultConfig(options.path)
-    this._options = extend(defaults, options || {})
-
-    if (!fs.existsSync(this._options.path)) { fs.mkdirSync(this._options.path) }
-
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
 
+    const defaults = getDefaultConfig(options.path)
+    this._options = extend(defaults, options || {})
+    this.logger(this._options)
+
+    if (!fs.existsSync(this._options.path)) { fs.mkdirSync(this._options.path) }
+
+    this._ipfs = null
+    this._orbitdb = null
     this._log = null
     this._contacts = {}
 
