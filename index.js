@@ -10,43 +10,53 @@ const debug = require('debug')
 const api = require('./api')
 const RecordLog = require('./log')
 
-const recorddir = path.resolve(os.homedir(), './.record')
-if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
+const getDefaultConfig = (recorddir) => {
+  recorddir = recorddir || path.resolve(os.homedir(), './.record')
 
-const defaults = {
-  apiPort: 3000,
-  orbitPath: path.resolve(recorddir, './orbitdb'),
-  ipfsConfig: {
-    repo: path.resolve(recorddir, './ipfs'),
-    init: true,
-    pass: '2662d47e3d692fe8c2cdb70b907ebb12b216a9d9ca5110dd336d12e7bf86073b',
-    EXPERIMENTAL: {
-      dht: true,
-      relay: {
-        enabled: true
+  const defaults = {
+    path: recorddir,
+    apiPort: 3000,
+    orbitPath: path.resolve(recorddir, './orbitdb'),
+    ipfsConfig: {
+      repo: path.resolve(recorddir, './ipfs'),
+      init: true,
+      pass: '2662d47e3d692fe8c2cdb70b907ebb12b216a9d9ca5110dd336d12e7bf86073b',
+      EXPERIMENTAL: {
+        dht: true,
+        relay: {
+          enabled: true
+        },
+        pubsub: true
       },
-      pubsub: true
-    },
-    config: {
-      Addresses: {
-        Swarm: [
-          '/ip4/0.0.0.0/tcp/4002',
-          // '/ip4/0.0.0.0/tcp/4003/ws',
-          // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
-          '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
-        ]
+      config: {
+        Addresses: {
+          Swarm: [
+            // '/ip4/0.0.0.0/tcp/4002',
+            // '/ip4/0.0.0.0/tcp/4003/ws',
+            // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
+            '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
+          ]
+        }
       }
     }
   }
+
+  return defaults
 }
 
 class RecordNode extends EventEmitter {
   constructor (options) {
     super()
 
+    options = options || {}
+
     this._ipfs = null
     this._orbitdb = null
+
+    const defaults = getDefaultConfig(options.path)
     this._options = extend(defaults, options || {})
+
+    if (!fs.existsSync(this._options.path)) { fs.mkdirSync(this._options.path) }
 
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr

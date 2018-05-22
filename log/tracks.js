@@ -43,7 +43,7 @@ module.exports = function (self) {
     },
 
     crate: () => {
-      return this.all((doc) => doc.content.crate = true)
+      return this.all((doc) => doc.content.crate === true)
     }
   }
 }
