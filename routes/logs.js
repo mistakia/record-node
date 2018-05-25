@@ -36,8 +36,28 @@ router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
   return res.send(data)
 })
 
-router.post('/contacts/:logAddress(*)', loadLog, async (req, res) => {
-  const { address, alias } = req.query
+router.post('/contacts/:logAddress(*)', loadLog, (req, res, next) => {
+  const { address, alias } = req.body
+
+  let errors = []
+
+  // TODO: sanitize
+  // TODO: validate address (OrbitDB)
+  if (!address) errors.push('Missing address field')
+
+  if (!alias) errors.push('Missing alias field')
+
+  if (!errors.length) {
+    res.locals.data = { address, alias }
+    return next()
+  }
+
+  res.status(422).send({
+    error: errors.join(', ')
+  })
+
+}, async (req, res) => {
+  const { address, alias } = res.locals.data
   const data = await res.locals.log.contacts.findOrCreate({ address, alias })
   req.app.locals.loadContacts()
   return res.send(data)

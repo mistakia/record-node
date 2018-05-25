@@ -1,5 +1,6 @@
 const express = require('express')
 const morgan = require('morgan-debug')
+const bodyParser = require('body-parser')
 
 const logsRouter = require('./routes/logs')
 const infoRouter = require('./routes/info')
@@ -14,6 +15,7 @@ module.exports = (self) => {
   app.locals.loadContacts = self.loadContacts.bind(self)
 
   app.use(morgan('record:node:api', 'combined'))
+  app.use(bodyParser.json())
 
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
