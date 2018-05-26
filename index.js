@@ -6,6 +6,7 @@ const path = require('path')
 const os = require('os')
 const fs = require('fs')
 const debug = require('debug')
+const ConnManager = require('libp2p-connection-manager')
 
 const api = require('./api')
 const RecordLog = require('./log')
@@ -17,6 +18,9 @@ const getDefaultConfig = (recorddir) => {
     path: recorddir,
     apiPort: 3000,
     orbitPath: path.resolve(recorddir, './orbitdb'),
+    connManagerConfig: {
+      maxPeers: 10
+    },
     ipfsConfig: {
       repo: path.resolve(recorddir, './ipfs'),
       init: true,
@@ -33,7 +37,8 @@ const getDefaultConfig = (recorddir) => {
             // '/ip4/0.0.0.0/tcp/4002',
             // '/ip4/0.0.0.0/tcp/4003/ws',
             // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
-            '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
+            //'/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
+            //'/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
           ]
         }
       }
@@ -94,6 +99,10 @@ class RecordNode extends EventEmitter {
       this.emit('ready')
 
       this.loadContacts()
+
+      this.connManager = new ConnManager(this._ipfs._libp2pNode, this._options.connManagerConfig)
+
+      // TODO: Connect Swarm Manually
     })
   }
 
