@@ -23,7 +23,7 @@ router.get('/?', async (req, res) => {
         const peers = []
         peerInfos.forEach((peerInfo) => {
           peers.push({
-            id: peerInfo.peer.id.toB58String(),
+            id: peerInfo.peer.toB58String(),
             address: peerInfo.addr.toString()
           })
         })
