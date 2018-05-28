@@ -55,17 +55,15 @@ const getDefaultConfig = (recorddir) => {
 }
 
 class RecordNode extends EventEmitter {
-  constructor (options) {
+  constructor (options = {}) {
     super()
-
-    options = options || {}
 
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
 
     const defaults = getDefaultConfig(options.path)
-    this._options = extend(defaults, options || {})
+    this._options = extend(defaults, options)
     this.logger(this._options)
 
     if (!fs.existsSync(this._options.path)) { fs.mkdirSync(this._options.path) }
