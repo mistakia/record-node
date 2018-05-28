@@ -19,25 +19,31 @@ const getDefaultConfig = (recorddir) => {
     apiPort: 3000,
     orbitPath: path.resolve(recorddir, './orbitdb'),
     connManagerConfig: {
-      maxPeers: 10
+      maxPeers: 10,
+      pollInterval: 30000
     },
     ipfsConfig: {
       repo: path.resolve(recorddir, './ipfs'),
       init: true,
       EXPERIMENTAL: {
-        dht: true,
+        dht: false, // TODO: BRICKS COMPUTER
         relay: {
-          enabled: true
+          enabled: true,
+          hop: {
+            enabled: false, // TODO: CPU hungry on mobile
+            active: false
+          }
         },
         pubsub: true
       },
       config: {
+        Bootstrap: [],
         Addresses: {
           Swarm: [
             // '/ip4/0.0.0.0/tcp/4002',
             // '/ip4/0.0.0.0/tcp/4003/ws',
             // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
-            //'/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
+            '/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
             //'/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
           ]
         }
@@ -102,7 +108,7 @@ class RecordNode extends EventEmitter {
 
       this.connManager = new ConnManager(this._ipfs._libp2pNode, this._options.connManagerConfig)
 
-      // TODO: Connect Swarm Manually
+      // TODO: bootstrap fallback - use bitboot (https://github.com/tintfoundation/bitboot)
     })
   }
 

@@ -11,6 +11,7 @@ const loadLog = async (req, res, next) => {
     return next()
   }
 
+  // TODO: replicate: false, localOnly
   res.locals.log = new RecordLog(req.app.locals.orbitdb, logAddress)
   await res.locals.log.load()
   next()
@@ -33,6 +34,8 @@ router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
 
 router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
   const data = res.locals.log.contacts.all()
+
+  // TODO: close log
   return res.send(data)
 })
 
