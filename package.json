@@ -17,7 +17,7 @@
     "debug": "^3.1.0",
     "deep-extend": "^0.5.1",
     "express": "^4.16.3",
-    "ipfs": "github:mistakia/js-ipfs",
+    "ipfs": "github:ipfs/js-ipfs#4486acc",
     "libp2p-connection-manager": "0.0.2",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
