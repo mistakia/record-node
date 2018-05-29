@@ -21,7 +21,7 @@
     "libp2p-connection-manager": "0.0.2",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
-    "orbit-db": "github:mistakia/orbit-db"
+    "orbit-db": "github:orbitdb/orbit-db#a516d6d"
   },
   "devDependencies": {
     "logplease": "^1.2.14",
