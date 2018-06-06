@@ -1,18 +1,24 @@
 const express = require('express')
 const morgan = require('morgan-debug')
 const bodyParser = require('body-parser')
+const extend = require('deep-extend')
 
 const logsRouter = require('./routes/logs')
 const infoRouter = require('./routes/info')
-const ipfsRouter = require('./routes/ipfs')
+
+const defaults = {
+  port: 3000
+}
 
 module.exports = (self) => {
   const app = express()
 
+  const options = extend(defaults, self._options.api)
+
   app.locals.orbitdb = self._orbitdb
   app.locals.ipfs = self._ipfs
   app.locals.log = self._log
-  app.locals.loadContacts = self.loadContacts.bind(self)
+  app.locals.getLog = self.getLog
 
   app.use(morgan('record:node:api', 'combined'))
   app.use(bodyParser.json())
@@ -23,9 +29,11 @@ module.exports = (self) => {
     next()
   })
 
-  app.use('/ipfs', ipfsRouter)
   app.use('/logs', logsRouter)
   app.use('/info', infoRouter)
+
+  const { port } = options
+  app.listen(port, () => self.logger(`API listening on port ${port}`))
 
   return app
 }
