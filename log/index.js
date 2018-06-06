@@ -4,7 +4,8 @@ const tracks = require('./tracks')
 const contacts = require('./contacts')
 
 const defaultOptions = {
-  replicationConcurrency: 128
+  replicationConcurrency: 128,
+  replicate: true
 }
 
 class RecordLog {

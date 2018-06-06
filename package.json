@@ -14,17 +14,18 @@
   "dependencies": {
     "async": "^2.6.0",
     "body-parser": "^1.18.3",
+    "crypto-hash": "^0.1.0",
     "debug": "^3.1.0",
     "deep-extend": "^0.5.1",
     "express": "^4.16.3",
-    "ipfs": "github:ipfs/js-ipfs#4486acc",
-    "libp2p-connection-manager": "0.0.2",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
-    "orbit-db": "github:orbitdb/orbit-db#a516d6d"
+    "promisify-es6": "^1.0.3"
   },
   "devDependencies": {
+    "ipfs": "github:ipfs/js-ipfs#4486acc",
     "logplease": "^1.2.14",
+    "orbit-db": "^0.19.7",
     "standard": "^11.0.1"
   }
 }

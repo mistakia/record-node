@@ -1,4 +1,4 @@
-const crypto = require('crypto')
+const { sha256 } = require('crypto-hash')
 
 const Entry = require('./Entry')
 
@@ -9,9 +9,8 @@ class TrackEntry extends Entry {
     this._type = 'track'
   }
 
-  create (data) {
-    const hash = crypto.createHash('sha256')
-    const id = hash.update(data.url).digest('hex')
+  async create (data) {
+    const id = await sha256(data.url)
     return super.create(id, this._type, data)
   }
 }

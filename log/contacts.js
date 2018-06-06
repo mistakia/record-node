@@ -16,7 +16,7 @@ module.exports = function (self) {
     },
 
     findOrCreate: async function (data) {
-      const entry = new ContactEntry().create(data)
+      const entry = await new ContactEntry().create(data)
       let contact = this.get(entry._id)
 
       if (contact.length) { return contact }
@@ -27,8 +27,12 @@ module.exports = function (self) {
     },
 
     add: async (data) => {
-      const entry = new ContactEntry().create(data)
+      const entry = await new ContactEntry().create(data)
       const hash = await self._log.put(entry)
+
+      // TODO:
+      // self.syncContacts()
+
       return hash
     },
 
