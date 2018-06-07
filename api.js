@@ -18,7 +18,7 @@ module.exports = (self) => {
   app.locals.orbitdb = self._orbitdb
   app.locals.ipfs = self._ipfs
   app.locals.log = self._log
-  app.locals.getLog = self.getLog
+  app.locals.getLog = self.getLog.bind(self)
 
   app.use(morgan('record:node:api', 'combined'))
   app.use(bodyParser.json())
