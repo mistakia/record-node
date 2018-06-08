@@ -13,6 +13,11 @@ module.exports = function info (self) {
         })
       },
 
+      state: (done) => {
+        const state = self._ipfs.state.state()
+        done(null, state)
+      },
+
       ipfs: (done) => {
         self._ipfs.id(done)
       },
@@ -53,11 +58,12 @@ module.exports = function info (self) {
         return callback(err)
       }
 
-      const { ipfs, peers, subs, orbitdb } = results
+      const { ipfs, peers, subs, orbitdb, state } = results
       callback(null, {
         ipfs,
         peers,
         subs,
+        state,
         orbitdb
       })
     })

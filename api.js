@@ -19,6 +19,7 @@ module.exports = (self) => {
   app.locals.ipfs = self._ipfs
   app.locals.log = self._log
   app.locals.getLog = self.getLog.bind(self)
+  app.locals.info = self.info
 
   app.use(morgan('record:node:api', 'combined'))
   app.use(bodyParser.json())
