@@ -1,5 +1,4 @@
 const express = require('express')
-const async = require('async')
 const router = express.Router()
 
 router.get('/?', async (req, res) => {
