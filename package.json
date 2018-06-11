@@ -1,7 +1,7 @@
 {
   "name": "record-node",
   "version": "0.0.1",
-  "description": "Record library, CLI and REST API for the Record App",
+  "description": "Library, CLI and REST API for Record.",
   "main": "index.js",
   "scripts": {
     "lint": "$(npm bin)/standard '**/*.js'",
