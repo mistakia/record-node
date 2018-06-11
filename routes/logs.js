@@ -17,7 +17,7 @@ router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
   // TODO: validate title
   // TODO: validate if you have write permissions for database
 
-  const { title, url } = req.query
+  const { title, url } = req.body
 
   const data = await res.locals.log.tracks.findOrCreate({ url, title })
   return res.send(data)
