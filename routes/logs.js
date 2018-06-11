@@ -4,8 +4,12 @@ const router = express.Router()
 const loadLog = async (req, res, next) => {
   const logAddress = `/${req.params.logAddress}`
 
-  res.locals.log = await req.app.locals.getLog(logAddress)
-  next()
+  try {
+    res.locals.log = await req.app.locals.getLog(logAddress)
+    next()
+  } catch (err) {
+    res.send(500).send({ error: err.toString() })
+  }
 }
 
 router.get('/tracks/:logAddress(*)', loadLog, (req, res) => {
@@ -19,8 +23,12 @@ router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
 
   const { title, url } = req.body
 
-  const data = await res.locals.log.tracks.findOrCreate({ url, title })
-  return res.send(data)
+  try {
+    const data = await res.locals.log.tracks.findOrCreate({ url, title })
+    res.send(data)
+  } catch (err) {
+    res.status(500).send({ error: err.toString() })
+  }
 })
 
 router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
@@ -49,9 +57,13 @@ router.post('/contacts/:logAddress(*)', loadLog, (req, res, next) => {
     error: errors.join(', ')
   })
 }, async (req, res) => {
-  const { address, alias } = res.locals.data
-  const data = await res.locals.log.contacts.findOrCreate({ address, alias })
-  return res.send(data)
+  try {
+    const { address, alias } = res.locals.data
+    const data = await res.locals.log.contacts.findOrCreate({ address, alias })
+    res.send(data)
+  } catch (err) {
+    res.status(500).send({ error: err.toString() })
+  }
 })
 
 module.exports = router
