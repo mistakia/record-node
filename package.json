@@ -4,8 +4,8 @@
   "description": "Record library, CLI and REST API for the Record App",
   "main": "index.js",
   "scripts": {
-    "lint": "./node_modules/.bin/standard '**/*.js'",
-    "lint:fix": "./node_modules/.bin/standard --fix '**/*.js'",
+    "lint": "$(npm bin)/standard '**/*.js'",
+    "lint:fix": "$(npm bin)/standard --fix '**/*.js'",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node --trace-warnings bin/run.js"
   },
