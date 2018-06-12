@@ -23,6 +23,7 @@ class RecordNode {
 
     const defaults = getDefaultConfig()
     this._options = extend(defaults, options)
+
     this.logger(this._options)
 
     this._ipfs = ipfs
@@ -46,9 +47,12 @@ class RecordNode {
     }
   }
 
-  async load () {
-    await this._log.load()
+  async loadLog (logId, opts) {
+    const log = await this.getLog(logId, opts)
+    await log.load()
     this.logger(`Log Address: ${this._log._log.address}`)
+
+    return log
   }
 
   syncContacts () {
@@ -67,18 +71,16 @@ class RecordNode {
     this.logger(`All contacts loaded`)
   }
 
-  async getLog (logId) {
+  async getLog (logId, options) {
     if (!logId || logId === '/me') {
       return this._log
     }
 
     // TODO: localOnly
-    const opts = { replicate: false }
+    const defaults = { replicate: false }
+    const opts = extend(defaults, options)
     const log = new RecordLog(this._orbitdb, logId, opts)
-    await log.load()
-
     // TODO: cache?
-
     return log
   }
 }

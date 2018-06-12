@@ -60,6 +60,6 @@ ipfs.on('ready', async () => {
 
   const rn = new RecordNode(ipfs, OrbitDB, opts)
 
-  await rn.load()
+  await rn.loadLog()
   // ready
 })

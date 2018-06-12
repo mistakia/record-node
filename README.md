@@ -38,8 +38,8 @@ const ipfs = new IPFS()
 ipfs.on('ready', async () => {
     const rn = new RecordNode(ipfs, OrbitDB)
 
-    await rn.load()
-    // ready
+    await rn.loadLog() // or rn.loadLog('/me')
+    // User's log loaded
 })
 ```
 
