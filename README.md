@@ -53,6 +53,7 @@ Use the `options` argument to specify configuration. It is an object with any of
 - `orbitAddress` (string): Valid OrbitDB database address. (Default: `undefined`)
 - `api` (boolean or object): Initialize the api when creating Record Node instance (Default: `undefined`)
 - `logConfig` (object): Options passed to OrbitDB when creating log.
+  - `create` (boolean): Wether or not to create db if given just a db name (Default: `true`)
   - `replicate` (boolean): Subscribe to updates via IPFS pubsub (Default: `true`)
   - `replicationConcurrency` (integer): (Default: `128`)
 
