@@ -9,7 +9,10 @@ const RecordLog = require('./log')
 const getDefaultConfig = () => {
   const defaults = {
     orbitPath: undefined,
-    orbitAddress: undefined
+    orbitAddress: undefined,
+    logConfig: {
+      create: true
+    }
   }
 
   return defaults
@@ -52,6 +55,7 @@ class RecordNode {
     await log.load()
     this.logger(`Log Address: ${this._log._log.address}`)
 
+    // TODO: cache?
     return log
   }
 
@@ -76,11 +80,9 @@ class RecordNode {
       return this._log
     }
 
-    // TODO: localOnly
-    const defaults = { replicate: false }
+    const defaults = { replicate: false, create: false }
     const opts = extend(defaults, options)
     const log = new RecordLog(this._orbitdb, logId, opts)
-    // TODO: cache?
     return log
   }
 }
