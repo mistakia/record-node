@@ -1,6 +1,8 @@
 const extend = require('deep-extend')
 const debug = require('debug')
 
+const resolver = require('record-resolver')
+
 const components = require('./components')
 const api = require('./api')
 
@@ -44,6 +46,7 @@ class RecordNode {
      */
 
     this.info = components.info(this)
+    this.resolve = resolver
 
     if (this._options.api) {
       this._api = api(this)

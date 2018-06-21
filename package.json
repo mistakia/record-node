@@ -20,7 +20,8 @@
     "express": "^4.16.3",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
-    "promisify-es6": "^1.0.3"
+    "promisify-es6": "^1.0.3",
+    "record-resolver": "github:mistakia/record-resolver#5e004c3"
   },
   "devDependencies": {
     "ipfs": "github:ipfs/js-ipfs#4486acc",
