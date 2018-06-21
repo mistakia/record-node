@@ -5,6 +5,7 @@ const extend = require('deep-extend')
 
 const logsRouter = require('./routes/logs')
 const infoRouter = require('./routes/info')
+const resolveRouter = require('./routes/resolve')
 
 const defaults = {
   port: 3000
@@ -19,6 +20,7 @@ module.exports = (self) => {
   app.locals.ipfs = self._ipfs
   app.locals.log = self._log
   app.locals.loadLog = self.loadLog.bind(self)
+  app.locals.resolve = self.resolve
   app.locals.info = self.info
 
   app.use(morgan('record:node:api', 'combined'))
@@ -32,6 +34,7 @@ module.exports = (self) => {
 
   app.use('/logs', logsRouter)
   app.use('/info', infoRouter)
+  app.use('/resolve', resolveRouter)
 
   const { port } = options
   app.listen(port, () => self.logger(`API listening on port ${port}`))
