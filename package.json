@@ -21,7 +21,7 @@
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
     "promisify-es6": "^1.0.3",
-    "record-resolver": "github:mistakia/record-resolver#5e004c3"
+    "record-resolver": "github:mistakia/record-resolver#8cf3a09"
   },
   "devDependencies": {
     "ipfs": "github:ipfs/js-ipfs#4486acc",
