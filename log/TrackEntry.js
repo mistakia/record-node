@@ -10,7 +10,7 @@ class TrackEntry extends Entry {
   }
 
   async create (data) {
-    const id = await sha256(data.url)
+    const id = await sha256(data.webpage_url)
     return super.create(id, this._type, data)
   }
 }
