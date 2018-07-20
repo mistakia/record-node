@@ -6,18 +6,19 @@ const resolver = require('record-resolver')
 const components = require('./components')
 const api = require('./api')
 
-const RecordLog = require('./log')
+const RecordStore = require('./store')
 
-const getDefaultConfig = () => {
-  const defaults = {
-    orbitPath: undefined,
-    orbitAddress: undefined,
-    logConfig: {
-      create: true
-    }
+const defaultConfig = {
+  orbitPath: undefined,
+  orbitAddress: 'record',
+  storeConfig: {
+    referenceCount: 24,
+    replicationConcurrency: 128,
+    localOnly: false,
+    create: true,
+    overwrite: true,
+    replicate: false
   }
-
-  return defaults
 }
 
 class RecordNode {
@@ -26,14 +27,14 @@ class RecordNode {
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
 
-    const defaults = getDefaultConfig()
-    this._options = extend(defaults, options)
+    this._options = extend(defaultConfig, options)
 
     this.logger(this._options)
 
+    OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
+
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
-    this._log = new RecordLog(this._orbitdb, this._options.orbitAddress, this._options.logConfig)
 
     this._contacts = {}
 
@@ -53,26 +54,39 @@ class RecordNode {
     }
   }
 
+  async init (address = 'record') {
+    const opts = extend(this._options.storeConfig, {
+      replicate: true,
+      type: RecordStore.type
+    })
+
+    this._log = await this._orbitdb.open(address, opts)
+    await this._log.load()
+  }
+
   async loadLog (logId, opts) {
+    if (!logId || logId === '/me') {
+      return this._log
+    }
+
     const log = await this.getLog(logId, opts)
+    this.logger(`Loading log: ${log.address}`)
     await log.load()
-    this.logger(`Log Address: ${this._log._log.address}`)
 
     // TODO: cache?
     return log
   }
 
-  syncContacts () {
+  async syncContacts () {
     this.logger('Loading contacts to sync')
 
-    this._log.contacts.all().forEach(async (contact) => {
-      const { address } = contact.content
+    const contacts = await this._log.contacts.all()
+    contacts.forEach(async (contact) => {
+      const { address } = contact.payload.value.content
       if (this._contacts[address]) { return }
 
       this.logger(`Loading contact: ${address}`)
-      const opts = { replicate: true }
-      const log = new RecordLog(this._orbitdb, address, opts)
-      await log.load()
+      const log = await this.loadLog(address, { replicate: true })
       this._contacts[address] = log
     })
     this.logger(`All contacts loaded`)
@@ -83,9 +97,12 @@ class RecordNode {
       return this._log
     }
 
-    const defaults = { replicate: false, create: false }
+    const defaults = extend(defaultConfig.storeConfig, {
+      type: RecordStore.type,
+      create: false
+    })
     const opts = extend(defaults, options)
-    const log = new RecordLog(this._orbitdb, logId, opts)
+    const log = await this._orbitdb.open(logId, opts)
     return log
   }
 }
