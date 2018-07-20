@@ -12,9 +12,14 @@ const loadLog = async (req, res, next) => {
   }
 }
 
-router.get('/tracks/:logAddress(*)', loadLog, (req, res) => {
-  const data = res.locals.log.tracks.all()
-  return res.send(data)
+router.get('/tracks/:logAddress(*)', loadLog, async (req, res) => {
+  try {
+    const entries = await res.locals.log.tracks.all()
+    const tracks = entries.map(e => e.payload.value)
+    res.send(tracks)
+  } catch (err) {
+    res.status(500).send({ error: err.toString() })
+  }
 })
 
 router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
@@ -24,17 +29,21 @@ router.post('/tracks/:logAddress(*)', loadLog, async (req, res) => {
   const { title, url } = req.body
 
   try {
-    const data = await res.locals.log.tracks.findOrCreate({ url, title })
-    res.send(data)
+    const entry = await res.locals.log.tracks.findOrCreate({ url, title })
+    res.send(entry)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }
 })
 
-router.get('/contacts/:logAddress(*)', loadLog, (req, res) => {
-  const data = res.locals.log.contacts.all()
-
-  return res.send(data)
+router.get('/contacts/:logAddress(*)', loadLog, async (req, res) => {
+  try {
+    const entries = await res.locals.log.contacts.all()
+    const contacts = entries.map(e => e.payload.value)
+    res.send(contacts)
+  } catch (err) {
+    res.status(500).send({ error: err.toString() })
+  }
 })
 
 router.post('/contacts/:logAddress(*)', loadLog, (req, res, next) => {
@@ -59,8 +68,8 @@ router.post('/contacts/:logAddress(*)', loadLog, (req, res, next) => {
 }, async (req, res) => {
   try {
     const { address, alias } = res.locals.data
-    const data = await res.locals.log.contacts.findOrCreate({ address, alias })
-    res.send(data)
+    const entry = await res.locals.log.contacts.findOrCreate({ address, alias })
+    res.send(entry)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }

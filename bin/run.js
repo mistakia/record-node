@@ -9,6 +9,8 @@ const OrbitDB = require('orbit-db')
 
 const RecordNode = require('../index')
 
+process.on('unhandledRejection', error => console.log(error))
+
 debug.enable('record:*,jsipfs')
 Logger.setLogLevel(Logger.LogLevels.DEBUG)
 
@@ -60,6 +62,13 @@ ipfs.on('ready', async () => {
 
   const rn = new RecordNode(ipfs, OrbitDB, opts)
 
-  await rn.loadLog()
+  await rn.init()
+  const log = await rn.loadLog()
+  const address = '/orbitdb/QmTib4G3RwAoipgp38seVVBECryj8ADYbG4Zdk4HtHamRv/record'
+  const alias = 'Pi'
+  const data = await log.contacts.findOrCreate({ address, alias })
+  console.log(data)
+  const contacts = await log.contacts.all()
+  console.log(contacts)
   // ready
 })
