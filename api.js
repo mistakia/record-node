@@ -6,6 +6,7 @@ const extend = require('deep-extend')
 const logsRouter = require('./routes/logs')
 const infoRouter = require('./routes/info')
 const resolveRouter = require('./routes/resolve')
+const feedRouter = require('./routes/feed')
 
 const defaults = {
   port: 3000
@@ -30,6 +31,7 @@ module.exports = (self) => {
   app.use('/logs', logsRouter)
   app.use('/info', infoRouter)
   app.use('/resolve', resolveRouter)
+  app.use('/feed', feedRouter)
 
   const { port } = options
   app.listen(port, () => self.logger(`API listening on port ${port}`))
