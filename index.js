@@ -6,7 +6,7 @@ const resolver = require('record-resolver')
 const components = require('./components')
 const api = require('./api')
 
-const RecordStore = require('./store')
+const { RecordFeedStore, RecordStore } = require('./store')
 
 const defaultConfig = {
   orbitPath: undefined,
@@ -31,6 +31,7 @@ class RecordNode {
     this.logger(this._options)
 
     OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
+    OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
 
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
@@ -45,6 +46,7 @@ class RecordNode {
 
     this.info = components.info(this)
     this.contacts = components.contacts(this)
+    this.feed = components.feed(this)
     this.resolve = resolver
 
     if (this._options.api) {
@@ -58,11 +60,13 @@ class RecordNode {
       type: RecordStore.type
     })
 
+    // Open & Load Main Log
     this._log = await this._orbitdb.open(address, opts)
     this._log.events.on('contact', () => {
       this.contacts.sync()
     })
     await this._log.load()
+    await this.feed.init()
 
     await this.contacts.sync()
   }
@@ -70,6 +74,10 @@ class RecordNode {
   async loadLog (logId, opts) {
     if (!logId || logId === '/me') {
       return this._log
+    }
+
+    if (logId === '/feed') {
+      return this._feedLog
     }
 
     const log = await this.getLog(logId, opts)

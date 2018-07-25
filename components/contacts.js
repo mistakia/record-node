@@ -10,8 +10,12 @@ module.exports = function contacts (self) {
         if (this._index[address]) { return }
 
         self.logger(`Loading contact: ${address}`)
-        const log = await self.loadLog(address, { replicate: true })
+        const log = await self.getLog(address, { replicate: true })
+        log.events.on('replicate.progress', async (id, hash, entry) => {
+          await self.feed.add(entry)
+        })
         this._index[address] = log
+        await log.load()
       })
       self.logger(`All contacts loaded`)
     }

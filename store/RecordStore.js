@@ -7,8 +7,7 @@ const tracks = require('./type/tracks')
 const contacts = require('./type/contacts')
 
 class RecordStore extends Store {
-  constructor (ipfs, id, dbname, options) {
-    if (!options) options = {}
+  constructor (ipfs, id, dbname, options = {}) {
     if (!options.indexBy) Object.assign(options, { indexBy: '_id' })
     if (!options.Index) Object.assign(options, { Index: RecordIndex })
     super(ipfs, id, dbname, options)
