@@ -5,7 +5,7 @@ const loadLog = async (req, res, next) => {
   const logAddress = `/${req.params.logAddress}`
 
   try {
-    res.locals.log = await req.app.locals.loadLog(logAddress)
+    res.locals.log = await req.app.locals.rn.loadLog(logAddress)
     next()
   } catch (err) {
     res.send(500).send({ error: err.toString() })

@@ -16,12 +16,7 @@ module.exports = (self) => {
 
   const options = extend(defaults, self._options.api)
 
-  app.locals.orbitdb = self._orbitdb
-  app.locals.ipfs = self._ipfs
-  app.locals.log = self._log
-  app.locals.loadLog = self.loadLog.bind(self)
-  app.locals.resolve = self.resolve
-  app.locals.info = self.info
+  app.locals.rn = self
 
   app.use(morgan('record:node:api', 'combined'))
   app.use(bodyParser.json())
