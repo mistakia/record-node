@@ -61,6 +61,9 @@ class RecordNode {
     })
 
     this._log = await this._orbitdb.open(address, opts)
+    this._log.events.on('contact', () => {
+      this.syncContacts()
+    })
     await this._log.load()
   }
 
