@@ -38,9 +38,8 @@ const OrbitDB = require('orbit-db')
 const ipfs = new IPFS()
 ipfs.on('ready', async () => {
     const rn = new RecordNode(ipfs, OrbitDB)
-
-    await rn.loadLog() // or rn.loadLog('/me')
-    // User's log loaded
+    await rn.init()
+    const log = await rn.loadLog() // or rn.loadLog('/me')
 })
 ```
 
@@ -51,12 +50,15 @@ const rn = new RecordNode(ipfs, OrbitDB, options)
 ```
 Use the `options` argument to specify configuration. It is an object with any of these properties:
 - `orbitPath` (string): The file path passed to OrbitDB. (Default: `undefined`)
-- `orbitAddress` (string): Valid OrbitDB database address. (Default: `undefined`)
 - `api` (boolean or object): Initialize the api when creating Record Node instance (Default: `undefined`)
 - `logConfig` (object): Options passed to OrbitDB when creating log.
   - `create` (boolean): Wether or not to create db if given just a db name (Default: `true`)
   - `replicate` (boolean): Subscribe to updates via IPFS pubsub (Default: `true`)
   - `replicationConcurrency` (integer): (Default: `128`)
+
+#### rn.init([address])
+Returns a `Promise`
+- `address` (string): name or valid OrbitDB database address. (Default: `record`)
 
 ## License
 MIT
