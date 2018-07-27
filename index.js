@@ -28,15 +28,12 @@ class RecordNode {
     this.logger.err = debug('record:node:err')
 
     this._options = extend(defaultConfig, options)
-
     this.logger(this._options)
 
     OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
 
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
-
-    this._contacts = {}
 
     /* const ipfsConfig = await this._ipfs.config.get()
      * const ipfsInfo = await this._ipfs.id()
@@ -47,6 +44,7 @@ class RecordNode {
      */
 
     this.info = components.info(this)
+    this.contacts = components.contacts(this)
     this.resolve = resolver
 
     if (this._options.api) {
@@ -62,9 +60,11 @@ class RecordNode {
 
     this._log = await this._orbitdb.open(address, opts)
     this._log.events.on('contact', () => {
-      this.syncContacts()
+      this.contacts.sync()
     })
     await this._log.load()
+
+    await this.contacts.sync()
   }
 
   async loadLog (logId, opts) {
@@ -76,23 +76,7 @@ class RecordNode {
     this.logger(`Loading log: ${log.address}`)
     await log.load()
 
-    // TODO: cache?
     return log
-  }
-
-  async syncContacts () {
-    this.logger('Loading contacts to sync')
-
-    const contacts = await this._log.contacts.all()
-    contacts.forEach(async (contact) => {
-      const { address } = contact.payload.value.content
-      if (this._contacts[address]) { return }
-
-      this.logger(`Loading contact: ${address}`)
-      const log = await this.loadLog(address, { replicate: true })
-      this._contacts[address] = log
-    })
-    this.logger(`All contacts loaded`)
   }
 
   async getLog (logId, options) {
