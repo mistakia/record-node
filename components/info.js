@@ -1,71 +1,51 @@
-const async = require('async')
-const promisify = require('promisify-es6')
-
 module.exports = function info (self) {
-  return promisify((callback) => {
-    async.parallel({
+  const getOrbitdb = () => {
+    return {
+      address: self._log.address.toString(),
+      publicKey: self._log.key.getPublic('hex')
+    }
+  }
 
-      orbitdb: (done) => {
-        // TODO: return manifest & access Controller dag objects
-        done(null, {
-          address: self._log.address.toString(),
-          publicKey: self._log.key.getPublic('hex')
-        })
-      },
+  const getId = async () => {
+    const id = await self._ipfs.id()
+    return id
+  }
 
-      state: (done) => {
-        const state = self._ipfs.state.state()
-        done(null, state)
-      },
-
-      ipfs: (done) => {
-        self._ipfs.id(done)
-      },
-
-      peers: (done) => {
-        self._ipfs.swarm.peers((err, peerInfos) => {
-          if (err) { return done(err) }
-          const peers = []
-          peerInfos.forEach((peerInfo) => {
-            peers.push({
-              id: peerInfo.peer.toB58String(),
-              address: peerInfo.addr.toString()
-            })
-          })
-          done(null, peers)
-        })
-      },
-
-      subs: (done) => {
-        self._ipfs.pubsub.ls((err, subInfos) => {
-          if (err) { return done(err) }
-
-          let subs = {}
-
-          async.each(subInfos, (subInfo, next) => {
-            self._ipfs.pubsub.peers(subInfo, (err, peerIds) => {
-              subs[subInfo] = peerIds
-              next(err)
-            })
-          }, (err) => {
-            done(err, subs)
-          })
-        })
+  const getPeers = async () => {
+    const peerInfos = await self._ipfs.swarm.peers()
+    const peers = peerInfos.map((peerInfo) => {
+      return {
+        id: peerInfo.peer.toB58String(),
+        address: peerInfo.addr.toString()
       }
-
-    }, (err, results) => {
-      if (err) {
-        return callback(err)
-      }
-
-      const { ipfs, peers, subs, orbitdb, state } = results
-      callback(null, {
-        ipfs,
-        peers,
-        subs,
-        state,
-        orbitdb
-      })
     })
-  })
+    return peers
+  }
+
+  const getSubs = async () => {
+    const subInfos = await self._ipfs.pubsub.ls()
+    let subs = {}
+
+    for (const subInfo of subInfos) {
+      const peerIds = await self._ipfs.pubsub.peers(subInfo)
+      subs[subInfo] = peerIds
+    }
+
+    return subs
+  }
+
+  const getInfo = async () => {
+    const [ subs, ipfs, peers ] = await Promise.all([getSubs(), getId(), getPeers()])
+    const state = self._ipfs.state.state()
+    const orbitdb = getOrbitdb()
+    return {
+      subs,
+      ipfs,
+      peers,
+      state,
+      orbitdb
+    }
+  }
+
+  return getInfo
 }

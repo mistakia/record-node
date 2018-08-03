@@ -1,16 +1,19 @@
-const mapSeries = require('p-map-series')
-
 const { ContactEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
   return {
     all: async (startIndex, endIndex) => {
-      const entryHashes = Array.from(self._index._index.contact.values())
-                               .reverse()
-                               .slice(startIndex, endIndex)
-                               .map(e => e.hash)
+      const entryHashes = Array
+        .from(self._index._index.contact.values())
+        .reverse()
+        .slice(startIndex, endIndex)
+        .map(e => e.hash)
 
-      const entries = await mapSeries(entryHashes, self._oplog.get.bind(self._oplog))
+      let entries = []
+      for (const entryHash of entryHashes) {
+        const entry = await self._oplog.get(entryHash)
+        entries.push(entry)
+      }
       return entries
     },
 
@@ -22,7 +25,7 @@ module.exports = function (self) {
         return contact
       }
 
-      const hash = await this.add(data)
+      await this.add(data)
       contact = await self.get(entry._id, 'contact')
       return contact
     },

@@ -1,6 +1,5 @@
 const Store = require('orbit-db-store')
 const Log = require('ipfs-log')
-const mapSeries = require('p-each-series')
 
 const RecordIndex = require('./RecordIndex')
 
@@ -55,7 +54,7 @@ class RecordStore extends Store {
         await this._oplog.join(log, amount)
       } else {
         console.log('Creating log from heads')
-        await mapSeries(heads, async (head) => {
+        for (const head of heads) {
           this._recalculateReplicationMax(head.clock.time)
           let log = await Log.fromEntryHash(
             this._ipfs,
@@ -68,7 +67,7 @@ class RecordStore extends Store {
             this._onLoadProgress.bind(this)
           )
           await this._oplog.join(log, amount)
-        })
+        }
         await this._cache.set('_nextsIndex', Array.from(this._oplog._nextsIndex.entries()))
       }
 
@@ -79,41 +78,45 @@ class RecordStore extends Store {
     this.events.emit('ready', this.address.toString(), this._oplog.heads)
   }
 
-  async get (id, type) {
-    if (type !== 'track' && type !== 'contact')
+  get (id, type) {
+    if (type !== 'track' && type !== 'contact') {
       throw new Error(`Invalid type: ${type}`)
+    }
 
     const hash = this._index.getEntryHash(id, type)
     if (!hash) {
       return null
     }
 
-    return await this._oplog.get(hash)
+    return this._oplog.get(hash) // async
   }
 
-  async put (doc) {
-    if (!doc[this.options.indexBy])
+  put (doc) {
+    if (!doc[this.options.indexBy]) {
       throw new Error(`The provided document doesn't contain field '${this.options.indexBy}'`)
+    }
 
-    return await this._addOperation({
+    return this._addOperation({
       op: 'PUT',
       key: doc[this.options.indexBy],
       value: doc
-    })
+    }) // async
   }
 
-  async del (id, type) {
-    if (type !== 'track' && type !== 'contact')
+  del (id, type) {
+    if (type !== 'track' && type !== 'contact') {
       throw new Error(`Invalid type: ${type}`)
+    }
 
-    if (!this._index.get(id, type))
+    if (!this._index.get(id, type)) {
       throw new Error(`No entry with id '${id}' in the database`)
+    }
 
-    return await this._addOperation({
+    return this._addOperation({
       op: 'DEL',
       key: id,
       value: null
-    })
+    }) // async
   }
 
   async close () {
