@@ -18,8 +18,8 @@ class RecordIndex {
     const reducer = (handled, item, idx) => {
       if (handled[item.payload.key] !== true) {
         handled[item.payload.key] = true
-        if(item.payload.op === 'PUT') {
-          //TODO: set hash and if crate
+        if (item.payload.op === 'PUT') {
+          // TODO: set hash and if crate
           this._index[item.payload.value.type].set(item.payload.key, {
             hash: item.hash,
             clock: item.clock
@@ -36,7 +36,7 @@ class RecordIndex {
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
     const entryHashes = [].concat(trackHashes, contactHashes)
     let values = []
-    for (const [entryHash, nextHash] of oplog._nextsIndex) {
+    for (const [entryHash] of oplog._nextsIndex) {
       if (entryHashes.indexOf(entryHash) < 0) {
         const entry = await oplog.get(entryHash)
         values.push(entry)

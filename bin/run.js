@@ -17,11 +17,6 @@ Logger.setLogLevel(Logger.LogLevels.DEBUG)
 const recorddir = path.resolve(os.homedir(), './.record')
 if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
 
-const connManagerConfig = {
-  maxPeers: 10,
-  pollInterval: 30000
-}
-
 const ipfsConfig = {
   repo: path.resolve(recorddir, './ipfs'),
   init: true,
