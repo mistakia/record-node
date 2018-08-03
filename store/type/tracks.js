@@ -1,16 +1,19 @@
-const mapSeries = require('p-map-series')
-
 const { TrackEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
   return {
     all: async (startIndex, endIndex) => {
-      const entryHashes = Array.from(self._index._index.track.values())
-                               .reverse()
-                               .slice(startIndex, endIndex)
-                               .map(e => e.hash)
+      const entryHashes = Array
+        .from(self._index._index.track.values())
+        .reverse()
+        .slice(startIndex, endIndex)
+        .map(e => e.hash)
 
-      const entries = await mapSeries(entryHashes, self._oplog.get.bind(self._oplog))
+      let entries = []
+      for (const entryHash of entryHashes) {
+        const entry = await self._oplog.get(entryHash)
+        entries.push(entry)
+      }
       return entries
     },
 
@@ -22,7 +25,7 @@ module.exports = function (self) {
         return track
       }
 
-      const hash = await this.add(data)
+      await this.add(data)
       track = await self.get(entry._id, 'track')
       return track
     },
@@ -44,7 +47,7 @@ module.exports = function (self) {
     },
 
     crate: () => {
-      //TODO:
+      // TODO:
     }
   }
 }
