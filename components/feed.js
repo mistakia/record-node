@@ -5,11 +5,11 @@ const { RecordFeedStore } = require('../store')
 module.exports = function feed (self) {
   return {
     init: async () => {
-      const opts = extend(self._options.storeConfig, {
+      const opts = {
         create: true,
         replicate: true,
         type: RecordFeedStore.type
-      })
+      }
       self._feedLog = await self._orbitdb.open('feed', opts)
       await self._feedLog.load()
     },

@@ -58,7 +58,6 @@ ipfs.on('ready', async () => {
   const rn = new RecordNode(ipfs, OrbitDB, opts)
 
   await rn.init()
-  const log = await rn.loadLog()
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
   await rn.contacts.add({ address, alias })

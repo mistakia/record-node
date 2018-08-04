@@ -5,19 +5,14 @@ const resolver = require('record-resolver')
 
 const components = require('./components')
 
-const { RecordFeedStore, RecordStore } = require('./store')
+const {
+  RecordStore,
+  RecordFeedStore,
+  RecordListensStore
+} = require('./store')
 
 const defaultConfig = {
-  orbitPath: undefined,
-  orbitAddress: 'record',
-  storeConfig: {
-    referenceCount: 24,
-    replicationConcurrency: 128,
-    localOnly: false,
-    create: true,
-    overwrite: true,
-    replicate: false
-  }
+  orbitPath: undefined
 }
 
 class RecordNode {
@@ -31,6 +26,7 @@ class RecordNode {
 
     OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
     OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
+    OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
     this.isValidAddress = OrbitDB.isValidAddress
     this.parseAddress = OrbitDB.parseAddress
 
@@ -41,6 +37,8 @@ class RecordNode {
     this.contacts = components.contacts(this)
     this.tracks = components.tracks(this)
     this.feed = components.feed(this)
+    this.log = components.log(this)
+    this.listens = components.listens(this)
     this.resolve = resolver
 
     if (this._options.api) {
@@ -48,53 +46,11 @@ class RecordNode {
     }
   }
 
-  async init (address = 'record') {
-    const opts = extend(this._options.storeConfig, {
-      replicate: true,
-      type: RecordStore.type
-    })
-
-    // Open & Load Main Log
-    this._log = await this._orbitdb.open(address, opts)
-    this._log.events.on('contact', this.contacts.sync)
-    await this._log.load()
-
+  async init (address) {
+    await this.log.init(address)
     await this.feed.init()
     await this.contacts.init()
-  }
-
-  async loadLog (logId, opts) {
-    if (!logId || logId === '/me' || logId === '/') {
-      return this._log
-    }
-
-    if (logId === '/feed') {
-      return this._feedLog
-    }
-
-    const log = await this.getLog(logId, opts)
-    this.logger(`Loading log: ${log.address}`)
-    await log.load()
-
-    return log
-  }
-
-  async getLog (logId, options) {
-    if (!logId || logId === '/me' || logId === '/') {
-      return this._log
-    }
-
-    if (!this.isValidAddress(logId)) {
-      throw new Error(`${logId} is not a valid OrbitDB address`)
-    }
-
-    const defaults = extend(defaultConfig.storeConfig, {
-      type: RecordStore.type,
-      create: false
-    })
-    const opts = extend(defaults, options)
-    const log = await this._orbitdb.open(logId, opts)
-    return log
+    await this.listens.init()
   }
 }
 
