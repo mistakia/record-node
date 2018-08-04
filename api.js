@@ -3,10 +3,11 @@ const morgan = require('morgan-debug')
 const bodyParser = require('body-parser')
 const extend = require('deep-extend')
 
-const logsRouter = require('./routes/logs')
+const contactsRouter = require('./routes/contacts')
+const feedRouter = require('./routes/feed')
 const infoRouter = require('./routes/info')
 const resolveRouter = require('./routes/resolve')
-const feedRouter = require('./routes/feed')
+const tracksRouter = require('./routes/tracks')
 
 const defaults = {
   port: 3000
@@ -28,7 +29,8 @@ module.exports = (self) => {
     next()
   })
 
-  app.use('/logs', logsRouter)
+  app.use('/contacts', contactsRouter)
+  app.use('/tracks', tracksRouter)
   app.use('/info', infoRouter)
   app.use('/resolve', resolveRouter)
   app.use('/feed', feedRouter)

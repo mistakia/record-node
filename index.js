@@ -32,6 +32,8 @@ class RecordNode {
 
     OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
     OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
+    this.isValidAddress = OrbitDB.isValidAddress
+    this.parseAddress = OrbitDB.parseAddress
 
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
@@ -46,6 +48,7 @@ class RecordNode {
 
     this.info = components.info(this)
     this.contacts = components.contacts(this)
+    this.tracks = components.tracks(this)
     this.feed = components.feed(this)
     this.resolve = resolver
 
@@ -72,7 +75,7 @@ class RecordNode {
   }
 
   async loadLog (logId, opts) {
-    if (!logId || logId === '/me') {
+    if (!logId || logId === '/me' || logId === '/') {
       return this._log
     }
 
@@ -88,8 +91,12 @@ class RecordNode {
   }
 
   async getLog (logId, options) {
-    if (!logId || logId === '/me') {
+    if (!logId || logId === '/me' || logId === '/') {
       return this._log
+    }
+
+    if (!this.isValidAddress(logId)) {
+      throw new Error(`${logId} is not a valid OrbitDB address`)
     }
 
     const defaults = extend(defaultConfig.storeConfig, {
