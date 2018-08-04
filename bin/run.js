@@ -12,7 +12,7 @@ const RecordNode = require('../index')
 process.on('unhandledRejection', error => console.log(error))
 
 debug.enable('record:*,jsipfs')
-Logger.setLogLevel(Logger.LogLevels.DEBUG)
+Logger.setLogLevel(Logger.LogLevels.INFO)
 
 const recorddir = path.resolve(os.homedir(), './.record')
 if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
@@ -61,7 +61,7 @@ ipfs.on('ready', async () => {
   const log = await rn.loadLog()
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
-  await log.contacts.findOrCreate({ address, alias })
+  await rn.contacts.add({ address, alias })
 
   const feedEntries = await rn.feed.list()
   console.log(`${feedEntries.length} items in feed`)

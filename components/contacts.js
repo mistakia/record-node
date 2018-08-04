@@ -1,15 +1,16 @@
 module.exports = function contacts (self) {
   return {
-    init: async function () => {
-      const contacts = await self._log.contacts.all()
+    init: async function () {
+      const contacts = await self.contacts.list()
       for (const contact of contacts) {
         await this.sync(contact)
       }
       self.logger(`All contacts loaded`)
     },
 
-    sync: async (contact) {
-      const { address } = contact.payload.value.content
+    sync: async (contact) => {
+      const { address } = contact.content
+      self.logger(`Syncing contact: ${address}`)
       const log = await self.getLog(address, { replicate: true })
       log.events.on('replicate.progress', async (id, hash, entry) => {
         await self.feed.add(entry)
@@ -17,10 +18,10 @@ module.exports = function contacts (self) {
       await log.load()
     },
 
-    add: async function ({ address, alias }) {
+    add: async ({ address, alias }) => {
       const log = await self.getLog()
       const contact = await log.contacts.findOrCreate({ address, alias })
-      this.sync(contact)
+
       return contact
     },
 
