@@ -1,5 +1,3 @@
-const extend = require('deep-extend')
-
 const { RecordFeedStore } = require('../store')
 
 module.exports = function feed (self) {
