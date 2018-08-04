@@ -7,6 +7,7 @@ const contactsRouter = require('./routes/contacts')
 const feedRouter = require('./routes/feed')
 const infoRouter = require('./routes/info')
 const resolveRouter = require('./routes/resolve')
+const listensRouter = require('./routes/listens')
 const tracksRouter = require('./routes/tracks')
 
 const defaults = {
@@ -33,6 +34,7 @@ module.exports = (self) => {
   app.use('/tracks', tracksRouter)
   app.use('/info', infoRouter)
   app.use('/resolve', resolveRouter)
+  app.use('/listens', listensRouter)
   app.use('/feed', feedRouter)
 
   const { port } = options
