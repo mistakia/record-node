@@ -2,11 +2,13 @@ const { TrackEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
   return {
-    all: async (startIndex, endIndex) => {
+    all: async (opts = {}) => {
+      const { start, end } = opts
+
       const entryHashes = Array
         .from(self._index._index.track.values())
         .reverse()
-        .slice(startIndex, endIndex)
+        .slice(start, end)
         .map(e => e.hash)
 
       let entries = []
