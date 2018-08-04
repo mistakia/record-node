@@ -7,7 +7,7 @@ router.get('/?', async (req, res) => {
     const data = await req.app.locals.rn.resolve(url)
     res.send(data)
   } catch (err) {
-    res.send({ error: err })
+    res.send({ error: err.toString() })
   }
 })
 
