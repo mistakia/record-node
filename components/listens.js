@@ -1,5 +1,3 @@
-const extend = require('deep-extend')
-
 const { RecordListensStore } = require('../store')
 
 module.exports = function listens (self) {
