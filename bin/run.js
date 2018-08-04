@@ -61,10 +61,9 @@ ipfs.on('ready', async () => {
   const log = await rn.loadLog()
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
-  const data = await log.contacts.findOrCreate({ address, alias })
-  console.log(data)
+  await log.contacts.findOrCreate({ address, alias })
 
   const feedEntries = await rn.feed.list()
-  console.log(feedEntries)
+  console.log(`${feedEntries.length} items in feed`)
   // ready
 })

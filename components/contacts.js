@@ -18,6 +18,27 @@ module.exports = function contacts (self) {
         await log.load()
       })
       self.logger(`All contacts loaded`)
+    },
+
+    add: async ({ address, alias }) => {
+      const log = await self.getLog()
+      const contact = await log.contacts.findOrCreate({ address, alias })
+      return contact
+    },
+
+    // TODO: update
+
+    remove: async (contactId) => {
+      const log = await self.getLog()
+      const hash = await log.contacts.del(contactId)
+      return hash
+    },
+
+    list: async (logId) => {
+      const log = await self.loadLog(logId)
+      const entries = await log.contacts.all()
+      const contacts = entries.map(e => e.payload.value)
+      return contacts
     }
   }
 }
