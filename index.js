@@ -4,7 +4,6 @@ const debug = require('debug')
 const resolver = require('record-resolver')
 
 const components = require('./components')
-const api = require('./api')
 
 const { RecordFeedStore, RecordStore } = require('./store')
 
@@ -45,7 +44,7 @@ class RecordNode {
     this.resolve = resolver
 
     if (this._options.api) {
-      this._api = api(this)
+      this._api = components.api(this)
     }
   }
 
@@ -57,6 +56,7 @@ class RecordNode {
 
     // Open & Load Main Log
     this._log = await this._orbitdb.open(address, opts)
+    this._log.events.on('contact', this.contacts.sync)
     await this._log.load()
 
     await this.feed.init()
