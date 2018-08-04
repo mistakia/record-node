@@ -38,14 +38,6 @@ class RecordNode {
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
 
-    /* const ipfsConfig = await this._ipfs.config.get()
-     * const ipfsInfo = await this._ipfs.id()
-     * this.logger(`IPFS ID: ${ipfsInfo.id}`)
-     * this.logger(`IPFS Config: ${JSON.stringify(ipfsConfig, null, 2)}`)
-     * this.logger(`Orbit ID: ${this._orbitdb.id}`)
-     * this.logger(`Orbit Dir: ${this._orbitdb.directory}`)
-     */
-
     this.info = components.info(this)
     this.contacts = components.contacts(this)
     this.tracks = components.tracks(this)
@@ -65,13 +57,10 @@ class RecordNode {
 
     // Open & Load Main Log
     this._log = await this._orbitdb.open(address, opts)
-    this._log.events.on('contact', () => {
-      this.contacts.sync()
-    })
     await this._log.load()
-    await this.feed.init()
 
-    await this.contacts.sync()
+    await this.feed.init()
+    await this.contacts.init()
   }
 
   async loadLog (logId, opts) {
