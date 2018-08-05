@@ -3,13 +3,29 @@ const { TrackEntry } = require('../RecordEntry')
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      const { start, end } = opts
+      const { start, limit, tag } = opts
 
-      const entryHashes = Array
+      if (tag && !this._index.hasTag(tag)) {
+        return []
+      }
+
+      const indexValues = Array
         .from(self._index._index.track.values())
         .reverse()
-        .slice(start, end)
-        .map(e => e.hash)
+        .slice(start, limit)
+
+      let entryHashes = []
+
+      if (tag) {
+        let i = 0
+        while (entryHashes.length < (limit || Infinity)) {
+          if (indexEntries[i].tags.indexOf(tag) >= 0) {
+            entryHashes.push(indexEntries[i].hash)
+          }
+        }
+      } else {
+        entryHashes = indexValues.map(e => e.hash)
+      }
 
       let entries = []
       for (const entryHash of entryHashes) {
@@ -17,6 +33,10 @@ module.exports = function (self) {
         entries.push(entry)
       }
       return entries
+    },
+
+    has: (id) => {
+      return !!self._index.getEntryHash(id, 'track')
     },
 
     findOrCreate: async function (data) {
@@ -27,29 +47,23 @@ module.exports = function (self) {
         return track
       }
 
-      await this.add(data)
-      track = await self.get(entry._id, 'track')
-      return track
+      return this.add(data)
     },
 
     add: async (data) => {
       const entry = await new TrackEntry().create(data)
-      const hash = await self.put(entry)
-      return hash
+      await self.put(entry)
+      return self.get(entry._id, 'track')
     },
 
-    get: async (id) => {
-      const data = self.get(id, 'track')
-      return data
+    // async
+    get: (id) => {
+      return self.get(id, 'track')
     },
 
     del: (id) => {
       const hash = self.del(id, 'track')
       return hash
-    },
-
-    crate: () => {
-      // TODO:
     }
   }
 }
