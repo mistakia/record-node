@@ -21,6 +21,10 @@ module.exports = function log (self) {
       await self._log.load()
     },
 
+    isMine: (log) => {
+      return self._log.address === log.address
+    },
+
     get: async (logId, options = {}, load) => {
       if (!logId || logId === '/me' || logId === '/') {
         return self._log

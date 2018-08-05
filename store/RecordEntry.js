@@ -1,4 +1,5 @@
 const { sha256 } = require('crypto-hash')
+const extend = require('deep-extend')
 
 class Entry {
   constructor (data) {
@@ -30,7 +31,10 @@ class TrackEntry extends Entry {
 
   async create (data) {
     const id = await sha256(data.webpage_url)
-    return super.create(id, this._type, data)
+    const track = extend({
+      tags: []
+    }, data)
+    return super.create(id, this._type, track)
   }
 }
 

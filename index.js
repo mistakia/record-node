@@ -33,13 +33,15 @@ class RecordNode {
     this._ipfs = ipfs
     this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
 
-    this.info = components.info(this)
-    this.contacts = components.contacts(this)
-    this.tracks = components.tracks(this)
-    this.feed = components.feed(this)
-    this.log = components.log(this)
-    this.listens = components.listens(this)
     this.resolve = resolver
+
+    this.contacts = components.contacts(this)
+    this.feed = components.feed(this)
+    this.info = components.info(this)
+    this.listens = components.listens(this)
+    this.log = components.log(this)
+    this.tags = components.tags(this)
+    this.tracks = components.tracks(this)
 
     if (this._options.api) {
       this._api = components.api(this)

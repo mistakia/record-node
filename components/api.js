@@ -8,6 +8,7 @@ const feedRouter = require('./routes/feed')
 const infoRouter = require('./routes/info')
 const resolveRouter = require('./routes/resolve')
 const listensRouter = require('./routes/listens')
+const tagsRouter = require('./routes/tags')
 const tracksRouter = require('./routes/tracks')
 
 const defaults = {
@@ -26,6 +27,7 @@ module.exports = (self) => {
 
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
+    res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
     next()
   })
@@ -34,6 +36,7 @@ module.exports = (self) => {
   app.use('/tracks', tracksRouter)
   app.use('/info', infoRouter)
   app.use('/resolve', resolveRouter)
+  app.use('/tags', tagsRouter)
   app.use('/listens', listensRouter)
   app.use('/feed', feedRouter)
 

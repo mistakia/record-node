@@ -5,6 +5,7 @@ const RecordIndex = require('./RecordIndex')
 
 const tracks = require('./type/tracks')
 const contacts = require('./type/contacts')
+const tags = require('./type/tags')
 
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
@@ -20,6 +21,7 @@ class RecordStore extends Store {
 
     this.tracks = tracks(this)
     this.contacts = contacts(this)
+    this.tags = tags(this)
   }
 
   async load (amount) {
