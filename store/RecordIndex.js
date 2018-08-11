@@ -14,15 +14,29 @@ class RecordIndex {
     return !!this._index.tags[tag]
   }
 
+  getEntry (id, type) {
+    return this._index[type].get(id)
+  }
+
   getEntryHash (id, type) {
-    const i = this._index[type].get(id)
-    return i ? i.hash : null
+    const entry = this.getEntry(id, type)
+    return entry ? entry.hash : null
   }
 
   async updateIndex (oplog, onProgressCallback) {
     const reducer = (handled, item, idx) => {
-      if (handled[item.payload.key] !== true) {
-        handled[item.payload.key] = true
+      const { key } = item.payload
+
+      if (handled[key] !== true) {
+        handled[key] = true
+
+        const { type } = item.payload.value
+        const entry = this.getEntry(key, type)
+
+        if (entry && entry.clock.time > item.clock.time) {
+          return handled
+        }
+
         if (item.payload.op === 'PUT') {
 
           let cache = {
@@ -30,13 +44,13 @@ class RecordIndex {
             clock: item.clock
           }
 
-          if (item.payload.value.type === 'track') {
+          if (type === 'track') {
             cache.tags = item.payload.value.content.tags
           }
 
-          this._index[item.payload.value.type].set(item.payload.key, cache)
+          this._index[type].set(key, cache)
         } else if (item.payload.op === 'DEL') {
-          this._index[item.payload.value.type].delete(item.payload.key)
+          this._index[type].delete(key)
         }
       }
       if (onProgressCallback) onProgressCallback(item, idx)
