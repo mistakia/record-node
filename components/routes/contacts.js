@@ -4,7 +4,8 @@ const router = express.Router()
 router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
-    const contacts = await req.app.locals.rn.contacts.list(logAddress)
+    const { record } = req.app.locals
+    const contacts = await record.contacts.list(logAddress)
     res.send(contacts)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
@@ -33,7 +34,8 @@ router.post('/?', (req, res, next) => {
 }, async (req, res) => {
   try {
     const { address, alias } = res.locals.data
-    const entry = await req.app.locals.rn.contacts.add({ address, alias })
+    const { record } = req.app.locals
+    const entry = await record.contacts.add({ address, alias })
     res.send(entry)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
