@@ -3,13 +3,7 @@ const morgan = require('morgan-debug')
 const bodyParser = require('body-parser')
 const extend = require('deep-extend')
 
-const contactsRouter = require('./routes/contacts')
-const feedRouter = require('./routes/feed')
-const infoRouter = require('./routes/info')
-const resolveRouter = require('./routes/resolve')
-const listensRouter = require('./routes/listens')
-const tagsRouter = require('./routes/tags')
-const tracksRouter = require('./routes/tracks')
+const routes = require('./routes')
 
 const defaults = {
   port: 3000
@@ -17,7 +11,6 @@ const defaults = {
 
 module.exports = (self) => {
   const app = express()
-
   const options = extend(defaults, self._options.api)
 
   app.locals.record = self
@@ -32,13 +25,13 @@ module.exports = (self) => {
     next()
   })
 
-  app.use('/contacts', contactsRouter)
-  app.use('/tracks', tracksRouter)
-  app.use('/info', infoRouter)
-  app.use('/resolve', resolveRouter)
-  app.use('/tags', tagsRouter)
-  app.use('/listens', listensRouter)
-  app.use('/feed', feedRouter)
+  app.use('/contacts', routes.contacts)
+  app.use('/feed', routes.feed)
+  app.use('/info', routes.info)
+  app.use('/listens', routes.listens)
+  app.use('/resolve', routes.resolve)
+  app.use('/tags', routes.tags)
+  app.use('/tracks', routes.tracks)
 
   const { port } = options
   app.listen(port, () => self.logger(`API listening on port ${port}`))
