@@ -4,7 +4,8 @@ const router = express.Router()
 router.get('/?', async (req, res) => {
   try {
     const { limit, start } = req.query
-    const listens = await req.app.locals.rn.listens.list({ limit, start })
+    const { record } = req.app.locals
+    const listens = await record.listens.list({ limit, start })
     res.send(listens)
   } catch (err) {
     res.send({ error: err.toString() })
@@ -12,10 +13,10 @@ router.get('/?', async (req, res) => {
 })
 
 router.post('/?', async (req, res) => {
-  const { trackId, logId } = req.body
-
   try {
-    const entry = await req.app.locals.rn.listens.add({ trackId, logId })
+    const { trackId, logId } = req.body
+    const { record } = req.app.locals
+    const entry = await record.listens.add({ trackId, logId })
     res.send(entry)
   } catch (err) {
     res.status(500).send({ error: err.toString() })

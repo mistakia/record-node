@@ -20,7 +20,7 @@ module.exports = (self) => {
 
   const options = extend(defaults, self._options.api)
 
-  app.locals.rn = self
+  app.locals.record = self
 
   app.use(morgan('record:node:api', 'combined'))
   app.use(bodyParser.json())
