@@ -55,14 +55,14 @@ ipfs.on('ready', async () => {
     }
   }
 
-  const rn = new RecordNode(ipfs, OrbitDB, opts)
+  const record = new RecordNode(ipfs, OrbitDB, opts)
 
-  await rn.init()
+  await record.init()
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
-  await rn.contacts.add({ address, alias })
+  await record.contacts.add({ address, alias })
 
-  const feedEntries = await rn.feed.list()
+  const feedEntries = await record.feed.list()
   console.log(`${feedEntries.length} items in feed`)
   // ready
 })

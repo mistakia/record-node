@@ -4,7 +4,8 @@ const router = express.Router()
 router.get('/?', async (req, res) => {
   try {
     const { url } = req.query
-    const data = await req.app.locals.rn.resolve(url)
+    const { record } = req.app.locals
+    const data = await record.resolve(url)
     res.send(data)
   } catch (err) {
     res.send({ error: err.toString() })
