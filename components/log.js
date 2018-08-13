@@ -42,6 +42,10 @@ module.exports = function log (self) {
         throw new Error(`${logId} is not a valid OrbitDB address`)
       }
 
+      if (self._orbitdb.stores[logId]) {
+        return self._orbitdb.stores[logId]
+      }
+
       const defaults = extend(defaultConfig, { create: false })
       const opts = extend(defaults, options)
       const log = await self._orbitdb.open(logId, opts)

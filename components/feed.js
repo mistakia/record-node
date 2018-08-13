@@ -12,15 +12,25 @@ module.exports = function feed (self) {
       await self._feedLog.load()
     },
 
-    add: async (entry) => {
-      await self._feedLog.add({
-        id: entry.id,
-        entryId: entry.payload.key
-      })
+    add: async (entry, contact) => {
+      await self._feedLog.add(entry, contact)
     },
 
-    list: async (start = null, limit = 20) => {
-      const entries = await self._feedLog.query({ start, limit })
+    list: async (opts) => {
+      const feedEntries = await self._feedLog.query(opts)
+      let entries = []
+      for (const feedEntry of feedEntries) {
+        const contact = await self.contacts.get('/me', feedEntry.payload.contactId)
+        const { address } = contact.payload.value.content
+        const { type } = feedEntry.payload
+        // TODO: make this readable and less suspect :(
+        const entry = await self[`${type}s`].get(address, feedEntry.payload.entryId)
+        entries.push({
+          ...feedEntry.payload,
+          contact: contact.payload.value,
+          content: entry.payload.value
+        })
+      }
       return entries
     }
   }
