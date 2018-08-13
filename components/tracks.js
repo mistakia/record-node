@@ -6,6 +6,12 @@ module.exports = function tracks (self) {
       return track
     },
 
+    get: async (logId, trackId) => {
+      const log = await self.log.get(logId)
+      const entry = await log.tracks.get(trackId)
+      return entry
+    },
+
     remove: async (trackId) => {
       const log = await self.log.get()
       const hash = await log.tracks.del(trackId)

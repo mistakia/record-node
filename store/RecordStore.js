@@ -14,6 +14,9 @@ class RecordStore extends Store {
     super(ipfs, id, dbname, options)
     this._type = RecordStore.type
 
+    this._operations = []
+    this._pendingOperation = false
+
     // Overwrite oplog
     this._oplog = new Log(this._ipfs, this.id, null, null, null, this._key, this.access.write)
 
@@ -127,7 +130,35 @@ class RecordStore extends Store {
     return Promise.resolve()
   }
 
-  async _addOperation (data, batchOperation, lastOperation, onProgressCallback) {
+  _nextOperation () {
+    this._operationPending = false
+    const run = this._operations.shift()
+    if (run) run()
+  }
+
+  _addOperation (data) {
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        this._operationPending = true
+        try {
+          const res = await this._runOperation(data)
+          resolve(res)
+          this._nextOperation()
+        } catch (err) {
+          reject(err)
+          this._nextOperation()
+        }
+      }
+
+      if (!this._operationPending) {
+        run()
+      } else {
+        this._operations.push(run.bind(this))
+      }
+    })
+  }
+
+  async _runOperation (data, batchOperation, lastOperation, onProgressCallback) {
     if (this._oplog) {
       const entry = await this._oplog.append(data, this.options.referenceCount)
       this._recalculateReplicationStatus(this.replicationStatus.progress + 1, entry.clock.time)
