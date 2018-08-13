@@ -13,7 +13,7 @@ module.exports = function contacts (self) {
       self.logger(`Syncing contact: ${address}`)
       const log = await self.log.get(address, { replicate: true })
       log.events.on('replicate.progress', async (id, hash, entry) => {
-        await self.feed.add(entry)
+        await self.feed.add(entry, contact)
       })
       await log.load()
     },
@@ -22,6 +22,12 @@ module.exports = function contacts (self) {
       const log = await self.log.get()
       const contact = await log.contacts.findOrCreate({ address, alias })
 
+      return contact
+    },
+
+    get: async (logId, contactId) => {
+      const log = await self.log.get(logId)
+      const contact = await log.contacts.get(contactId)
       return contact
     },
 

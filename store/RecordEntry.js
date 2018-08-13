@@ -51,8 +51,24 @@ class ContactEntry extends Entry {
   }
 }
 
+class FeedEntry {
+  constructor (data, contact) {
+    this._data = {
+      entryId: data.payload.key,
+      contactId: contact._id,
+      type: data.payload.value.type,
+      timestamp: Date.now()
+    }
+  }
+
+  get () {
+    return this._data
+  }
+}
+
 module.exports = {
   Entry,
+  FeedEntry,
   TrackEntry,
   ContactEntry
 }
