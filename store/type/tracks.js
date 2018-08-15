@@ -9,7 +9,7 @@ module.exports = function (self) {
         return []
       }
 
-      const indexValues = Array
+      const indexEntries = Array
         .from(self._index._index.track.values())
         .reverse()
         .slice(start, limit)
@@ -19,12 +19,12 @@ module.exports = function (self) {
       if (tag) {
         let i = 0
         while (entryHashes.length < (limit || Infinity)) {
-          if (indexEntries[i].tags.indexOf(tag) >= 0) {
+          if (indexEntries[i].tags.includes(tag)) {
             entryHashes.push(indexEntries[i].hash)
           }
         }
       } else {
-        entryHashes = indexValues.map(e => e.hash)
+        entryHashes = indexEntries.map(e => e.hash)
       }
 
       let entries = []
