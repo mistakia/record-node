@@ -65,7 +65,7 @@ class RecordIndex {
     // Get hashes from oplog not in Index
     let values = []
     for (const [entryHash] of oplog._nextsIndex) {
-      if (entryHashes.indexOf(entryHash) < 0) {
+      if (!entryHashes.includes(entryHash)) {
         const entry = await oplog.get(entryHash)
         values.push(entry)
       }
