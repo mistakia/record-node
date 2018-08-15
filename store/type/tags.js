@@ -10,7 +10,7 @@ module.exports = function (self ) {
 
       tag = tag.toLowerCase()
 
-      if (track.tags.indexOf(tag) !== -1) {
+      if (track.tags.includes(tag)) {
         throw new Error('tag already exists')
       }
 
