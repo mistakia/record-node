@@ -1,7 +1,8 @@
 module.exports = function (self ) {
   return {
     all: () => {
-      return Object.keys(self._index._index.tags)
+      const { tags } = self._index._index
+      return Object.keys(tags).map(tag => ({ tag, count: tags[tag] }))
     },
 
     addTrack: async (trackData, tag) => {
