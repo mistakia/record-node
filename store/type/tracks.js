@@ -3,9 +3,10 @@ const { TrackEntry } = require('../RecordEntry')
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      const { start, limit, tag } = opts
+      const { start, limit } = opts
+      const tags = opts.tags && !Array.isArray(opts.tags) ? [opts.tags] : (opts.tags || [])
 
-      if (tag && !this._index.hasTag(tag)) {
+      if (tags.length && !tags.some(t => self._index.hasTag(t))) {
         return []
       }
 
@@ -16,12 +17,13 @@ module.exports = function (self) {
 
       let entryHashes = []
 
-      if (tag) {
+      if (tags.length) {
         let i = 0
-        while (entryHashes.length < (limit || Infinity)) {
-          if (indexEntries[i].tags.includes(tag)) {
+        while (entryHashes.length < (limit || Infinity) && indexEntries[i]) {
+          if (tags.every(t => indexEntries[i].tags.includes(t))) {
             entryHashes.push(indexEntries[i].hash)
           }
+          i++
         }
       } else {
         entryHashes = indexEntries.map(e => e.hash)

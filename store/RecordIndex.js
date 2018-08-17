@@ -11,7 +11,7 @@ class RecordIndex {
   }
 
   hasTag (tag) {
-    return !!this._index.tags[tag]
+    return this._index.tags.hasOwnProperty(tag)
   }
 
   getEntry (id, type) {
@@ -75,8 +75,9 @@ class RecordIndex {
     values.sort(Log.Entry.compare).reverse().reduce(reducer, {})
 
     // Build tags Index
+    this._index.tags = {}
     for (const track of this._index.track.values()) {
-      track.tags && track.tags.forEach(t => this._index.tags[t] = '')
+      track.tags && track.tags.forEach(t => this._index.tags[t] = (this._index.tags[t]+1) || 1)
     }
 
     // Re-sort Index
