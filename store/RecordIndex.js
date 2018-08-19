@@ -4,6 +4,7 @@ class RecordIndex {
   constructor (id, initialTrack = null, initialContact = null, cache) {
     this._index = {
       tags: {},
+      about: null,
       track: new Map(initialTrack),
       contact: new Map(initialContact)
     }
@@ -14,7 +15,15 @@ class RecordIndex {
     return this._index.tags.hasOwnProperty(tag)
   }
 
+  has (id, type) {
+    return !!this.getEntry(id, type)
+  }
+
   getEntry (id, type) {
+    if (type === 'about') {
+      return this._index.about
+    }
+
     return this._index[type].get(id)
   }
 
@@ -39,6 +48,12 @@ class RecordIndex {
 
         if (item.payload.op === 'PUT') {
 
+          if (type === 'about') {
+            const { content, timestamp } = item.payload.value
+            this._index.about = item
+            return handled
+          }
+
           let cache = {
             hash: item.hash,
             clock: item.clock
@@ -47,7 +62,6 @@ class RecordIndex {
           if (type === 'track') {
             cache.tags = item.payload.value.content.tags
           }
-
           this._index[type].set(key, cache)
         } else if (item.payload.op === 'DEL') {
           this._index[type].delete(key)

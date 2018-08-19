@@ -62,6 +62,16 @@ ipfs.on('ready', async () => {
   const alias = 'Pi'
   await record.contacts.add({ address, alias })
 
+  const profileData = {
+    name: 'mistakia',
+    bio: 'dweb > non-dweb',
+    location: 'washington, dc'
+  }
+
+  const profile = await record.profile.set(profileData)
+  console.log(profile)
+  console.log(await record.profile.get('/me'))
+
   const feedEntries = await record.feed.list()
   console.log(`${feedEntries.length} items in feed`)
   // ready
