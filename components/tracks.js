@@ -1,7 +1,7 @@
 module.exports = function tracks (self) {
   return {
     add: async ({ url, title }) => {
-      const log = await self.log.get()
+      const log = await self.log.mine()
       const track = await log.tracks.findOrCreate({ url, title })
       return track
     },
@@ -9,11 +9,11 @@ module.exports = function tracks (self) {
     get: async (logId, trackId) => {
       const log = await self.log.get(logId)
       const entry = await log.tracks.get(trackId)
-      return entry
+      return entry.payload.value
     },
 
     remove: async (trackId) => {
-      const log = await self.log.get()
+      const log = await self.log.mine()
       const hash = await log.tracks.del(trackId)
       return hash
     },
@@ -23,7 +23,7 @@ module.exports = function tracks (self) {
       let entries = await log.tracks.all(opts)
 
       if (!self.log.isMine(log)) {
-        const myLog = await self.log.get()
+        const myLog = await self.log.mine()
         for (const index in entries) {
           const entry = entries[index]
           const trackId = entry.payload.key

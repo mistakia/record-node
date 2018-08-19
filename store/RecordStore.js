@@ -6,6 +6,7 @@ const RecordIndex = require('./RecordIndex')
 const tracks = require('./type/tracks')
 const contacts = require('./type/contacts')
 const tags = require('./type/tags')
+const about = require('./type/about')
 
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
@@ -25,6 +26,7 @@ class RecordStore extends Store {
     this.tracks = tracks(this)
     this.contacts = contacts(this)
     this.tags = tags(this)
+    this.about = about(this)
   }
 
   async load (amount) {
@@ -112,14 +114,14 @@ class RecordStore extends Store {
       throw new Error(`Invalid type: ${type}`)
     }
 
-    if (!this._index.get(id, type)) {
+    if (!this._index.has(id, type)) {
       throw new Error(`No entry with id '${id}' in the database`)
     }
 
     return this._addOperation({
       op: 'DEL',
       key: id,
-      value: null
+      value: { type, timestamp: Date.now() }
     }) // async
   }
 

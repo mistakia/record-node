@@ -42,17 +42,30 @@ class RecordNode {
     this.log = components.log(this)
     this.tags = components.tags(this)
     this.tracks = components.tracks(this)
+    this.profile = components.profile(this)
 
     if (this._options.api) {
       this._api = components.api(this)
     }
   }
 
+  get address() {
+    return this._log.address.toString()
+  }
+
+  isMe (logId) {
+    if (logId === '/me') {
+      return true
+    }
+
+    return this.address === logId
+  }
+
   async init (address) {
     await this.log.init(address)
     await this.feed.init()
-    await this.contacts.init()
     await this.listens.init()
+    await this.contacts.init() // must initialize last
   }
 }
 

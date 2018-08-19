@@ -12,6 +12,14 @@ module.exports = function feed (self) {
       await self._feedLog.load()
     },
 
+    isMe: (logId) => {
+      if (logId === '/feed') {
+        return true
+      }
+
+      return self._feedLog.address.toString() === logId
+    },
+
     add: async (entry, contact) => {
       await self._feedLog.add(entry, contact)
     },
@@ -21,14 +29,14 @@ module.exports = function feed (self) {
       let entries = []
       for (const feedEntry of feedEntries) {
         const contact = await self.contacts.get('/me', feedEntry.payload.contactId)
-        const { address } = contact.payload.value.content
+        const { address } = contact.content
         const { type } = feedEntry.payload
         // TODO: make this readable and less suspect :(
         const entry = await self[`${type}s`].get(address, feedEntry.payload.entryId)
         entries.push({
           ...feedEntry.payload,
-          contact: contact.payload.value,
-          content: entry.payload.value
+          contact: contact,
+          content: entry
         })
       }
       return entries

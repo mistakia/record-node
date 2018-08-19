@@ -34,15 +34,16 @@ module.exports = function (self) {
     add: async (data) => {
       const entry = await new ContactEntry().create(data)
       const hash = await self.put(entry)
-
-      self.events.emit('contact', entry)
-
       return hash
     },
 
     get: async (id) => {
       const data = await self.get(id, 'contact')
       return data
+    },
+
+    has: (id) => {
+      return !!self._index.getEntryHash(id, 'contact')
     },
 
     del: (id) => {

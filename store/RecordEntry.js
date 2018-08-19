@@ -1,5 +1,6 @@
 const { sha256 } = require('crypto-hash')
 const extend = require('deep-extend')
+const { generateAvatar } = require('../utils')
 
 class Entry {
   constructor (data) {
@@ -66,8 +67,25 @@ class FeedEntry {
   }
 }
 
+class AboutEntry extends Entry {
+  constructor (data) {
+    super(data)
+
+    this._type = 'about'
+  }
+
+  async create (data) {
+    const id = await sha256(data.address)
+    if (!data.avatar) {
+      data.avatar = generateAvatar(id)
+    }
+    return super.create(id, this._type, data)
+  }
+}
+
 module.exports = {
   Entry,
+  AboutEntry,
   FeedEntry,
   TrackEntry,
   ContactEntry

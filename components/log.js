@@ -17,24 +17,35 @@ module.exports = function log (self) {
     init: async (address = 'record') => {
       const opts = extend(defaultConfig, { replicate: true })
       self._log = await self._orbitdb.open(address, opts)
-      self._log.events.on('contact', self.contacts.sync)
       await self._log.load()
+    },
+
+    mine: () => {
+      return self._log
     },
 
     isMine: (log) => {
       return self._log.address === log.address
     },
 
-    get: async (logId, options = {}, load) => {
-      if (!logId || logId === '/me' || logId === '/') {
+    isOpen: (logId) => {
+      return !!self._orbitdb.stores[logId]
+    },
+
+    get: async function (logId = '/me', options = {}, load) {
+      if (!logId) {
+        throw new Error('logId missing')
+      }
+
+      if (self.isMe(logId)) {
         return self._log
       }
 
-      if (logId === '/feed') {
+      if (self.feed.isMe(logId)) {
         return self._feedLog
       }
 
-      if (logId === '/listens') {
+      if (self.listens.isMe(logId)) {
         return self._listensLog
       }
 
@@ -42,7 +53,7 @@ module.exports = function log (self) {
         throw new Error(`${logId} is not a valid OrbitDB address`)
       }
 
-      if (self._orbitdb.stores[logId]) {
+      if (this.isOpen(logId)) {
         return self._orbitdb.stores[logId]
       }
 
