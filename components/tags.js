@@ -7,13 +7,13 @@ module.exports = function tags (self) {
     },
 
     add: async (track, tag) => {
-      const log = await self.log.get()
+      const log = await self.log.mine()
       const entry = await log.tags.addTrack(track, tag)
       return entry.payload.value
     },
 
     remove: async (trackId, tag) => {
-      const log = await self.log.get()
+      const log = await self.log.mine()
       const entry = await log.tags.removeTrack(trackId, tag)
       return entry.payload.value
     }

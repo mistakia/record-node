@@ -35,8 +35,19 @@ router.post('/?', (req, res, next) => {
   try {
     const { address, alias } = res.locals.data
     const { record } = req.app.locals
-    const entry = await record.contacts.add({ address, alias })
-    res.send(entry)
+    const contact = await record.contacts.add({ address, alias })
+    res.send(contact)
+  } catch (err) {
+    res.status(500).send({ error: err.toString() })
+  }
+})
+
+router.delete('/?', async (req, res) => {
+  try {
+    const { contactId } = req.query
+    const { record } = req.app.locals
+    const contact = await record.contacts.remove(contactId)
+    res.send(contact)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }

@@ -12,6 +12,14 @@ module.exports = function listens (self) {
       await self._listensLog.load()
     },
 
+    isMe: (logId) => {
+      if (logId === '/listens') {
+        return true
+      }
+
+      return self._listensLog.address.toString() === logId
+    },
+
     add: async (data) => {
       await self._listensLog.add(data)
     },
