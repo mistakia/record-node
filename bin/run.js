@@ -56,8 +56,8 @@ ipfs.on('ready', async () => {
   }
 
   const record = new RecordNode(ipfs, OrbitDB, opts)
-
   await record.init()
+
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
   await record.contacts.add({ address, alias })
@@ -67,10 +67,7 @@ ipfs.on('ready', async () => {
     bio: 'dweb > non-dweb',
     location: 'washington, dc'
   }
-
   const profile = await record.profile.set(profileData)
-  console.log(profile)
-  console.log(await record.profile.get('/me'))
 
   const feedEntries = await record.feed.list()
   console.log(`${feedEntries.length} items in feed`)
