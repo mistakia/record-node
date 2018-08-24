@@ -37,22 +37,22 @@ const OrbitDB = require('orbit-db')
 
 const ipfs = new IPFS()
 ipfs.on('ready', async () => {
-    const rn = new RecordNode(ipfs, OrbitDB)
-    await rn.init()
-    const log = await rn.log.get() // or rn.log.get('/me')
+    const record = new RecordNode(ipfs, OrbitDB)
+    await record.init()
+    const log = await record.log.get() // or record.log.get(record.address)
 })
 ```
 
 ## API
 ### RecordNode Constructor
 ```js
-const rn = new RecordNode(ipfs, OrbitDB, options)
+const record = new RecordNode(ipfs, OrbitDB, options)
 ```
 Use the `options` argument to specify configuration. It is an object with any of these properties:
 - `orbitPath` (string): The file path passed to OrbitDB. (Default: `undefined`)
 - `api` (boolean or object): Initialize the api when creating Record Node instance (Default: `undefined`)
 
-#### rn.init([address])
+#### record.init([address])
 Returns a `Promise`
 - `address` (string): name or valid OrbitDB database address. (Default: `record`)
 

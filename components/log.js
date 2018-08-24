@@ -32,11 +32,7 @@ module.exports = function log (self) {
       return !!self._orbitdb.stores[logId]
     },
 
-    get: async function (logId = '/me', options = {}, load) {
-      if (!logId) {
-        throw new Error('logId missing')
-      }
-
+    get: async function (logId = self.address, options = {}, load) {
       if (self.isMe(logId)) {
         return self._log
       }

@@ -12,11 +12,11 @@ module.exports = function listens (self) {
       await self._listensLog.load()
     },
 
-    isMe: (logId) => {
-      if (logId === '/listens') {
-        return true
-      }
+    get address () {
+      return self._listensLog.address.toString()
+    },
 
+    isMe: (logId) => {
       return self._listensLog.address.toString() === logId
     },
 

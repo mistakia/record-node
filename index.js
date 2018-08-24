@@ -54,10 +54,6 @@ class RecordNode {
   }
 
   isMe (logId) {
-    if (logId === '/me') {
-      return true
-    }
-
     return this.address === logId
   }
 
