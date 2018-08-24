@@ -27,7 +27,8 @@ module.exports = function profile (self) {
       const entry = await self.profile.getEntry(logId)
 
       if (self.isMe(logId)) {
-        return { ...entry, isMe: true, haveContact: false, content: { address: self.address }}
+        entry.content.address = self.address
+        return { ...entry, isMe: true, haveContact: false }
       }
 
       const contact = await self.contacts.get(self.address, entry._id)
