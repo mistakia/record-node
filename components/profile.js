@@ -30,7 +30,7 @@ module.exports = function profile (self) {
         return { ...entry, isMe: true, haveContact: false, content: { address: self.address }}
       }
 
-      const contact = await self.contacts.get('/me', entry._id)
+      const contact = await self.contacts.get(self.address, entry._id)
       const relations = await self.contacts.getRelations(contact)
 
       return { ...entry, ...relations, ...contact }

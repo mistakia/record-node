@@ -24,7 +24,7 @@ module.exports = function contacts (self) {
       const log = await self.log.mine()
       const entry = await log.contacts.findOrCreate({ address, alias })
       await self.contacts.sync(entry.payload.value)
-      return self.contacts.get('/me', entry.payload.key)
+      return self.contacts.get(self.address, entry.payload.key)
     },
 
     getEntry: async (logId, contactId) => {
