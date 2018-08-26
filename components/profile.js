@@ -33,8 +33,9 @@ module.exports = function profile (self) {
 
       const contact = await self.contacts.get(self.address, entry._id)
       const relations = await self.contacts.getRelations(contact)
+      const content = { ...entry.content, ...contact.content }
 
-      return { ...entry, ...relations, ...contact }
+      return { ...relations, ...contact, content }
     }
   }
 }
