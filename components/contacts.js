@@ -15,7 +15,11 @@ module.exports = function contacts (self) {
       self.logger(`Syncing contact: ${address}`)
       const log = await self.log.get(address, { replicate: true })
       log.events.on('replicate.progress', async (id, hash, entry) => {
-        await self.feed.add(entry, contact)
+        const { type } = entry.payload.value
+        // TODO: consider including about entries in feed
+        if (type !== 'about') {
+          await self.feed.add(entry, contact)
+        }
       })
       await log.load()
     },
@@ -37,7 +41,8 @@ module.exports = function contacts (self) {
       const entry = await self.contacts.getEntry(logId, contactId)
       const relations = await self.contacts.getRelations(entry)
       const profile = await self.profile.getEntry(entry.content.address)
-      return { ...profile, ...relations, ...entry }
+      const content = { ...profile.content, ...entry.content }
+      return { ...relations, ...entry, content }
     },
 
     getRelations: async (contact, opts = {}) => {
@@ -75,7 +80,8 @@ module.exports = function contacts (self) {
       for (const entry of entries) {
         const profile = await self.profile.getEntry(entry.payload.value.content.address)
         const relations = await self.contacts.getRelations(entry.payload.value)
-        contacts.push({ ...profile, ...relations, ...entry.payload.value })
+        const content = { ...profile.content, ...entry.content }
+        contacts.push({ ...relations, ...entry.payload.value, content })
       }
       return contacts
     }
