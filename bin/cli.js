@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const os = require('os')
 const fs = require('fs')
 const path = require('path')
@@ -6,6 +7,7 @@ const debug = require('debug')
 const Logger = require('logplease')
 const IPFS = require('ipfs')
 const OrbitDB = require('orbit-db')
+const argv = require('yargs').argv
 
 const RecordNode = require('../index')
 
@@ -14,7 +16,10 @@ process.on('unhandledRejection', error => console.log(error))
 debug.enable('record:*,jsipfs')
 Logger.setLogLevel(Logger.LogLevels.INFO)
 
-const recorddir = path.resolve(os.homedir(), './.record')
+const name = `record${(argv.name || argv.n || '')}`
+console.log(`Node Name: ${name}`)
+
+const recorddir = path.resolve(os.homedir(), `./.${name}`)
 if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
 
 const ipfsConfig = {
@@ -48,24 +53,27 @@ const ipfsConfig = {
 const ipfs = new IPFS(ipfsConfig)
 
 ipfs.on('ready', async () => {
-  const opts = {
-    orbitPath: path.resolve(recorddir, './orbitdb'),
-    api: {
-      port: 8080
-    }
+  let opts = {
+    orbitPath: path.resolve(recorddir, './orbitdb')
+  }
+
+  if (argv.api) {
+    const port = argv.port || 8080
+    opts.api = { port }
   }
 
   const record = new RecordNode(ipfs, OrbitDB, opts)
   await record.init()
 
+  //TODO: remove
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
   await record.contacts.add({ address, alias })
 
   const profileData = {
-    name: 'mistakia',
-    bio: 'dweb > non-dweb',
-    location: 'washington, dc'
+    name: '${name}',
+    bio: 'dweb > web',
+    location: 'not on the world wide web'
   }
   const profile = await record.profile.set(profileData)
 
