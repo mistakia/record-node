@@ -32,6 +32,7 @@ module.exports = (self) => {
   app.use('/peers', routes.peers)
   app.use('/profile', routes.profile)
   app.use('/resolve', routes.resolve)
+  app.use('/suggested', routes.suggested)
   app.use('/tags', routes.tags)
   app.use('/tracks', routes.tracks)
 
