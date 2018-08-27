@@ -29,6 +29,7 @@ module.exports = (self) => {
   app.use('/feed', routes.feed)
   app.use('/info', routes.info)
   app.use('/listens', routes.listens)
+  app.use('/peers', routes.peers)
   app.use('/profile', routes.profile)
   app.use('/resolve', routes.resolve)
   app.use('/tags', routes.tags)

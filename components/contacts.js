@@ -1,3 +1,5 @@
+const extend = require('deep-extend')
+
 module.exports = function contacts (self) {
   return {
     init: async function () {
@@ -34,18 +36,25 @@ module.exports = function contacts (self) {
     getEntry: async (logId, contactId) => {
       const log = await self.log.get(logId)
       const entry = await log.contacts.get(contactId)
-      return entry.payload.value
+      return entry ? entry.payload.value : {}
     },
 
     get: async (logId, contactId) => {
       const entry = await self.contacts.getEntry(logId, contactId)
+      if (!entry || !entry.content) {
+        return {}
+      }
+
       const relations = await self.contacts.getRelations(entry)
       const profile = await self.profile.getEntry(entry.content.address)
-      const content = { ...profile.content, ...entry.content }
-      return { ...relations, ...entry, content }
+      return extend(relations, profile, entry)
     },
 
     getRelations: async (contact, opts = {}) => {
+      if (!contact || !contact.content) {
+        return { isMe: false, haveContact: false }
+      }
+
       let { haveContact } = opts
 
       const { address } = contact.content
@@ -80,8 +89,7 @@ module.exports = function contacts (self) {
       for (const entry of entries) {
         const profile = await self.profile.getEntry(entry.payload.value.content.address)
         const relations = await self.contacts.getRelations(entry.payload.value)
-        const content = { ...profile.content, ...entry.content }
-        contacts.push({ ...relations, ...entry.payload.value, content })
+        contacts.push(extend(relations, profile, entry.payload.value))
       }
       return contacts
     }

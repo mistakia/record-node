@@ -71,7 +71,7 @@ ipfs.on('ready', async () => {
   await record.contacts.add({ address, alias })
 
   const profileData = {
-    name: '${name}',
+    name: `${name}`,
     bio: 'dweb > web',
     location: 'not on the world wide web'
   }
