@@ -40,6 +40,7 @@ class RecordNode {
     this.info = components.info(this)
     this.listens = components.listens(this)
     this.log = components.log(this)
+    this.suggested = components.suggested(this)
     this.tags = components.tags(this)
     this.tracks = components.tracks(this)
     this.profile = components.profile(this)
