@@ -1,3 +1,4 @@
+const extend = require('deep-extend')
 const { sha256 } = require('crypto-hash')
 const { generateAvatar } = require('../utils')
 
@@ -18,7 +19,7 @@ module.exports = function profile (self) {
       }
 
       if (!entryValue.content.avatar) {
-        entryValue.avatar = generateAvatar(entryValue._id)
+        entryValue.content.avatar = generateAvatar(entryValue._id)
       }
 
       return entryValue
@@ -28,14 +29,13 @@ module.exports = function profile (self) {
 
       if (self.isMe(logId)) {
         entry.content.address = self.address
-        return { ...entry, isMe: true, haveContact: false }
+        return extend(entry, { isMe: true }, { haveContact: false })
       }
 
       const contact = await self.contacts.get(self.address, entry._id)
       const relations = await self.contacts.getRelations(contact)
-      const content = { ...entry.content, ...contact.content }
 
-      return { ...relations, ...contact, content }
+      return extend(relations, entry, contact)
     }
   }
 }
