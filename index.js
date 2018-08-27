@@ -43,6 +43,7 @@ class RecordNode {
     this.tags = components.tags(this)
     this.tracks = components.tracks(this)
     this.profile = components.profile(this)
+    this.peers = components.peers(this)
 
     if (this._options.api) {
       this._api = components.api(this)
@@ -58,6 +59,7 @@ class RecordNode {
   }
 
   async init (address) {
+    await this.peers.init()
     await this.log.init(address)
     await this.feed.init()
     await this.listens.init()
