@@ -25,6 +25,7 @@ module.exports = function profile (self) {
       return entryValue
     },
     get: async (logId) => {
+      self.logger(`Get profile for: ${logId}`)
       const entry = await self.profile.getEntry(logId)
 
       if (self.isMe(logId)) {
