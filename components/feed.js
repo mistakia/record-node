@@ -1,4 +1,5 @@
 const { RecordFeedStore } = require('../store')
+const extend = require('deep-extend')
 
 module.exports = function feed (self) {
   return {
@@ -33,11 +34,7 @@ module.exports = function feed (self) {
         const { type } = feedEntry.payload
         // TODO: make this readable and less suspect :(
         const entry = await self[`${type}s`].get(address, feedEntry.payload.entryId)
-        entries.push({
-          ...feedEntry.payload,
-          contact: contact,
-          content: entry
-        })
+        entries.push(extend(feedEntry.payload, { contact }, { content: entry }))
       }
       return entries
     }

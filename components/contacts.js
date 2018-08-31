@@ -1,4 +1,5 @@
 const extend = require('deep-extend')
+const { RecordStore } = require('../store')
 
 module.exports = function contacts (self) {
   return {
@@ -15,7 +16,9 @@ module.exports = function contacts (self) {
     sync: async (contact) => {
       const { address } = contact.content
       self.logger(`Syncing contact: ${address}`)
-      const log = await self.log.get(address, { replicate: true })
+      const opts = { type: RecordStore.type, replicate: true }
+      const log = await self._orbitdb.open(address, opts)
+
       log.events.on('replicate.progress', async (id, hash, entry) => {
         const { type } = entry.payload.value
         // TODO: consider including about entries in feed

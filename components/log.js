@@ -7,7 +7,7 @@ const defaultConfig = {
   referenceCount: 24,
   replicationConcurrency: 128,
   localOnly: false,
-  create: true,
+  create: false,
   overwrite: true,
   replicate: false
 }
@@ -15,7 +15,7 @@ const defaultConfig = {
 module.exports = function log (self) {
   return {
     init: async (address = 'record') => {
-      const opts = extend(defaultConfig, { replicate: true })
+      const opts = extend({}, defaultConfig, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
     },
@@ -53,8 +53,8 @@ module.exports = function log (self) {
         return self._orbitdb.stores[logId]
       }
 
-      const defaults = extend(defaultConfig, { create: false })
-      const opts = extend(defaults, options)
+      const opts = extend({}, defaultConfig, options)
+      self.logger(opts)
       const log = await self._orbitdb.open(logId, opts)
 
       self.logger(`Loading log: ${log.address}`)
