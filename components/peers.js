@@ -21,6 +21,21 @@ module.exports = function peers (self) {
     list: () => {
       return Object.keys(self.peers._index).map(id => self.peers._index[id])
     },
+    get: (address) => {
+      return Object.keys(self.peers._index).find(id =>
+        self.peers._index[id].content.address === address
+      )
+    },
+    update: async (address) => {
+      const peerId = self.peers.get(address)
+      if (!peerId) {
+        return
+      }
+
+      const profile = await self.profile.get(address)
+      const peer = self.peers._index[peerId]
+      self.peers._index[peerId] = extend(peer, profile)
+    },
     _onJoin: async (peer) => {
       self.peers._index[peer] = {}
       const profile = await self.profile.get(self.address)
