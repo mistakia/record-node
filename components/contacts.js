@@ -92,7 +92,7 @@ module.exports = function contacts (self) {
       let contacts = []
       for (const entry of entries) {
         const profile = await self.profile.getEntry(entry.payload.value.content.address)
-        const relations = await self.contacts.getRelations(entry.payload.value)
+        const relations = await self.contacts.getRelations(entry.payload.value, { haveContact })
         contacts.push(extend(relations, profile, entry.payload.value))
       }
       return contacts

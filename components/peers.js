@@ -2,9 +2,7 @@ const Room = require('ipfs-pubsub-room')
 const extend = require('deep-extend')
 
 const defaults = {
-  peerMonitor: {
-    pollInterval: 5000
-  }
+  pollInterval: 5000
 }
 
 module.exports = function peers (self) {
@@ -12,7 +10,7 @@ module.exports = function peers (self) {
     _topic: 'RECORD',
     _index: {},
     init: async () => {
-      self._room = Room(self._ipfs, self.peers._topic)
+      self._room = Room(self._ipfs, self.peers._topic, defaults)
       self._room.on('peer joined', self.peers._onJoin)
       self._room.on('peer left', self.peers._onLeave)
       self._room.on('message', self.peers._onMessage)

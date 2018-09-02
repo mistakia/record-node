@@ -51,7 +51,7 @@ class RecordNode {
     }
   }
 
-  get address() {
+  get address () {
     return this._log.address.toString()
   }
 

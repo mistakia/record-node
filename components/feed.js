@@ -13,7 +13,7 @@ module.exports = function feed (self) {
       await self._feedLog.load()
     },
 
-    get address() {
+    get address () {
       return self._feedLog.address.toString()
     },
 
