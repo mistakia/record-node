@@ -16,7 +16,7 @@ class RecordStore extends Store {
     this._type = RecordStore.type
 
     this._operations = []
-    this._pendingOperation = false
+    this._operationPending = false
 
     // Overwrite oplog
     this._oplog = new Log(this._ipfs, this.id, null, null, null, this._key, this.access.write)
@@ -27,6 +27,40 @@ class RecordStore extends Store {
     this.contacts = contacts(this)
     this.tags = tags(this)
     this.about = about(this)
+  }
+
+  async _loadLogFromIndex (heads, index, amount) {
+    console.log('Creating log with nextsIndex')
+    let log = new Log(
+      this._ipfs,
+      this.id,
+      null,
+      heads,
+      null,
+      this._key,
+      this.access.write,
+      index
+    )
+    await this._oplog.join(log, amount)
+  }
+
+  async _loadLogFromHeads (heads, amount) {
+    console.log('Creating log from heads')
+    for (const head of heads) {
+      this._recalculateReplicationMax(head.clock.time)
+      let log = await Log.fromEntryHash(
+        this._ipfs,
+        head.hash,
+        this._oplog.id,
+        amount,
+        [],
+        this._key,
+        this.access.write,
+        this._onLoadProgress.bind(this)
+      )
+      await this._oplog.join(log, amount)
+    }
+    await this._cache.set('_nextsIndex', Array.from(this._oplog._nextsIndex.entries()))
   }
 
   async load (amount) {
@@ -46,35 +80,9 @@ class RecordStore extends Store {
       this.events.emit('load', this.address.toString(), heads)
 
       if (nextsIndex.size) {
-        console.log('Creating log with nextsIndex')
-        let log = new Log(
-          this._ipfs,
-          this.id,
-          null,
-          heads,
-          null,
-          this._key,
-          this.access.write,
-          nextsIndex
-        )
-        await this._oplog.join(log, amount)
+        await this._loadLogFromIndex(heads, nextsIndex, amount)
       } else {
-        console.log('Creating log from heads')
-        for (const head of heads) {
-          this._recalculateReplicationMax(head.clock.time)
-          let log = await Log.fromEntryHash(
-            this._ipfs,
-            head.hash,
-            this._oplog.id,
-            amount,
-            [],
-            this._key,
-            this.access.write,
-            this._onLoadProgress.bind(this)
-          )
-          await this._oplog.join(log, amount)
-        }
-        await this._cache.set('_nextsIndex', Array.from(this._oplog._nextsIndex.entries()))
+        await this._loadLogFromHeads(heads, amount)
       }
 
       console.log(`Oplog nextsIndex length: ${this._oplog._nextsIndex.size}`)
