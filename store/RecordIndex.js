@@ -47,9 +47,7 @@ class RecordIndex {
         }
 
         if (item.payload.op === 'PUT') {
-
           if (type === 'about') {
-            const { content, timestamp } = item.payload.value
             this._index.about = item
             return handled
           }
@@ -91,7 +89,7 @@ class RecordIndex {
     // Build tags Index
     this._index.tags = {}
     for (const track of this._index.track.values()) {
-      track.tags && track.tags.forEach(t => this._index.tags[t] = (this._index.tags[t]+1) || 1)
+      track.tags && track.tags.forEach(t => { this._index.tags[t] = (this._index.tags[t] + 1) || 1 })
     }
 
     // Re-sort Index

@@ -1,4 +1,4 @@
-module.exports = function (self ) {
+module.exports = function (self) {
   return {
     all: () => {
       const { tags } = self._index._index

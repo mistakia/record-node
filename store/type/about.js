@@ -15,13 +15,13 @@ module.exports = function (self) {
 
       // save if no profile exists
       if (!currentEntry) {
-        return await save()
+        return save()
       }
 
       // save if new profile is different
       const { content } = currentEntry.payload.value
       if (JSON.stringify(content) !== JSON.stringify(data)) {
-        return await save()
+        return save()
       }
 
       // dont save
