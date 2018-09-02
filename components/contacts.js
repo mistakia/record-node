@@ -20,8 +20,13 @@ module.exports = function contacts (self) {
       const log = await self._orbitdb.open(address, opts)
 
       log.events.on('replicate.progress', async (id, hash, entry) => {
-        const { type } = entry.payload.value
+        const { op } = entry.payload
+        if (op !== 'PUT') {
+          return
+        }
+
         // TODO: consider including about entries in feed
+        const { type } = entry.payload.value
         if (type !== 'about') {
           await self.feed.add(entry, contact)
         }
