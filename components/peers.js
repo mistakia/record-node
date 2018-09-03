@@ -35,7 +35,6 @@ module.exports = function peers (self) {
       self.peers._index[peerId] = extend(peer, profile)
     },
     _onJoin: async (peer) => {
-      self.peers._index[peer] = {}
       const profile = await self.profile.get(self.address)
       const data = extend(profile, { isMe: false })
       const message = Buffer.from(JSON.stringify(data))
