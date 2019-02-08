@@ -33,7 +33,8 @@ const ipfsConfig = {
     Addresses: {
       Swarm: [
         '/ip4/0.0.0.0/tcp/4002',
-        '/ip4/0.0.0.0/tcp/4003/ws'
+        '/ip4/0.0.0.0/tcp/4003/ws',
+        '/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
       ]
     }
   },
@@ -65,19 +66,14 @@ ipfs.on('ready', async () => {
   const record = new RecordNode(ipfs, opts)
   await record.init()
 
-  // TODO: remove
-  const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
-  const alias = 'Pi'
-  await record.contacts.add({ address, alias })
-
   const profileData = {
     name: `${name}`,
     bio: 'dweb > web',
     location: 'not on the world wide web'
   }
   const profile = await record.profile.set(profileData)
+  console.log(profile)
 
   const feedEntries = await record.feed.list()
   console.log(`${feedEntries.length} items in feed`)
-  // ready
 })

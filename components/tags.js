@@ -6,16 +6,15 @@ module.exports = function tags (self) {
       return tags
     },
 
-    add: async (track, tag) => {
+    add: async (cid, tag) => {
       const log = await self.log.mine()
-      const entry = await log.tags.addTrack(track, tag)
-      return entry.payload.value
+      const entry = await self.tracks.addTrackFromCID(cid)
+      return log.tags.addTrack(entry, tag)
     },
 
     remove: async (trackId, tag) => {
       const log = await self.log.mine()
-      const entry = await log.tags.removeTrack(trackId, tag)
-      return entry.payload.value
+      return log.tags.removeTrack(trackId, tag)
     }
   }
 }
