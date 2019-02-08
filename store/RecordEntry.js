@@ -1,85 +1,82 @@
-const extend = require('deep-extend')
 const { sha256 } = require('crypto-hash')
 const { generateAvatar } = require('../utils')
 
 class Entry {
-  constructor (data) {
-    this._data = data
+  constructor () {
+    this._entry = {}
   }
 
-  create (id, type, data) {
-    this._data = {
+  async create (ipfs, id, content) {
+    this._entry = {
       _id: id,
-      type,
       timestamp: Date.now(),
-      content: data
+      v: 0,
+      type: this._type,
+      ...this._entry
     }
 
-    return this._data
-  }
+    const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
+    this._entry.content = cid
 
-  get () {
-    return this._data
+    return this._entry
   }
 }
 
 class TrackEntry extends Entry {
-  constructor (data) {
-    super(data)
-
+  constructor () {
+    super()
     this._type = 'track'
   }
 
-  async create (data) {
-    const id = await sha256(data.metadata.webpage_url)
-    const track = extend({
-      tags: []
-    }, data)
-    return super.create(id, this._type, track)
+  async create (ipfs, content, tags = []) {
+    const id = await sha256(content.tags.acoustid_fingerprint)
+    this._entry = {
+      tags
+    }
+
+    return super.create(ipfs, id, content)
   }
 }
 
 class ContactEntry extends Entry {
-  constructor (data) {
-    super(data)
+  constructor () {
+    super()
 
     this._type = 'contact'
   }
 
-  async create (data) {
-    const id = await sha256(data.address)
-    return super.create(id, this._type, data)
+  async create (ipfs, content) {
+    const id = await sha256(content.address)
+    return super.create(ipfs, id, content)
   }
 }
 
 class FeedEntry {
-  constructor (data, contact) {
-    this._data = {
-      entryId: data.payload.key,
+  create (content, contact) {
+    this._entry = {
+      entryId: content.payload.key,
       contactId: contact._id,
-      type: data.payload.value.type,
+      type: content.payload.value.type,
       timestamp: Date.now()
     }
-  }
 
-  get () {
-    return this._data
+    return this._entry
   }
 }
 
 class AboutEntry extends Entry {
-  constructor (data) {
-    super(data)
+  constructor () {
+    super()
 
     this._type = 'about'
   }
 
-  async create (data) {
-    const id = await sha256(data.address)
-    if (!data.avatar) {
-      data.avatar = generateAvatar(id)
+  async create (ipfs, content) {
+    const id = await sha256(content.address)
+    if (!content.avatar) {
+      content.avatar = generateAvatar(id)
     }
-    return super.create(id, this._type, data)
+    return super.create(ipfs, id, content)
   }
 }
 

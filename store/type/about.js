@@ -5,22 +5,20 @@ module.exports = function (self) {
     set: async function (data) {
       data.address = self.address.toString()
 
+      const entry = await new AboutEntry().create(self._ipfs, data)
       const save = async () => {
-        const entry = await new AboutEntry().create(data)
         await self.put(entry)
         return this.get()
       }
 
-      const currentEntry = this.get()
-
       // save if no profile exists
+      const currentEntry = self._index._index.about
       if (!currentEntry) {
         return save()
       }
 
       // save if new profile is different
-      const { content } = currentEntry.payload.value
-      if (JSON.stringify(content) !== JSON.stringify(data)) {
+      if (!entry.content.equals(currentEntry.payload.value.content)) {
         return save()
       }
 
@@ -28,8 +26,14 @@ module.exports = function (self) {
       return this.get()
     },
 
-    get: () => {
-      return self._index._index.about
+    get: async () => {
+      const { CID } = self._ipfs.types
+      const entry = JSON.parse(JSON.stringify(self._index._index.about))
+      const { content } = entry.payload.value
+      const cid = new CID(content.version, content.codec, Buffer.from(content.hash.data))
+      const dagNode = await self._ipfs.dag.get(cid)
+      entry.payload.value.content = dagNode.value
+      return entry
     }
   }
 }

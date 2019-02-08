@@ -31,9 +31,10 @@ module.exports = function (self) {
 
       let entries = []
       for (const entryHash of entryHashes) {
-        const entry = await self._oplog.get(entryHash)
+        const entry = await self.tracks.getFromHash(entryHash)
         entries.push(entry)
       }
+
       return entries
     },
 
@@ -41,26 +42,50 @@ module.exports = function (self) {
       return !!self._index.getEntryHash(id, 'track')
     },
 
-    findOrCreate: async function (data) {
-      const entry = await new TrackEntry().create(data)
+    findOrCreate: async function (content) {
+      const entry = await new TrackEntry().create(self._ipfs, content)
       let track = await self.get(entry._id, 'track')
 
-      if (track) {
-        return track
+      if (!track) {
+        return this._add(entry)
       }
 
-      return this.add(data)
+      if (!entry.content.equals(track.payload.value.content)) {
+        return this._add(entry)
+      }
+
+      return self.tracks._loadContent(track)
     },
 
-    add: async (data) => {
-      const entry = await new TrackEntry().create(data)
+    _add: async (entry) => {
       await self.put(entry)
-      return self.get(entry._id, 'track')
+      return self.tracks.getFromId(entry._id)
     },
 
-    // async
-    get: (id) => {
-      return self.get(id, 'track')
+    add: async (content, tags) => {
+      const entry = await new TrackEntry().create(self._ipfs, content, tags)
+      return self.tracks._add(entry)
+    },
+
+    _loadContent: async (entry) => {
+      const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
+      entry.payload.value.content = dagNode.value
+      entry.payload.value.contentCID = dagNode.cid.toString()
+
+      const { content } = entry.payload.value
+      entry.payload.value.content.hash = content.hash.toString()
+      entry.payload.value.content.artwork = content.artwork.map(a => a.toString())
+      return entry
+    },
+
+    getFromId: async (id) => {
+      const entry = await self.get(id, 'track')
+      return self.tracks._loadContent(entry)
+    },
+
+    getFromHash: async (hash) => {
+      const entry = await self._oplog.get(hash)
+      return self.tracks._loadContent(entry)
     },
 
     del: (id) => {

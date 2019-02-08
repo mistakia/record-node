@@ -12,34 +12,53 @@ module.exports = function (self) {
 
       let entries = []
       for (const entryHash of entryHashes) {
-        const entry = await self._oplog.get(entryHash)
+        const entry = await self.contacts.getFromHash(entryHash)
         entries.push(entry)
       }
       return entries
     },
 
     findOrCreate: async function (data) {
-      const entry = await new ContactEntry().create(data)
+      const entry = await new ContactEntry().create(self._ipfs, data)
       let contact = await self.get(entry._id, 'contact')
 
-      if (contact) {
-        return contact
+      if (!contact) {
+        return this._add(entry)
       }
 
-      await this.add(data)
-      contact = await self.get(entry._id, 'contact')
-      return contact
+      if (!entry.content.equals(contact.payload.value.content)) {
+        return this._add(entry)
+      }
+
+      return this._loadContent(contact)
+    },
+
+    _add: async (entry) => {
+      await self.put(entry)
+      return self.contacts.getFromId(entry._id)
     },
 
     add: async (data) => {
-      const entry = await new ContactEntry().create(data)
+      const entry = await new ContactEntry().create(self._ipfs, data)
       const hash = await self.put(entry)
       return hash
     },
 
-    get: async (id) => {
-      const data = await self.get(id, 'contact')
-      return data
+    _loadContent: async (entry) => {
+      const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
+      entry.payload.value.content = dagNode.value
+      entry.payload.value.contentCID = dagNode.cid.toString()
+      return entry
+    },
+
+    getFromId: async (id) => {
+      const entry = await self.get(id, 'contact')
+      return self.contacts._loadContent(entry)
+    },
+
+    getFromHash: async (hash) => {
+      const entry = await self._oplog.get(hash)
+      return self.contacts._loadContent(entry)
     },
 
     has: (id) => {

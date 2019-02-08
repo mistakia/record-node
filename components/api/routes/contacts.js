@@ -14,12 +14,16 @@ router.get(':logAddress(*)', async (req, res) => {
 
 router.post('/?', (req, res, next) => {
   const { address, alias } = req.body
+  const { record } = req.app.locals
 
   let errors = []
 
-  // TODO: sanitize
-  // TODO: validate address (OrbitDB)
-  if (!address) errors.push('Missing address field')
+  if (!address) {
+    errors.push('Missing address field')
+  } else if (!record.isValidAddress(address)) {
+    // TODO: validate
+    // errors.push('Invalid OrbitDB address')
+  }
 
   if (!alias) errors.push('Missing alias field')
 

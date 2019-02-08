@@ -57,7 +57,7 @@ class RecordIndex {
           }
 
           if (type === 'track') {
-            cache.tags = item.payload.value.content.tags
+            cache.tags = item.payload.value.tags
           }
           this._index[type].set(key, cache)
         } else if (item.payload.op === 'DEL') {
