@@ -14,13 +14,26 @@ router.get(':logAddress(*)', async (req, res) => {
 })
 
 router.post('/?', async (req, res) => {
-  // TODO: validate title
-  // TODO: validate if you have write permissions for database
   try {
-    const { title, url } = req.body
+    const { url, file, cid } = req.body
     const { record } = req.app.locals
-    const entry = await record.tracks.add({ url, title })
-    res.send(entry)
+
+    if (cid) {
+      const entry = await record.tracks.addTrackFromCID(cid)
+      return res.send(entry)
+    }
+
+    if (file) {
+      const entry = await record.tracks.addTrackFromFile(file)
+      return res.send(entry)
+    }
+
+    if (url) {
+      const entry = await record.tracks.addTrackFromUrl(url)
+      return res.send(entry)
+    }
+
+    res.status(400).send({ error: 'Body missing one of \'cid\', \'url\', or \'file\'' })
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }

@@ -34,6 +34,7 @@ module.exports = (self) => {
   app.use('/resolve', routes.resolve)
   app.use('/suggested', routes.suggested)
   app.use('/tags', routes.tags)
+  app.use('/file', routes.file)
   app.use('/tracks', routes.tracks)
 
   const { port } = options

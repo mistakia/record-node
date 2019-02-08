@@ -5,31 +5,31 @@ module.exports = function (self) {
       return Object.keys(tags).map(tag => ({ tag, count: tags[tag] }))
     },
 
-    addTrack: async (trackData, tag) => {
-      const entry = await self.tracks.add(trackData)
-      const track = entry.payload.value.content
-
+    addTrack: async (entry, tag) => {
       tag = tag.toLowerCase()
 
-      if (track.tags.includes(tag)) {
+      const { tags, content } = entry.payload.value
+
+      if (tags.includes(tag)) {
         throw new Error('tag already exists')
       }
 
-      track.tags.push(tag)
-      return self.tracks.add(track)
+      tags.push(tag)
+
+      return self.tracks.add(content, tags)
     },
 
     removeTrack: async (trackId, tag) => {
-      const entry = await self.tracks.get(trackId)
-      const track = entry.payload.value.content
-      const idx = track.tags.indexOf(tag)
+      const entry = await self.tracks.getFromId(trackId)
+      const { tags, content } = entry.payload.value
 
+      const idx = tags.indexOf(tag)
       if (idx === -1) {
         throw new Error('tag doesn\'t exist')
       }
 
-      track.tags.splice(idx, 1)
-      return self.tracks.add(track)
+      tags.splice(idx, 1)
+      return self.tracks.add(content, tags)
     }
   }
 }

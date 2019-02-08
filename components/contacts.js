@@ -82,8 +82,6 @@ module.exports = function contacts (self) {
       return log.contacts.has(contactId)
     },
 
-    // TODO: update
-
     remove: async (contactId) => {
       const log = await self.log.mine()
       await log.contacts.del(contactId)

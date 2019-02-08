@@ -29,7 +29,7 @@ class RecordFeedStore extends RecordStore {
   }
 
   add (data, contact) {
-    const entry = new FeedEntry(data, contact).get()
+    const entry = new FeedEntry().create(data, contact)
     return this._addOperation(entry)
   }
 

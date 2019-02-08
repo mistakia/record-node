@@ -11,7 +11,7 @@ module.exports = function profile (self) {
     },
     getEntry: async (logId) => {
       const log = await self.log.get(logId)
-      let entry = log.about.get()
+      let entry = await log.about.get()
       let entryValue = entry ? entry.payload.value : { content: {} }
 
       if (!entryValue._id) {

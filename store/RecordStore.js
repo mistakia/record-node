@@ -1,7 +1,6 @@
 const Store = require('orbit-db-store')
 
 const RecordIndex = require('./RecordIndex')
-
 const tracks = require('./type/tracks')
 const contacts = require('./type/contacts')
 const tags = require('./type/tags')

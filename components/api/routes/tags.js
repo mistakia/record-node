@@ -14,10 +14,10 @@ router.get(':logAddress(*)', async (req, res) => {
 
 router.post('/?', async (req, res) => {
   try {
-    const { track, tag } = req.body
+    const { cid, tag } = req.body
     const { record } = req.app.locals
-    const trackData = await record.tags.add(track, tag)
-    res.send(trackData)
+    const entry = await record.tags.add(cid, tag)
+    res.send(entry.payload.value)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }
@@ -27,8 +27,8 @@ router.delete('/?', async (req, res) => {
   try {
     const { trackId, tag } = req.query
     const { record } = req.app.locals
-    const track = await record.tags.remove(trackId, tag)
-    res.send(track)
+    const entry = await record.tags.remove(trackId, tag)
+    res.send(entry.payload.value)
   } catch (err) {
     res.status(500).send({ error: err.toString() })
   }
