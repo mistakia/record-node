@@ -15,81 +15,10 @@ class RecordStore extends Store {
     super(ipfs, id, dbname, options)
     this._type = RecordStore.type
 
-    this._operations = []
-    this._operationPending = false
-
-    // Overwrite oplog
-    this._oplog = new Log(this._ipfs, this.id, null, null, null, this._key, this.access.write)
-
-    this._index = new this.options.Index(this._uid, null, null, this._cache)
-
     this.tracks = tracks(this)
     this.contacts = contacts(this)
     this.tags = tags(this)
     this.about = about(this)
-  }
-
-  async _loadLogFromIndex (heads, index, amount) {
-    console.log('Creating log with nextsIndex')
-    let log = new Log(
-      this._ipfs,
-      this.id,
-      null,
-      heads,
-      null,
-      this._key,
-      this.access.write,
-      index
-    )
-    await this._oplog.join(log, amount)
-  }
-
-  async _loadLogFromHeads (heads, amount) {
-    console.log('Creating log from heads')
-    for (const head of heads) {
-      this._recalculateReplicationMax(head.clock.time)
-      let log = await Log.fromEntryHash(
-        this._ipfs,
-        head.hash,
-        this._oplog.id,
-        amount,
-        [],
-        this._key,
-        this.access.write,
-        this._onLoadProgress.bind(this)
-      )
-      await this._oplog.join(log, amount)
-    }
-    await this._cache.set('_nextsIndex', Array.from(this._oplog._nextsIndex.entries()))
-  }
-
-  async load (amount) {
-    console.log(`Loading Log: ${this.id}`)
-    const localHeads = await this._cache.get('_localHeads') || []
-    const remoteHeads = await this._cache.get('_remoteHeads') || []
-    const nextsIndex = new Map(await this._cache.get('_nextsIndex') || null)
-    const heads = localHeads.concat(remoteHeads)
-
-    const initialTrack = await this._cache.get('_indexTrack')
-    const initialContact = await this._cache.get('_indexContact')
-    this._index = new this.options.Index(this._uid, initialTrack, initialContact, this._cache)
-
-    console.log(`Cached nextsIndex length: ${nextsIndex.size}`)
-
-    if (heads.length > 0) {
-      this.events.emit('load', this.address.toString(), heads)
-
-      if (nextsIndex.size) {
-        await this._loadLogFromIndex(heads, nextsIndex, amount)
-      } else {
-        await this._loadLogFromHeads(heads, amount)
-      }
-
-      console.log(`Oplog nextsIndex length: ${this._oplog._nextsIndex.size}`)
-      await this._updateIndex()
-    }
-
-    this.events.emit('ready', this.address.toString(), this._oplog.heads)
   }
 
   get (id, type) {
@@ -97,12 +26,12 @@ class RecordStore extends Store {
       throw new Error(`Invalid type: ${type}`)
     }
 
-    const hash = this._index.getEntryHash(id, type)
-    if (!hash) {
+    const cid = this._index.getEntryCID(id, type)
+    if (!cid) {
       return null
     }
 
-    return this._oplog.get(hash) // async
+    return this._oplog.get(cid) // async
   }
 
   put (doc) {
@@ -138,47 +67,6 @@ class RecordStore extends Store {
 
     this.events.removeAllListeners('contact')
     return Promise.resolve()
-  }
-
-  _nextOperation () {
-    this._operationPending = false
-    const run = this._operations.shift()
-    if (run) run()
-  }
-
-  _addOperation (data) {
-    return new Promise((resolve, reject) => {
-      const run = async () => {
-        this._operationPending = true
-        try {
-          const res = await this._runOperation(data)
-          resolve(res)
-          this._nextOperation()
-        } catch (err) {
-          reject(err)
-          this._nextOperation()
-        }
-      }
-
-      if (!this._operationPending) {
-        run()
-      } else {
-        this._operations.push(run.bind(this))
-      }
-    })
-  }
-
-  async _runOperation (data, batchOperation, lastOperation, onProgressCallback) {
-    if (this._oplog) {
-      const entry = await this._oplog.append(data, this.options.referenceCount)
-      this._recalculateReplicationStatus(this.replicationStatus.progress + 1, entry.clock.time)
-      await this._cache.set('_localHeads', [entry])
-      await this._cache.set('_nextsIndex', Array.from(this._oplog._nextsIndex.entries()))
-      await this._updateIndex()
-      this.events.emit('write', this.address.toString(), entry, this._oplog.heads)
-      if (onProgressCallback) onProgressCallback(entry)
-      return entry.hash
-    }
   }
 
   static get type () {

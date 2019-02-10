@@ -12,17 +12,17 @@ class RecordFeedStore extends RecordStore {
 
   async query (opts = {}) {
     const limit = opts.limit
-    const getStartIndex = (start, hash) => {
+    const getStartIndex = (start, cid) => {
       if (start) { return start }
-      if (hash) { return this._index.getEntryIndex(hash) }
+      if (cid) { return this._index.getEntryIndex(cid) }
       return 0
     }
-    const startIndex = getStartIndex(opts.start, opts.hash)
-    const entryHashes = Array.from(this._index._index).reverse().slice(startIndex, limit)
+    const startIndex = getStartIndex(opts.start, opts.cid)
+    const entryCIDs = Array.from(this._index._index).reverse().slice(startIndex, limit)
 
     let entries = []
-    for (const entryHash of entryHashes) {
-      const entry = await this._oplog.get(entryHash)
+    for (const entryCID of entryCIDs) {
+      const entry = await this._oplog.get(entryCID)
       entries.push(entry)
     }
     return entries
