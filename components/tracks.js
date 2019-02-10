@@ -14,8 +14,8 @@ module.exports = function tracks (self) {
 
     remove: async (trackId) => {
       const log = await self.log.mine()
-      const hash = await log.tracks.del(trackId)
-      return hash
+      const cid = await log.tracks.del(trackId)
+      return cid
     },
 
     list: async (logId, opts) => {

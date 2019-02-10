@@ -2,7 +2,7 @@ module.exports = function info (self) {
   const getOrbitdb = () => {
     return {
       address: self._log.address.toString(),
-      publicKey: self._log.key.getPublic('hex')
+      publicKey: self._log.identity.publicKey
     }
   }
 
