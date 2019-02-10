@@ -1,5 +1,6 @@
 const extend = require('deep-extend')
 const debug = require('debug')
+const OrbitDB = require('orbit-db')
 
 const resolver = require('record-resolver')
 
@@ -11,12 +12,18 @@ const {
   RecordListensStore
 } = require('./store')
 
+OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
+OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
+OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
+
 const defaultConfig = {
-  orbitPath: undefined
+  orbitdb: {
+    directory: undefined
+  }
 }
 
 class RecordNode {
-  constructor (ipfs, OrbitDB, options = {}) {
+  constructor (ipfs, options = {}) {
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
@@ -24,14 +31,10 @@ class RecordNode {
     this._options = extend(defaultConfig, options)
     this.logger(this._options)
 
-    OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
-    OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
-    OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
     this.isValidAddress = OrbitDB.isValidAddress
     this.parseAddress = OrbitDB.parseAddress
 
     this._ipfs = ipfs
-    this._orbitdb = new OrbitDB(this._ipfs, this._options.orbitPath)
 
     this.resolve = resolver
 
@@ -60,6 +63,7 @@ class RecordNode {
   }
 
   async init (address) {
+    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
     await this.peers.init()
     await this.log.init(address)
     await this.feed.init()

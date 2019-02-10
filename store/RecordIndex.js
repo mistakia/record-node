@@ -1,14 +1,13 @@
 const Log = require('ipfs-log')
 
 class RecordIndex {
-  constructor (id, initialTrack = null, initialContact = null, cache) {
+  constructor (id) {
     this._index = {
       tags: {},
       about: null,
-      track: new Map(initialTrack),
-      contact: new Map(initialContact)
+      track: new Map(),
+      contact: new Map()
     }
-    this._cache = cache
   }
 
   hasTag (tag) {
@@ -27,9 +26,9 @@ class RecordIndex {
     return this._index[type].get(id)
   }
 
-  getEntryHash (id, type) {
+  getEntryCID (id, type) {
     const entry = this.getEntry(id, type)
-    return entry ? entry.hash : null
+    return entry ? entry.cid : null
   }
 
   async updateIndex (oplog, onProgressCallback) {
@@ -53,7 +52,7 @@ class RecordIndex {
           }
 
           let cache = {
-            hash: item.hash,
+            cid: item.cid,
             clock: item.clock
           }
 
@@ -69,21 +68,21 @@ class RecordIndex {
       return handled
     }
 
-    // Get all hashes in Index
-    const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
-    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
-    const entryHashes = [].concat(trackHashes, contactHashes)
+    // Get all CIDs in Index
+    const trackCIDs = Array.from(this._index.track.values()).map(e => e.cid)
+    const contactCIDs = Array.from(this._index.contact.values()).map(e => e.cid)
+    const entryCIDs = [].concat(trackCIDs, contactCIDs)
 
-    // Get hashes from oplog not in Index
+    // Get CIDs from oplog not in Index
     let values = []
-    for (const [entryHash] of oplog._nextsIndex) {
-      if (!entryHashes.includes(entryHash)) {
-        const entry = await oplog.get(entryHash)
+    for (const [entryCID] of oplog._cidIndex) {
+      if (!entryCIDs.includes(entryCID)) {
+        const entry = await oplog.get(entryCID)
         values.push(entry)
       }
     }
 
-    // Reverse new hashes and add to Index
+    // Reverse new CIDs and add to Index
     values.sort(Log.Entry.compare).reverse().reduce(reducer, {})
 
     // Build tags Index
@@ -95,10 +94,6 @@ class RecordIndex {
     // Re-sort Index
     this._index.track = new Map([...this._index.track.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
     this._index.contact = new Map([...this._index.contact.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
-
-    // Cache Index
-    this._cache.set('_indexTrack', Array.from(this._index.track.entries()))
-    this._cache.set('_indexContact', Array.from(this._index.contact.entries()))
   }
 }
 

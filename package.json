@@ -10,7 +10,7 @@
     "lint": "$(npm bin)/standard '**/*.js'",
     "lint:fix": "$(npm bin)/standard --fix '**/*.js'",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node --trace-warnings bin/run.js"
+    "start": "node --trace-warnings bin/cli.js"
   },
   "author": "",
   "license": "MIT",
@@ -21,16 +21,17 @@
     "deep-extend": "~0.5.1",
     "express": "^4.16.3",
     "ipfs-log": "github:mistakia/ipfs-log#proto/read-from-disk",
-    "ipfs-pubsub-room": "^1.4.0",
+    "orbit-db": "github:mistakia/orbit-db#proto/read-from-disk",
+    "orbit-db-store": "github:mistakia/orbit-db-store#proto/read-from-disk",
+    "ipfs-pubsub-room": "^1.4.1",
     "jdenticon": "^2.1.0",
     "morgan": "^1.9.0",
     "morgan-debug": "^2.0.0",
     "record-resolver": "github:mistakia/record-resolver#8588af5"
   },
   "devDependencies": {
-    "ipfs": "~0.30.1",
+    "ipfs": "~0.33.0",
     "logplease": "^1.2.14",
-    "orbit-db": "github:mistakia/orbit-db#test/override-store",
     "standard": "^11.0.1",
     "yargs": "^12.0.1"
   }

@@ -6,7 +6,6 @@ const path = require('path')
 const debug = require('debug')
 const Logger = require('logplease')
 const IPFS = require('ipfs')
-const OrbitDB = require('orbit-db')
 const argv = require('yargs').argv
 
 const RecordNode = require('../index')
@@ -14,7 +13,7 @@ const RecordNode = require('../index')
 process.on('unhandledRejection', error => console.log(error))
 
 debug.enable('record:*,jsipfs')
-Logger.setLogLevel(Logger.LogLevels.INFO)
+Logger.setLogLevel(Logger.LogLevels.DEBUG)
 
 const name = `record${(argv.name || argv.n || '')}`
 console.log(`Node Name: ${name}`)
@@ -52,9 +51,13 @@ const ipfsConfig = {
 
 const ipfs = new IPFS(ipfsConfig)
 
+ipfs.on('error', console.log)
+
 ipfs.on('ready', async () => {
   let opts = {
-    orbitPath: path.resolve(recorddir, './orbitdb')
+    orbitdb: {
+      directory: path.resolve(recorddir, './orbitdb')
+    }
   }
 
   if (argv.api) {
@@ -62,7 +65,7 @@ ipfs.on('ready', async () => {
     opts.api = { port }
   }
 
-  const record = new RecordNode(ipfs, OrbitDB, opts)
+  const record = new RecordNode(ipfs, opts)
   await record.init()
 
   //TODO: remove
