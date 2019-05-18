@@ -3,12 +3,12 @@ class RecordFeedIndex {
     this._index = []
   }
 
-  getEntryIndex (cid) {
-    return this._index.indexOf(cid)
+  getEntryIndex (hash) {
+    return this._index.indexOf(hash)
   }
 
   async updateIndex (oplog) {
-    this._index = Array.from(oplog._cidIndex.keys())
+    this._index = Array.from(oplog._hashIndex.keys())
   }
 }
 

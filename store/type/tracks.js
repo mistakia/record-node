@@ -15,30 +15,30 @@ module.exports = function (self) {
         .reverse()
         .slice(start, limit)
 
-      let entryCIDs = []
+      let entryHashes = []
 
       if (tags.length) {
         let i = 0
-        while (entryCIDs.length < (limit || Infinity) && indexEntries[i]) {
+        while (entryHashes.length < (limit || Infinity) && indexEntries[i]) {
           if (tags.every(t => indexEntries[i].tags.includes(t))) {
-            entryCIDs.push(indexEntries[i].cid)
+            entryHashes.push(indexEntries[i].hash)
           }
           i++
         }
       } else {
-        entryCIDs = indexEntries.map(e => e.cid)
+        entryHashes = indexEntries.map(e => e.hash)
       }
 
       let entries = []
-      for (const entryCID of entryCIDs) {
-        const entry = await self._oplog.get(entryCID)
+      for (const entryHash of entryHashes) {
+        const entry = await self._oplog.get(entryHash)
         entries.push(entry)
       }
       return entries
     },
 
     has: (id) => {
-      return !!self._index.getEntryCID(id, 'track')
+      return !!self._index.getEntryHash(id, 'track')
     },
 
     findOrCreate: async function (data) {
@@ -64,8 +64,8 @@ module.exports = function (self) {
     },
 
     del: (id) => {
-      const cid = self.del(id, 'track')
-      return cid
+      const hash = self.del(id, 'track')
+      return hash
     }
   }
 }
