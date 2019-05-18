@@ -10,13 +10,13 @@ class RecordListensStore extends RecordStore {
 
   async query (opts = {}) {
     const limit = opts.limit || 20
-    const startCID = opts.start || null
-    const startIndex = startCID ? this._index.getEntryIndex(startCID) : 0
+    const startHash = opts.start || null
+    const startIndex = startHash ? this._index.getEntryIndex(startHash) : 0
 
-    const entryCIDs = this._index._index.slice(startIndex, limit)
+    const entryHashes = this._index._index.slice(startIndex, limit)
     let entries = []
-    for (const entryCID of entryCIDs) {
-      const entry = await this._oplog.get(entryCID)
+    for (const entryHash of entryHashes) {
+      const entry = await this._oplog.get(entryHash)
       entries.push(entry)
     }
     return entries

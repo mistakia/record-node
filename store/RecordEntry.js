@@ -1,5 +1,5 @@
-const { sha256 } = require('crypto-hash')
 const extend = require('deep-extend')
+const { sha256 } = require('crypto-hash')
 const { generateAvatar } = require('../utils')
 
 class Entry {
@@ -31,7 +31,7 @@ class TrackEntry extends Entry {
   }
 
   async create (data) {
-    const id = await sha256(data.webpage_url)
+    const id = await sha256(data.metadata.webpage_url)
     const track = extend({
       tags: []
     }, data)

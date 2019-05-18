@@ -1,5 +1,4 @@
 const Store = require('orbit-db-store')
-const Log = require('ipfs-log')
 
 const RecordIndex = require('./RecordIndex')
 
@@ -26,12 +25,12 @@ class RecordStore extends Store {
       throw new Error(`Invalid type: ${type}`)
     }
 
-    const cid = this._index.getEntryCID(id, type)
-    if (!cid) {
+    const hash = this._index.getEntryHash(id, type)
+    if (!hash) {
       return null
     }
 
-    return this._oplog.get(cid) // async
+    return this._oplog.get(hash) // async
   }
 
   put (doc) {

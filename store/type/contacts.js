@@ -4,15 +4,15 @@ module.exports = function (self) {
   return {
     all: async (opts = {}) => {
       const { start, limit } = opts
-      const entryCIDs = Array
+      const entryHashes = Array
         .from(self._index._index.contact.values())
         .reverse()
         .slice(start, limit)
-        .map(e => e.cid)
+        .map(e => e.hash)
 
       let entries = []
-      for (const entryCID of entryCIDs) {
-        const entry = await self._oplog.get(entryCID)
+      for (const entryHash of entryHashes) {
+        const entry = await self._oplog.get(entryHash)
         entries.push(entry)
       }
       return entries
@@ -33,8 +33,8 @@ module.exports = function (self) {
 
     add: async (data) => {
       const entry = await new ContactEntry().create(data)
-      const cid = await self.put(entry)
-      return cid
+      const hash = await self.put(entry)
+      return hash
     },
 
     get: async (id) => {
@@ -43,12 +43,12 @@ module.exports = function (self) {
     },
 
     has: (id) => {
-      return !!self._index.getEntryCID(id, 'contact')
+      return !!self._index.getEntryHash(id, 'contact')
     },
 
     del: (id) => {
-      const cid = self.del(id, 'contact')
-      return cid
+      const hash = self.del(id, 'contact')
+      return hash
     }
   }
 }

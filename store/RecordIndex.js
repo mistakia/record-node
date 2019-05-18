@@ -26,9 +26,9 @@ class RecordIndex {
     return this._index[type].get(id)
   }
 
-  getEntryCID (id, type) {
+  getEntryHash (id, type) {
     const entry = this.getEntry(id, type)
-    return entry ? entry.cid : null
+    return entry ? entry.hash : null
   }
 
   async updateIndex (oplog, onProgressCallback) {
@@ -52,7 +52,7 @@ class RecordIndex {
           }
 
           let cache = {
-            cid: item.cid,
+            hash: item.hash,
             clock: item.clock
           }
 
@@ -68,21 +68,21 @@ class RecordIndex {
       return handled
     }
 
-    // Get all CIDs in Index
-    const trackCIDs = Array.from(this._index.track.values()).map(e => e.cid)
-    const contactCIDs = Array.from(this._index.contact.values()).map(e => e.cid)
-    const entryCIDs = [].concat(trackCIDs, contactCIDs)
+    // Get all Hashes in Index
+    const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
+    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
+    const entryHashes = [].concat(trackHashes, contactHashes)
 
-    // Get CIDs from oplog not in Index
+    // Get Hashes from oplog not in Index
     let values = []
-    for (const [entryCID] of oplog._cidIndex) {
-      if (!entryCIDs.includes(entryCID)) {
-        const entry = await oplog.get(entryCID)
+    for (const [entryHash] of oplog._hashIndex) {
+      if (!entryHashes.includes(entryHash)) {
+        const entry = await oplog.get(entryHash)
         values.push(entry)
       }
     }
 
-    // Reverse new CIDs and add to Index
+    // Reverse new Hashes and add to Index
     values.sort(Log.Entry.compare).reverse().reduce(reducer, {})
 
     // Build tags Index
