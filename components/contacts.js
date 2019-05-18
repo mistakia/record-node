@@ -19,7 +19,7 @@ module.exports = function contacts (self) {
       const opts = { type: RecordStore.type, replicate: true }
       const log = await self._orbitdb.open(address, opts)
 
-      log.events.on('replicate.progress', async (id, cid, entry) => {
+      log.events.on('replicate.progress', async (id, hash, entry) => {
         const { op } = entry.payload
         if (op !== 'PUT') {
           return
