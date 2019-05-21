@@ -1,6 +1,7 @@
 'use strict'
 
 exports.api = require('./api')
+exports.bootstrap = require('./bootstrap')
 exports.info = require('./info')
 exports.contacts = require('./contacts')
 exports.listens = require('./listens')
