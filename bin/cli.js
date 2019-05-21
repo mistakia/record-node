@@ -26,25 +26,22 @@ const ipfsConfig = {
   init: true,
   EXPERIMENTAL: {
     dht: false, // TODO: BRICKS COMPUTER
-    relay: {
-      enabled: true,
-      hop: {
-        enabled: false, // TODO: CPU hungry on mobile
-        active: false
-      }
-    },
     pubsub: true
   },
   config: {
     Bootstrap: [],
     Addresses: {
       Swarm: [
-        // '/ip4/0.0.0.0/tcp/4002',
-        // '/ip4/0.0.0.0/tcp/4003/ws',
-        // '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star',
-        '/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
-        // '/dns4/ws-star.discovery.libp2p.io/tcp/443/wss/p2p-websocket-star'
+        '/ip4/0.0.0.0/tcp/4002',
+        '/ip4/0.0.0.0/tcp/4003/ws'
       ]
+    }
+  },
+  libp2p: {
+    config: {
+      relay: {
+        enabled: true
+      }
     }
   }
 }

@@ -17,6 +17,9 @@ OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
 OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
 
 const defaultConfig = {
+  bitboot: {
+    enabled: true
+  },
   orbitdb: {
     directory: undefined
   }
@@ -38,6 +41,7 @@ class RecordNode {
 
     this.resolve = resolver
 
+    this.bootstrap = components.bootstrap(this)
     this.contacts = components.contacts(this)
     this.feed = components.feed(this)
     this.info = components.info(this)
@@ -64,7 +68,8 @@ class RecordNode {
 
   async init (address) {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-    await this.peers.init()
+    await this.bootstrap.init()
+    this.peers.init()
     await this.log.init(address)
     await this.feed.init()
     await this.listens.init()

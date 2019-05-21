@@ -9,7 +9,7 @@ module.exports = function peers (self) {
   return {
     _topic: 'RECORD',
     _index: {},
-    init: async () => {
+    init: () => {
       self._room = Room(self._ipfs, self.peers._topic, defaults)
       self._room.on('peer joined', self.peers._onJoin)
       self._room.on('peer left', self.peers._onLeave)
