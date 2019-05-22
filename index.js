@@ -17,6 +17,7 @@ OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
 OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
 
 const defaultConfig = {
+  api: false,
   bitboot: {
     enabled: true
   },
