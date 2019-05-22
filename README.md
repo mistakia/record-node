@@ -5,7 +5,7 @@
 
 > Library, CLI and REST API for Record.
 
-A proof of concept distributed social & music application (library, sharing, discovery & curation) network built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored via a [scuttlebot](http://scuttlebot.io/)-like immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db).
+A proof of concept distributed social & music application (library, sharing, discovery & curation) network built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored via a [scuttlebot](http://scuttlebot.io/)-like immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot)
 
 ## Install
 ```
@@ -46,13 +46,36 @@ ipfs.on('ready', async () => {
 ## API
 ### RecordNode Constructor
 ```js
-const record = new RecordNode(ipfs, OrbitDB, options)
+const record = new RecordNode(ipfs, options)
 ```
 Use the `options` argument to specify configuration. It is an object with any of these properties:
-- `orbitPath` (string): The file path passed to OrbitDB. (Default: `undefined`)
-- `api` (boolean or object): Initialize the api when creating Record Node instance (Default: `undefined`)
 
-#### record.init([address])
+##### `options.orbitdb`
+
+| Type | Default |
+|------|---------|
+| object | `{ directory: undefined }` |
+
+options passed to [OrbitDB constructor](https://github.com/orbitdb/orbit-db/blob/master/API.md#createinstanceipfs-options). (Default: `undefined`)
+
+##### `options.api`
+
+| Type | Default |
+|------|---------|
+| boolean | `false` |
+| object | `{ port: 3000 }` |
+
+Enable http api (Default: `undefined`)
+
+##### `options.bitboot`
+
+| Type | Default |
+|------|---------|
+| object | `{ enabled: true }` |
+
+Enable finding peers via [bitboot](https://github.com/tintfoundation/bitboot)
+
+### record.init([address])
 Returns a `Promise`
 - `address` (string): name or valid OrbitDB database address. (Default: `record`)
 
