@@ -28,9 +28,15 @@ module.exports = function bootstrap (self) {
             const client = net.createConnection({ port: 8383, host: peer.host })
             client.on('error', err => self.logger.err(err))
             client.on('data', (peerId) => {
-              //TODO: validate ipfs peerId
               client.end()
-              self.logger('Connecting to Bitboot node peerId: ', peerId.toString())
+
+              const nodeId = peerId.toString()
+              if (!self._ipfs.util.isIPFS.multihash(nodeId)) {
+                self.logger.err('Bitboot node peerId is invalid:', nodeId)
+                return
+              }
+
+              self.logger('Connecting to Bitboot node peerId: ', nodeId)
               const addr = self._ipfs.types.multiaddr(`/ip4/${peer.host}/tcp/4002/ipfs/${peerId}`)
               self._ipfs.swarm.connect(addr, self.logger.err)
             })
