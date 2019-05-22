@@ -69,7 +69,7 @@ class RecordNode {
 
   async init (address) {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-    await this.bootstrap.init()
+    this.bootstrap.init()
     this.peers.init()
     await this.log.init(address)
     await this.feed.init()

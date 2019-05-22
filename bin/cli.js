@@ -65,7 +65,7 @@ ipfs.on('ready', async () => {
   const record = new RecordNode(ipfs, opts)
   await record.init()
 
-  //TODO: remove
+  // TODO: remove
   const address = '/orbitdb/Qma68c4H1kxUC3FboBXddB6TvGqFA4crShHDUqohJ3MZZK/record'
   const alias = 'Pi'
   await record.contacts.add({ address, alias })

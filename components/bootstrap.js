@@ -11,8 +11,8 @@ module.exports = function bootstrap (self) {
 
       self.bootstrap._server = net.createServer(async (socket) => {
         const identity = await self._ipfs.id()
-	      socket.write(identity.id)
-	      socket.pipe(socket)
+        socket.write(identity.id)
+        socket.pipe(socket)
       })
 
       self.bootstrap._server.listen(8383, '0.0.0.0')
