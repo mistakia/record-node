@@ -4,9 +4,9 @@ const router = express.Router()
 router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
-    const { start, limit, tags } = req.query
+    const opts = { start, end, tags, random } = req.query
     const { record } = req.app.locals
-    const tracks = await record.tracks.list(logAddress, { start, limit, tags })
+    const tracks = await record.tracks.list(logAddress, opts)
     res.send(tracks)
   } catch (err) {
     res.status(500).send({ error: err.toString() })

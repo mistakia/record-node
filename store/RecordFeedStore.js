@@ -11,14 +11,14 @@ class RecordFeedStore extends RecordStore {
   }
 
   async query (opts = {}) {
-    const limit = opts.limit
     const getStartIndex = (start, hash) => {
       if (start) { return start }
       if (hash) { return this._index.getEntryIndex(hash) }
       return 0
     }
-    const startIndex = getStartIndex(opts.start, opts.hash)
-    const entryHashes = Array.from(this._index._index).reverse().slice(startIndex, limit)
+    const start = getStartIndex(opts.start, opts.hash)
+    const end = opts.end || start + 20
+    const entryHashes = Array.from(this._index._index).reverse().slice(start, end)
 
     let entries = []
     for (const entryHash of entryHashes) {
