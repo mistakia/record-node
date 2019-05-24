@@ -3,11 +3,11 @@ const { ContactEntry } = require('../RecordEntry')
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      const { start, limit } = opts
+      const { start, end } = opts
       const entryHashes = Array
         .from(self._index._index.contact.values())
         .reverse()
-        .slice(start, limit)
+        .slice(start, end)
         .map(e => e.hash)
 
       let entries = []

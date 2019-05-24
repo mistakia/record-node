@@ -24,8 +24,8 @@ module.exports = function listens (self) {
       await self._listensLog.add(data)
     },
 
-    list: async (start = null, limit = 20) => {
-      const entries = await self._listensLog.query({ start, limit })
+    list: async (start = null, end = 20) => {
+      const entries = await self._listensLog.query({ start, end })
       return entries
     }
   }

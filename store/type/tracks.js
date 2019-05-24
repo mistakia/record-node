@@ -3,23 +3,28 @@ const { TrackEntry } = require('../RecordEntry')
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      const { start, limit } = opts
+      let { start, end, random } = opts
       const tags = opts.tags && !Array.isArray(opts.tags) ? [opts.tags] : (opts.tags || [])
 
       if (tags.length && !tags.some(t => self._index.hasTag(t))) {
         return []
       }
 
+      if (random) {
+        start = Math.floor(Math.random() * self._index._index.track.size)
+        end = start + 1
+      }
+
       const indexEntries = Array
         .from(self._index._index.track.values())
         .reverse()
-        .slice(start, limit)
+        .slice(start, end)
 
       let entryHashes = []
 
       if (tags.length) {
         let i = 0
-        while (entryHashes.length < (limit || Infinity) && indexEntries[i]) {
+        while (entryHashes.length < (end || Infinity) && indexEntries[i]) {
           if (tags.every(t => indexEntries[i].tags.includes(t))) {
             entryHashes.push(indexEntries[i].hash)
           }
