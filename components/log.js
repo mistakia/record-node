@@ -9,7 +9,7 @@ const defaultConfig = {
   localOnly: false,
   create: false,
   overwrite: true,
-  replicate: false
+  replicate: true
 }
 
 module.exports = function log (self) {

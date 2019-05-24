@@ -22,6 +22,10 @@ module.exports = function profile (self) {
         entryValue.content.avatar = generateAvatar(entryValue._id)
       }
 
+      if (!entryValue.content.address) {
+        entryValue.content.address = log.address.toString()
+      }
+
       return entryValue
     },
     get: async (logId) => {
