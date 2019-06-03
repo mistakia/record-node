@@ -2,6 +2,7 @@ const os = require('os')
 const fs = require('fs')
 const path = require('path')
 
+const peek = require('buffer-peek-stream')
 const fileType = require('file-type')
 const fetch = require('node-fetch')
 const fpcalc = require('fpcalc')
@@ -42,15 +43,21 @@ const downloadFile = (resolverData) => {
       if (!res.ok) {
         return reject(new Error('unexpected status code: ' + res.status))
       }
-      const chunk = res.body.read(fileType.minimumBytes)
-      const type = fileType(chunk)
-      const filename = `${resolverData.extractor}-${resolverData.id}.${type.ext}`
-      filepath = path.resolve(os.tmpdir(), filename)
-      const file = fs.createWriteStream(filepath)
-      file.on('finish', () => {
-        resolve(filepath)
+
+      peek(res.body, fileType.minimumBytes, (err, chunk, outputStream) => {
+        if (err) {
+          return reject(err)
+        }
+
+        const type = fileType(chunk)
+        const filename = `${resolverData.extractor}-${resolverData.id}.${type.ext}`
+        filepath = path.resolve(os.tmpdir(), filename)
+        const file = fs.createWriteStream(filepath)
+        file.on('finish', () => {
+          resolve(filepath)
+        })
+        outputStream.pipe(file)
       })
-      res.body.pipe(file)
     }).catch(err => {
       if (filepath) fs.unlinkSync(filepath)
       reject(err)
@@ -96,13 +103,16 @@ module.exports = function tracks (self) {
       return track
     },
 
-    addTrackFromUrl: async (url) => {
-      const results = await self.resolve(url)
-      if (!results.length) {
+    addTrackFromUrl: async (resolverData) => {
+      if (typeof resolverData === 'string') {
+        const results = await self.resolve(resolverData)
+        resolverData = results[0]
+      }
+
+      if (!resolverData) {
         return null
       }
 
-      const resolverData = results[0]
       const filepath = await downloadFile(resolverData)
       const track = await self.tracks.addTrackFromFile(filepath, resolverData)
       return track
