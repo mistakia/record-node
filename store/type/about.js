@@ -27,6 +27,10 @@ module.exports = function (self) {
     },
 
     get: async () => {
+      if (!self._index._index.about) {
+        return
+      }
+
       const { CID } = self._ipfs.types
       const entry = JSON.parse(JSON.stringify(self._index._index.about))
       const { content } = entry.payload.value
