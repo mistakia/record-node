@@ -18,7 +18,7 @@ module.exports = function (self) {
       }
 
       // save if new profile is different
-      if (!entry.content.equals(currentEntry.payload.value.content)) {
+      if (!entry.content.equals(currentEntry.payload.value.contentCID)) {
         return save()
       }
 
@@ -27,17 +27,7 @@ module.exports = function (self) {
     },
 
     get: async () => {
-      if (!self._index._index.about) {
-        return
-      }
-
-      const { CID } = self._ipfs.types
-      const entry = JSON.parse(JSON.stringify(self._index._index.about))
-      const { content } = entry.payload.value
-      const cid = new CID(content.version, content.codec, Buffer.from(content.hash.data))
-      const dagNode = await self._ipfs.dag.get(cid)
-      entry.payload.value.content = dagNode.value
-      return entry
+      return self._index._index.about
     }
   }
 }

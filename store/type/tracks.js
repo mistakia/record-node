@@ -87,6 +87,19 @@ module.exports = function (self) {
       return entry
     },
 
+    getFromResolverId: async (extractor, id) => {
+      const indexEntries = Array.from(self._index._index.track.values())
+      const indexEntry = indexEntries.find((entry) => {
+        return entry.resolver.find(r => r === `${extractor}:${id}`)
+      })
+
+      if (!indexEntry) {
+        return null
+      }
+
+      return self.tracks.getFromHash(indexEntry.hash)
+    },
+
     getFromId: async (id) => {
       const entry = await self.get(id, 'track')
       return self.tracks._loadContent(entry)

@@ -58,6 +58,8 @@ class RecordIndex {
 
           if (type === 'track') {
             cache.tags = item.payload.value.tags
+            const { resolver } = item.payload.value.content
+            cache.resolver = resolver.map(r => `${r.extractor}:${r.id}`)
           }
           this._index[type].set(key, cache)
         } else if (item.payload.op === 'DEL') {
@@ -78,6 +80,9 @@ class RecordIndex {
     for (const [entryHash] of oplog._hashIndex) {
       if (!entryHashes.includes(entryHash)) {
         const entry = await oplog.get(entryHash)
+        const dagNode = await oplog._storage.dag.get(entry.payload.value.content)
+        entry.payload.value.content = dagNode.value
+        entry.payload.value.contentCID = dagNode.cid.toString()
         values.push(entry)
       }
     }
