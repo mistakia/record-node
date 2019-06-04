@@ -73,6 +73,10 @@ module.exports = function (self) {
     },
 
     _loadContent: async (entry) => {
+      if (!entry) {
+        return null
+      }
+
       const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
       entry.payload.value.content = dagNode.value
       entry.payload.value.contentCID = dagNode.cid.toString()

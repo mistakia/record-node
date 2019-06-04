@@ -44,7 +44,7 @@ module.exports = function contacts (self) {
 
     getEntry: async (logId, contactId) => {
       const log = await self.log.get(logId)
-      const entry = await log.contacts.get(contactId)
+      const entry = await log.contacts.getFromId(contactId)
       return entry ? entry.payload.value : {}
     },
 
