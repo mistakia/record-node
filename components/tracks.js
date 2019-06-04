@@ -92,7 +92,8 @@ module.exports = function tracks (self) {
           acoustid_fingerprint: acoustid.fingerprint
         },
         audio: metadata.format,
-        artwork: results.map(r => new CID(r[0].hash))
+        artwork: results.map(r => new CID(r[0].hash)),
+        resolver: []
       }
 
       if (resolverData) {
@@ -111,6 +112,13 @@ module.exports = function tracks (self) {
 
       if (!resolverData) {
         return null
+      }
+
+      const log = await self.log.mine()
+      const entry = await log.tracks.getFromResolverId(resolverData.extractor, resolverData.id)
+
+      if (entry) {
+        return entry
       }
 
       const filepath = await downloadFile(resolverData)
