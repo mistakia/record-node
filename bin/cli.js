@@ -32,9 +32,9 @@ const ipfsConfig = {
     Bootstrap: [],
     Addresses: {
       Swarm: [
-        '/ip4/0.0.0.0/tcp/4002',
-        '/ip4/0.0.0.0/tcp/4003/ws',
-        '/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star'
+        //'/ip4/0.0.0.0/tcp/4002/',
+        '/ip4/0.0.0.0/tcp/4003/ws/',
+        '/ip4/159.203.117.254/tcp/9090/ws/p2p-websocket-star/'
       ]
     }
   },
@@ -76,4 +76,11 @@ ipfs.on('ready', async () => {
 
   const feedEntries = await record.feed.list()
   console.log(`${feedEntries.length} items in feed`)
+
+  try {
+    const track = await record.tracks.addTrackFromUrl('https://soundcloud.com/asa-moto101/kifesh?in=deewee-2/sets/asa-moto-playtime-deewee030')
+    console.log(track)
+  } catch (e) {
+    console.log(e)
+  }
 })
