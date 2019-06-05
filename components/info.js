@@ -35,7 +35,19 @@ module.exports = function info (self) {
   }
 
   const getInfo = async () => {
-    const [ subs, ipfs, peers ] = await Promise.all([getSubs(), getId(), getPeers()])
+    const [
+      subs,
+      ipfs,
+      peers,
+      bitswap,
+      repo
+    ] = await Promise.all([
+      getSubs(),
+      getId(),
+      getPeers(),
+      self._ipfs.bitswap.stat(),
+      self._ipfs.repo.stat({ human: true })
+    ])
     const state = self._ipfs.state.state()
     const orbitdb = getOrbitdb()
     return {
@@ -43,7 +55,9 @@ module.exports = function info (self) {
       ipfs,
       peers,
       state,
-      orbitdb
+      orbitdb,
+      bitswap,
+      repo
     }
   }
 
