@@ -80,9 +80,9 @@ class RecordIndex {
     for (const [entryHash] of oplog._hashIndex) {
       if (!entryHashes.includes(entryHash)) {
         const entry = await oplog.get(entryHash)
+        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
         const dagNode = await oplog._storage.dag.get(entry.payload.value.content)
         entry.payload.value.content = dagNode.value
-        entry.payload.value.contentCID = dagNode.cid.toString()
         values.push(entry)
       }
     }

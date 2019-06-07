@@ -1,7 +1,9 @@
+const EventEmitter = require('events')
+
 const extend = require('deep-extend')
 const debug = require('debug')
+const IPFS = require('ipfs')
 const OrbitDB = require('orbit-db')
-
 const resolver = require('record-resolver')
 
 const components = require('./components')
@@ -18,16 +20,59 @@ OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
 
 const defaultConfig = {
   api: false,
+  address: 'record',
   bitboot: {
     enabled: true
   },
   orbitdb: {
     directory: undefined
+  },
+  ipfs: {
+    init: {
+      bits: 2048,
+      emptyRepo: true
+    },
+    preload: {
+      enabled: false
+    },
+    //repo: path.resolve(recorddir, './ipfs'),
+    EXPERIMENTAL: {
+      dht: false, // TODO: BRICKS COMPUTER
+      pubsub: true
+    },
+    config: {
+      Bootstrap: [],
+      Addresses: {
+	    Swarm: [
+          //'/ip4/0.0.0.0/tcp/4002/',
+          '/ip4/0.0.0.0/tcp/4003/ws/',
+          '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
+	    ]
+      }
+    },
+    libp2p: {
+      config: {
+        relay: {
+          enabled: true,
+          hop: {
+            enabled: true,
+            active: true
+          }
+        }
+      }
+    },
+    connectionManager: {
+      maxPeers: 100,
+      minPeers: 10,
+      pollInterval: 60000 // ms
+    }
   }
 }
 
-class RecordNode {
-  constructor (ipfs, options = {}) {
+class RecordNode extends EventEmitter {
+  constructor (options = {}) {
+    super()
+
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.err = debug('record:node:err')
@@ -38,7 +83,10 @@ class RecordNode {
     this.isValidAddress = OrbitDB.isValidAddress
     this.parseAddress = OrbitDB.parseAddress
 
-    this._ipfs = ipfs
+    this._ipfs = new IPFS(this._options.ipfs)
+    this._ipfs.on('error', this.emit.bind(this))
+    this._ipfs.on('ready', this._init.bind(this))
+    this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
 
     this.resolve = resolver
 
@@ -67,14 +115,16 @@ class RecordNode {
     return this.address === logId
   }
 
-  async init (address) {
+  async _init () {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
     this.bootstrap.init()
     this.peers.init()
-    await this.log.init(address)
+    await this.log.init()
     await this.feed.init()
     await this.listens.init()
     await this.contacts.init() // must initialize last
+
+    this.emit('ready')
   }
 }
 
