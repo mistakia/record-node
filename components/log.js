@@ -14,7 +14,7 @@ const defaultConfig = {
 
 module.exports = function log (self) {
   return {
-    init: async (address = 'record') => {
+    init: async (address = self._options.address) => {
       const opts = extend({}, defaultConfig, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
