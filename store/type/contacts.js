@@ -49,9 +49,9 @@ module.exports = function (self) {
         return null
       }
 
+      entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
       const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
       entry.payload.value.content = dagNode.value
-      entry.payload.value.contentCID = dagNode.cid.toString()
       return entry
     },
 

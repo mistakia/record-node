@@ -8,6 +8,7 @@ const fetch = require('node-fetch')
 const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
+const { CID } = require('ipfs')
 
 const getAcoustID = (filepath) => {
   return new Promise((resolve, reject) => {
@@ -66,8 +67,6 @@ const downloadFile = (resolverData) => {
 }
 
 module.exports = function tracks (self) {
-  const { CID } = self._ipfs.types
-
   return {
     addTrackFromFile: async (filepath, resolverData = {}) => {
       self.logger(`Adding track from ${filepath}`)

@@ -31,24 +31,68 @@ wip
 
 ### Module
 ```js
-const IPFS = require('ipfs')
 const RecordNode = require('record-node')
-const OrbitDB = require('orbit-db')
 
-const ipfs = new IPFS()
-ipfs.on('ready', async () => {
-    const record = new RecordNode(ipfs, OrbitDB)
-    await record.init()
-    const log = await record.log.get() // or record.log.get(record.address)
+const node = new RecordNode()
+node.on('ready', async () => {
+    const log = await node.log.get() // or node.log.get(record.address)
 })
 ```
 
 ## API
 ### RecordNode Constructor
 ```js
-const record = new RecordNode(ipfs, options)
+const record = new RecordNode(options)
 ```
 Use the `options` argument to specify configuration. It is an object with any of these properties:
+
+##### `options.ipfs`
+
+| Type | Default |
+|------|---------|
+| object | `see below` |
+
+options passed to [IPFS constructor](https://github.com/ipfs/js-ipfs#ipfs-constructor).
+
+```
+{
+  init: {
+    bits: 2048
+  },
+  preload: {
+    enabled: false
+  },
+  EXPERIMENTAL: {
+    dht: false,
+    pubsub: true
+  },
+  config: {
+    Bootstrap: [],
+    Addresses: {
+	  Swarm: [
+        '/ip4/0.0.0.0/tcp/4003/ws/',
+        '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
+	  ]
+    }
+  },
+  libp2p: {
+    config: {
+      relay: {
+        enabled: true,
+        hop: {
+          enabled: true,
+          active: true
+        }
+      }
+    }
+  },
+  connectionManager: {
+    maxPeers: 100,
+    minPeers: 10,
+    pollInterval: 60000 // ms
+  }
+}
+```
 
 ##### `options.orbitdb`
 
@@ -74,10 +118,6 @@ Enable http api (Default: `undefined`)
 | object | `{ enabled: true }` |
 
 Enable finding peers via [bitboot](https://github.com/tintfoundation/bitboot)
-
-### record.init([address])
-Returns a `Promise`
-- `address` (string): name or valid OrbitDB database address. (Default: `record`)
 
 ## License
 MIT
