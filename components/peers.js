@@ -50,7 +50,7 @@ module.exports = function peers (self) {
         const contact = JSON.parse(message.data)
         const { address } = contact.content
         if (!address) {
-          return
+          throw new Error('peer message missing address')
         }
 
         if (self.isValidAddress(address)) {
