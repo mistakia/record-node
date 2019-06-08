@@ -1,5 +1,6 @@
 const os = require('os')
 const fs = require('fs')
+const fsPromises = require('fs').promises
 const path = require('path')
 
 const peek = require('buffer-peek-stream')
@@ -59,8 +60,10 @@ const downloadFile = (resolverData) => {
         })
         outputStream.pipe(file)
       })
-    }).catch(err => {
-      if (filepath) fs.unlinkSync(filepath)
+    }).catch(async (err) => {
+      if (filepath) {
+        await fsPromises.unlink(filepath)
+      }
       reject(err)
     })
   })
@@ -68,7 +71,34 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
-    addTrackFromFile: async (filepath, resolverData = {}) => {
+    addTracksFromFS: async (filepath) => {
+      self.logger(`Searching ${filepath} for tracks`)
+
+      let result = []
+      const stat = await fsPromises.stat(filepath)
+
+      if (stat.isFile()) {
+        try {
+          const track = await self.tracks.addTrackFromFile(filepath)
+          result.push(track)
+        } catch (e) {
+          self.logger.err(e)
+        }
+        return result
+      }
+
+      if (stat.isDirectory()) {
+        const pathsInDir = await fsPromises.readdir(filepath)
+        self.logger(`Found ${pathsInDir.length} paths in ${filepath}`)
+        for (let i=0; i < pathsInDir.length; i++) {
+          const tracks = await self.tracks.addTracksFromFS(path.resolve(filepath, pathsInDir[i]))
+          result = tracks.concat(result)
+        }
+      }
+
+      return result
+    },
+    addTrackFromFile: async (filepath, resolverData) => {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath)
       self.logger(`Generated AcoustID Fingerprint`)
@@ -77,9 +107,11 @@ module.exports = function tracks (self) {
       delete metadata.common.picture
 
       const extension = metadata.format.encoder
-      const processPath = path.resolve(os.tmpdir(), `${filepath.replace(extension, '')}notags.${extension}`)
+      const filename = path.parse(filepath).name
+      const processPath = path.resolve(os.tmpdir(), `${filename}-notags.${extension}`)
       await removeTags(filepath, processPath)
       const audioFile = await self._ipfs.addFromFs(processPath)
+      await fsPromises.unlink(processPath)
 
       const promises = pictures ? pictures.map(p => self._ipfs.add(p.data)) : []
       const results = await Promise.all(promises)
