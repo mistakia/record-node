@@ -117,11 +117,13 @@ class RecordNode extends EventEmitter {
 
   async _init () {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-    this.bootstrap.init()
-    this.peers.init()
     await this.log.init()
     await this.feed.init()
     await this.listens.init()
+
+    this.bootstrap.init()
+    this.peers.init()
+
     await this.contacts.init() // must initialize last
 
     this.emit('ready')

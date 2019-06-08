@@ -8,7 +8,7 @@ module.exports = function contacts (self) {
       const entries = await log.contacts.all()
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
-        await this.sync(contact)
+        this.sync(contact)
       }
       self.logger(`All contacts loaded`)
     },

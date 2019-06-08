@@ -40,7 +40,7 @@ module.exports = function bootstrap (self) {
 
               self.logger('Connecting to Bitboot node peerId: ', nodeId)
               const addr = multiaddr(`/ip4/${peer.host}/tcp/4003/ws/ipfs/${peerId}`)
-              self._ipfs.swarm.connect(addr, self.logger.err)
+              self._ipfs.swarm.connect(addr, (err) => err && self.logger.err(err))
             })
             self.bootstrap._peers.set(id, peer)
           }
