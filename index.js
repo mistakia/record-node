@@ -1,10 +1,17 @@
 const EventEmitter = require('events')
 
+const { sha256 } = require('crypto-hash')
+const crypto = require('libp2p-crypto')
 const extend = require('deep-extend')
 const debug = require('debug')
 const IPFS = require('ipfs')
 const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
+const Keystore = require('orbit-db-keystore')
+const Storage = require('orbit-db-storage-adapter')
+const Identities = require('orbit-db-identity-provider')
+const secp256k1 = require('secp256k1')
+const leveldown = require('leveldown')
 
 const components = require('./components')
 const {
@@ -12,73 +19,57 @@ const {
   RecordFeedStore,
   RecordListensStore
 } = require('./store')
+const defaultConfig = require('./config')
+
+const createKey = async () => {
+  const genKeyPair = () => new Promise((resolve, reject) => {
+    crypto.keys.generateKeyPair('secp256k1', 256, (err, key) => {
+      if (!err) {
+        resolve(key)
+      }
+      reject(err)
+    })
+  })
+
+  const keys = await genKeyPair()
+  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
+  return {
+    publicKey: decompressedKey.toString('hex'),
+    privateKey: keys.marshal().toString('hex')
+  }
+}
+
+const getKey = async (id, storage) => {
+  const keys = await storage.getKey(id)
+  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
+  return {
+    publicKey: decompressedKey.toString('hex'),
+    privateKey: keys.marshal().toString('hex')
+  }
+}
+
+const createKeyFromPk = async (pk) => {
+  const getKey = (pk) => new Promise((resolve, reject) => {
+    crypto.keys.supportedKeys.secp256k1.unmarshalSecp256k1PrivateKey(pk, (err, key) => {
+      if (!err) {
+        resolve(key)
+      }
+      reject(err)
+    })
+  })
+
+  const key = await getKey(Buffer.from(pk, 'hex'))
+  const decompressedKey = secp256k1.publicKeyConvert(key.public.marshal(), false)
+
+  return {
+    publicKey: decompressedKey.toString('hex'),
+    privateKey: key.marshal().toString('hex')
+  }
+}
 
 OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
 OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
 OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
-
-const defaultConfig = {
-  api: false,
-  address: 'record',
-  pubsubRoom: {
-    pollInterval: 5000
-  },
-  store: {
-    type: RecordStore.type,
-    referenceCount: 24,
-    replicationConcurrency: 128,
-    localOnly: false,
-    create: false,
-    overwrite: true,
-    replicate: true
-  },
-  bitboot: {
-    enabled: true
-  },
-  orbitdb: {
-    directory: undefined
-  },
-  ipfs: {
-    init: {
-      bits: 2048,
-      emptyRepo: true
-    },
-    preload: {
-      enabled: false
-    },
-    // repo: path.resolve(recorddir, './ipfs'),
-    EXPERIMENTAL: {
-      dht: false, // TODO: BRICKS COMPUTER
-      pubsub: true
-    },
-    config: {
-      Bootstrap: [],
-      Addresses: {
-        Swarm: [
-          // '/ip4/0.0.0.0/tcp/4002/',
-          '/ip4/0.0.0.0/tcp/4003/ws/',
-          '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
-        ]
-      }
-    },
-    libp2p: {
-      config: {
-        relay: {
-          enabled: true,
-          hop: {
-            enabled: true,
-            active: true
-          }
-        }
-      }
-    },
-    connectionManager: {
-      maxPeers: 100,
-      minPeers: 10,
-      pollInterval: 60000 // ms
-    }
-  }
-}
 
 class RecordNode extends EventEmitter {
   constructor (options = {}) {
@@ -91,15 +82,14 @@ class RecordNode extends EventEmitter {
     this._options = extend(defaultConfig, options)
     this.logger(this._options)
 
-    this.isValidAddress = OrbitDB.isValidAddress
-    this.parseAddress = OrbitDB.parseAddress
-
     this._ipfs = new IPFS(this._options.ipfs)
     this._ipfs.on('error', this.emit.bind(this))
     this._ipfs.on('ready', this._init.bind(this))
     this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
 
     this.resolve = resolver
+    this.isValidAddress = OrbitDB.isValidAddress
+    this.parseAddress = OrbitDB.parseAddress
 
     this.about = components.about(this)
     this.bootstrap = components.bootstrap(this)
@@ -126,7 +116,22 @@ class RecordNode extends EventEmitter {
   }
 
   async _init () {
+    this._options.orbitdb.storage = Storage(leveldown)
+    let keyStorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
+    this._options.orbitdb.keystore = new Keystore(keyStorage)
+    const key = this._options.key ||
+      (this._options.id && await getKey(this._options.id, this._options.orbitdb.keystore)) ||
+      await createKey()
+    this._id = await sha256(key.publicKey)
+    keyStorage.put(this._id, JSON.stringify(key))
+
+    this._options.orbitdb.identity = await Identities.createIdentity({
+      id: this._id,
+      keystore: this._options.orbitdb.keystore
+    })
+
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+
     await this.log._init()
     await this.feed._init()
     await this.listens._init()
@@ -136,6 +141,7 @@ class RecordNode extends EventEmitter {
 
     const ipfs = await this._ipfs.id()
     this.emit('ready', {
+      id: this._id,
       orbitdb: {
         address: this._log.address.toString(),
         publicKey: this._log.identity.publicKey
@@ -181,6 +187,26 @@ class RecordNode extends EventEmitter {
 
     this.bootstrap._init()
     this.peers._init()
+  }
+
+  async setIdentity (pk) {
+    await this._orbitdb.stop()
+
+    const key = await createKeyFromPk(pk)
+    this._id = await sha256(key.publicKey)
+    this._options.orbitdb.keystore.put(this._id, JSON.stringify(key))
+
+    this._options.orbitdb.identity = await Identities.createIdentity({
+      id: this._id,
+      keystore: this._options.orbitdb.keystore
+    })
+
+    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+  }
+
+  static async createFromKey (pk, opts = defaultConfig) {
+    opts.key = await createKeyFromPk(pk)
+    return new RecordNode(opts)
   }
 }
 
