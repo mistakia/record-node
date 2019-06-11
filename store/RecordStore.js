@@ -6,6 +6,18 @@ const contacts = require('./type/contacts')
 const tags = require('./type/tags')
 const about = require('./type/about')
 
+function throttled (delay, fn) {
+  let lastCall = 0
+  return function (...args) {
+    const now = (new Date()).getTime()
+    if (now - lastCall < delay) {
+      return
+    }
+    lastCall = now
+    return fn(...args)
+  }
+}
+
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
     if (!options.indexBy) Object.assign(options, { indexBy: '_id' })
@@ -17,6 +29,21 @@ class RecordStore extends Store {
     this.contacts = contacts(this)
     this.tags = tags(this)
     this.about = about(this)
+
+    this._loadedEntries = []
+    const throttledAddOnProgress = throttled(5000, () => {
+      const entries = this._loadedEntries.splice(0)
+      entries.forEach(e => this._index.add(e))
+      this._index.updateTags()
+      this._index.sort()
+    })
+    this._replicator.on('load.progress', async (id, hash, entry) => {
+      entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
+      const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
+      entry.payload.value.content = dagNode.value
+      this._loadedEntries.push(entry)
+      throttledAddOnProgress()
+    })
   }
 
   get (id, type) {
