@@ -31,41 +31,58 @@ class RecordIndex {
     return entry ? entry.hash : null
   }
 
+  add (item) {
+    const { key } = item.payload
+    const { type } = item.payload.value
+    const entry = this.getEntry(key, type)
+
+    if (entry && entry.clock.time > item.clock.time) {
+      return
+    }
+
+    if (item.payload.op === 'PUT') {
+      if (type === 'about') {
+        this._index.about = item
+        return
+      }
+
+      let cache = {
+        hash: item.hash,
+        clock: item.clock
+      }
+
+      if (type === 'track') {
+        cache.tags = item.payload.value.tags
+        const { resolver } = item.payload.value.content
+        cache.resolver = resolver.map(r => `${r.extractor}:${r.id}`)
+      }
+      this._index[type].set(key, cache)
+    } else if (item.payload.op === 'DEL') {
+      this._index[type].delete(key)
+    }
+  }
+
+  updateTags () {
+    this._index.tags = {}
+    for (const track of this._index.track.values()) {
+      track.tags && track.tags.forEach(t => { this._index.tags[t] = (this._index.tags[t] + 1) || 1 })
+    }
+  }
+
+  sort () {
+    this._index.track = new Map([...this._index.track.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
+    this._index.contact = new Map([...this._index.contact.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
+  }
+
   async updateIndex (oplog, onProgressCallback) {
     const reducer = (handled, item, idx) => {
       const { key } = item.payload
 
       if (handled[key] !== true) {
         handled[key] = true
-
-        const { type } = item.payload.value
-        const entry = this.getEntry(key, type)
-
-        if (entry && entry.clock.time > item.clock.time) {
-          return handled
-        }
-
-        if (item.payload.op === 'PUT') {
-          if (type === 'about') {
-            this._index.about = item
-            return handled
-          }
-
-          let cache = {
-            hash: item.hash,
-            clock: item.clock
-          }
-
-          if (type === 'track') {
-            cache.tags = item.payload.value.tags
-            const { resolver } = item.payload.value.content
-            cache.resolver = resolver.map(r => `${r.extractor}:${r.id}`)
-          }
-          this._index[type].set(key, cache)
-        } else if (item.payload.op === 'DEL') {
-          this._index[type].delete(key)
-        }
+        this.add(item)
       }
+
       if (onProgressCallback) onProgressCallback(item, idx)
       return handled
     }
@@ -91,14 +108,10 @@ class RecordIndex {
     values.sort(Log.Entry.compare).reverse().reduce(reducer, {})
 
     // Build tags Index
-    this._index.tags = {}
-    for (const track of this._index.track.values()) {
-      track.tags && track.tags.forEach(t => { this._index.tags[t] = (this._index.tags[t] + 1) || 1 })
-    }
+    this.updateTags()
 
     // Re-sort Index
-    this._index.track = new Map([...this._index.track.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
-    this._index.contact = new Map([...this._index.contact.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
+    this.sort()
   }
 }
 
