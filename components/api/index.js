@@ -38,7 +38,5 @@ module.exports = (self) => {
   app.use('/tracks', routes.tracks)
 
   const { port } = options
-  app.listen(port, () => self.logger(`API listening on port ${port}`))
-
-  return app
+  return app.listen(port, () => self.logger(`API listening on port ${port}`))
 }

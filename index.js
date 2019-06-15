@@ -35,7 +35,7 @@ const defaultConfig = {
     preload: {
       enabled: false
     },
-    //repo: path.resolve(recorddir, './ipfs'),
+    // repo: path.resolve(recorddir, './ipfs'),
     EXPERIMENTAL: {
       dht: false, // TODO: BRICKS COMPUTER
       pubsub: true
@@ -43,11 +43,11 @@ const defaultConfig = {
     config: {
       Bootstrap: [],
       Addresses: {
-	    Swarm: [
-          //'/ip4/0.0.0.0/tcp/4002/',
+        Swarm: [
+          // '/ip4/0.0.0.0/tcp/4002/',
           '/ip4/0.0.0.0/tcp/4003/ws/',
           '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
-	    ]
+        ]
       }
     },
     libp2p: {
@@ -117,16 +117,46 @@ class RecordNode extends EventEmitter {
 
   async _init () {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-    await this.log.init()
-    await this.feed.init()
-    await this.listens.init()
+    await this.log._init()
+    await this.feed._init()
+    await this.listens._init()
 
-    this.bootstrap.init()
-    this.peers.init()
+    this.bootstrap._init()
+    this.peers._init()
 
-    await this.contacts.init() // must initialize last
+    await this.contacts._init() // must initialize last
 
     this.emit('ready')
+  }
+
+  async stop () {
+    if (this._api) {
+      const closeAPI = () => new Promise((resolve, reject) => this._api.close((err) => {
+        if (err) {
+          return reject(err)
+        }
+        resolve()
+      }))
+      await closeAPI()
+    }
+
+    await this.bootstrap._stop()
+    await this._orbitdb.stop()
+    await this.peers._stop()
+    await this._ipfs.stop()
+  }
+
+  async start () {
+    await this._ipfs.start()
+
+    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+
+    if (this._options.api) {
+      this._api = components.api(this)
+    }
+
+    this.boostrap._init()
+    this.peers._init()
   }
 }
 

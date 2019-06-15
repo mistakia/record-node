@@ -6,7 +6,23 @@ const { multiaddr, isIPFS } = require('ipfs')
 module.exports = function bootstrap (self) {
   return {
     _peers: new Map(),
-    init: () => {
+    _stop: async () => {
+      const closeServer = () => new Promise((resolve) => {
+        self.bootstrap._server.close(() => resolve())
+      })
+      const closeBB = () => new Promise((resolve) => {
+        self.bb.destroy(() => resolve())
+      })
+
+      if (self.bootstrap._server) {
+        await closeServer()
+      }
+
+      if (self.bb) {
+        await closeBB()
+      }
+    },
+    _init: () => {
       if (!self._options.bitboot.enabled) {
         return
       }
