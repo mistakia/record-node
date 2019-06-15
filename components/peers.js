@@ -9,12 +9,15 @@ module.exports = function peers (self) {
   return {
     _topic: 'RECORD',
     _index: {},
-    init: () => {
+    _init: () => {
       self._room = Room(self._ipfs, self.peers._topic, defaults)
       self._room.on('peer joined', self.peers._onJoin)
       self._room.on('peer left', self.peers._onLeave)
       self._room.on('message', self.peers._onMessage)
       self._room.on('error', (e) => self.logger.err(e))
+    },
+    _stop: async () => {
+      await self._room.leave()
     },
     list: () => {
       return Object.keys(self.peers._index).map(id => self.peers._index[id])

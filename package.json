@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "$(npm bin)/standard '**/*.js'",
     "lint:fix": "$(npm bin)/standard --fix '**/*.js'",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "TEST=all mocha",
     "start": "node --trace-warnings bin/cli.js"
   },
   "author": "",
@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "logplease": "^1.2.14",
+    "mocha": "^6.1.4",
     "standard": "^11.0.1",
     "yargs": "^12.0.1"
   }

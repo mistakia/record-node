@@ -3,9 +3,8 @@ const router = express.Router()
 
 router.get('/?', async (req, res) => {
   try {
-    const opts = { end, start } = req.query
     const { record } = req.app.locals
-    const listens = await record.listens.list(opts)
+    const listens = await record.listens.list(req.query)
     res.send(listens)
   } catch (err) {
     res.send({ error: err.toString() })
