@@ -37,7 +37,6 @@ if (argv.api) {
 try {
   const record = new RecordNode(opts)
   record.on('ready', async () => {
-
     const profileData = {
       name: `${name}`,
       bio: 'dweb > web',

@@ -90,7 +90,7 @@ module.exports = function tracks (self) {
       if (stat.isDirectory()) {
         const pathsInDir = await fsPromises.readdir(filepath)
         self.logger(`Found ${pathsInDir.length} paths in ${filepath}`)
-        for (let i=0; i < pathsInDir.length; i++) {
+        for (let i = 0; i < pathsInDir.length; i++) {
           const tracks = await self.tracks.addTracksFromFS(path.resolve(filepath, pathsInDir[i]))
           result = tracks.concat(result)
         }

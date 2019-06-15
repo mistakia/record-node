@@ -3,7 +3,7 @@ const { RecordStore } = require('../store')
 
 module.exports = function contacts (self) {
   return {
-    init: async function () {
+    _init: async function () {
       const log = await self.log.mine()
       const entries = await log.contacts.all()
       const contacts = entries.map(e => e.payload.value)

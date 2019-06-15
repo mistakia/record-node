@@ -3,7 +3,7 @@ const extend = require('deep-extend')
 
 module.exports = function feed (self) {
   return {
-    init: async () => {
+    _init: async () => {
       const opts = {
         create: true,
         replicate: true,

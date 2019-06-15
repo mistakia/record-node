@@ -2,7 +2,7 @@ const { RecordListensStore } = require('../store')
 
 module.exports = function listens (self) {
   return {
-    init: async () => {
+    _init: async () => {
       const opts = {
         create: true,
         replicate: true,

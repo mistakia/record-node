@@ -81,7 +81,6 @@ module.exports = function (self) {
       const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
       entry.payload.value.content = dagNode.value
 
-
       const { content } = entry.payload.value
       entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
       entry.payload.value.content.artwork = content.artwork.map(a => a.toBaseEncodedString('base58btc'))
