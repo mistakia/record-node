@@ -1,21 +1,9 @@
 const extend = require('deep-extend')
 
-const { RecordStore } = require('../store')
-
-const defaultConfig = {
-  type: RecordStore.type,
-  referenceCount: 24,
-  replicationConcurrency: 128,
-  localOnly: false,
-  create: false,
-  overwrite: true,
-  replicate: true
-}
-
 module.exports = function log (self) {
   return {
     _init: async (address = self._options.address) => {
-      const opts = extend({}, defaultConfig, { create: true, replicate: true })
+      const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
     },
@@ -53,7 +41,7 @@ module.exports = function log (self) {
         return self._orbitdb.stores[logId]
       }
 
-      const opts = extend({}, defaultConfig, options)
+      const opts = extend({}, self._options.store, options)
       self.logger(opts)
       const log = await self._orbitdb.open(logId, opts)
 
