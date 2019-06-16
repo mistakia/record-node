@@ -7,7 +7,6 @@ const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
 
 const components = require('./components')
-
 const {
   RecordStore,
   RecordFeedStore,
@@ -21,6 +20,15 @@ OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
 const defaultConfig = {
   api: false,
   address: 'record',
+  store: {
+    type: RecordStore.type,
+    referenceCount: 24,
+    replicationConcurrency: 128,
+    localOnly: false,
+    create: false,
+    overwrite: true,
+    replicate: true
+  },
   bitboot: {
     enabled: true
   },
