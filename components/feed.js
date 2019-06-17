@@ -6,7 +6,7 @@ module.exports = function feed (self) {
     _init: async () => {
       const opts = {
         create: true,
-        replicate: true,
+        replicate: false,
         type: RecordFeedStore.type
       }
       self._feedLog = await self._orbitdb.open('feed', opts)
@@ -22,18 +22,16 @@ module.exports = function feed (self) {
     },
 
     add: async (entry, contact) => {
-      await self._feedLog.add(entry, contact)
+      await self._feedLog.add(entry, contact) // TODO
     },
 
     list: async (opts) => {
       const feedEntries = await self._feedLog.query(opts)
       let entries = []
       for (const feedEntry of feedEntries) {
-        const contact = await self.contacts.get(self.address, feedEntry.payload.contactId)
-        const { address } = contact.content
-        const { type } = feedEntry.payload
-        // TODO: make this readable and less suspect :(
-        const entry = await self[`${type}s`].get(address, feedEntry.payload.entryId)
+        const { entryType, logId, entryId } = feedEntry.payload
+        const contact = await self.contacts.get({ logId: self.address, contactAddress: logId })
+        const entry = await self[`${entryType}s`].get(logId, entryId)
         entries.push(extend(feedEntry.payload, { contact }, { content: entry }))
       }
       return entries

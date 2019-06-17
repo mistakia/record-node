@@ -11,13 +11,13 @@ module.exports = function (self) {
         return this.get()
       }
 
-      // save if no profile exists
+      // save if no entry exists
       const currentEntry = self._index._index.about
       if (!currentEntry) {
         return save()
       }
 
-      // save if new profile is different
+      // save if new entry is different
       if (!entry.content.equals(currentEntry.payload.value.contentCID)) {
         return save()
       }
