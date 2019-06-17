@@ -7,7 +7,6 @@ const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
 
 const components = require('./components')
-
 const {
   RecordStore,
   RecordFeedStore,
@@ -21,6 +20,18 @@ OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
 const defaultConfig = {
   api: false,
   address: 'record',
+  pubsubRoom: {
+    pollInterval: 5000
+  },
+  store: {
+    type: RecordStore.type,
+    referenceCount: 24,
+    replicationConcurrency: 128,
+    localOnly: false,
+    create: false,
+    overwrite: true,
+    replicate: true
+  },
   bitboot: {
     enabled: true
   },
@@ -90,16 +101,15 @@ class RecordNode extends EventEmitter {
 
     this.resolve = resolver
 
+    this.about = components.about(this)
     this.bootstrap = components.bootstrap(this)
     this.contacts = components.contacts(this)
     this.feed = components.feed(this)
     this.info = components.info(this)
     this.listens = components.listens(this)
     this.log = components.log(this)
-    this.suggested = components.suggested(this)
     this.tags = components.tags(this)
     this.tracks = components.tracks(this)
-    this.profile = components.profile(this)
     this.peers = components.peers(this)
 
     if (this._options.api) {
@@ -124,25 +134,30 @@ class RecordNode extends EventEmitter {
     this.bootstrap._init()
     this.peers._init()
 
-    await this.contacts._init() // must initialize last
-
     this.emit('ready')
   }
 
   async stop () {
-    if (this._api) {
-      const closeAPI = () => new Promise((resolve, reject) => this._api.close((err) => {
+    const closeAPI = () => new Promise((resolve, reject) => {
+      if (!this._api) {
+        return resolve()
+      }
+
+      this._api.close((err) => {
         if (err) {
           return reject(err)
         }
         resolve()
-      }))
-      await closeAPI()
-    }
+      })
+    })
 
-    await this.bootstrap._stop()
-    await this._orbitdb.stop()
-    await this.peers._stop()
+    await Promise.all([
+      closeAPI(),
+      this.bootstrap._stop(),
+      this._orbitdb.stop(),
+      this.peers._stop()
+    ])
+
     await this._ipfs.stop()
   }
 
@@ -155,7 +170,7 @@ class RecordNode extends EventEmitter {
       this._api = components.api(this)
     }
 
-    this.boostrap._init()
+    this.bootstrap._init()
     this.peers._init()
   }
 }

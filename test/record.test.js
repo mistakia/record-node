@@ -21,16 +21,15 @@ describe('record', function () {
       assert.notStrictEqual(record.parseAddress, undefined)
 
       // components
+      assert.notStrictEqual(record.about, undefined)
       assert.notStrictEqual(record.bootstrap, undefined)
       assert.notStrictEqual(record.contacts, undefined)
       assert.notStrictEqual(record.feed, undefined)
       assert.notStrictEqual(record.info, undefined)
       assert.notStrictEqual(record.listens, undefined)
       assert.notStrictEqual(record.log, undefined)
-      assert.notStrictEqual(record.suggested, undefined)
       assert.notStrictEqual(record.tags, undefined)
       assert.notStrictEqual(record.tracks, undefined)
-      assert.notStrictEqual(record.profile, undefined)
       assert.notStrictEqual(record.peers, undefined)
 
       // address

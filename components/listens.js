@@ -5,7 +5,7 @@ module.exports = function listens (self) {
     _init: async () => {
       const opts = {
         create: true,
-        replicate: true,
+        replicate: false,
         type: RecordListensStore.type
       }
       self._listensLog = await self._orbitdb.open('listens', opts)
