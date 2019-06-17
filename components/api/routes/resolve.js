@@ -8,6 +8,7 @@ router.get('/?', async (req, res) => {
     const data = await record.resolve(url)
     res.send(data)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.send({ error: err.toString() })
   }
 })

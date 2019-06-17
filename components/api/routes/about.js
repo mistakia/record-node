@@ -1,11 +1,12 @@
 const express = require('express')
 const router = express.Router()
 
-router.get('/?', async (req, res) => {
+router.post('/?', async (req, res) => {
   try {
+    const { name, bio, location } = req.body
     const { record } = req.app.locals
-    const peers = await record.peers.list()
-    res.send(peers)
+    const about = await record.about.set({ name, bio, location })
+    res.send(about)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })

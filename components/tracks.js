@@ -145,7 +145,7 @@ module.exports = function tracks (self) {
         return null
       }
 
-      const log = await self.log.mine()
+      const log = self.log.mine()
       const entry = await log.tracks.getFromResolverId(resolverData.extractor, resolverData.id)
 
       if (entry) {
@@ -158,35 +158,35 @@ module.exports = function tracks (self) {
     },
 
     addTrackFromCID: async (cid) => {
-      const dagNode = await self._ipfs.dag.get(cid)
+      const dagNode = await self._ipfs.dag.get(cid, { resolveLocal: true })
       const content = dagNode.value
       return self.tracks.add(content)
     },
 
     add: async (trackData) => {
-      const log = await self.log.mine()
+      const log = self.log.mine()
       const track = await log.tracks.findOrCreate(trackData)
       return track
     },
 
     get: async (logId, trackId) => {
-      const log = await self.log.get(logId)
+      const log = await self.log.get(logId, { replicate: false })
       const entry = await log.tracks.getFromId(trackId)
       return entry.payload.value
     },
 
     remove: async (trackId) => {
-      const log = await self.log.mine()
+      const log = self.log.mine()
       const hash = await log.tracks.del(trackId)
       return hash
     },
 
     list: async (logId, opts) => {
-      const log = await self.log.get(logId)
+      const log = await self.log.get(logId, { replicate: false })
       let entries = await log.tracks.all(opts)
 
       if (!self.log.isMine(log)) {
-        const myLog = await self.log.mine()
+        const myLog = self.log.mine()
         for (const index in entries) {
           const entry = entries[index]
           const trackId = entry.payload.key
