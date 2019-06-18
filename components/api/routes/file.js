@@ -58,6 +58,7 @@ router.get('/:cid(*)', async (req, res) => {
     res.writeHead(range ? 206 : 200, head)
     peekedStream.pipe(res)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })

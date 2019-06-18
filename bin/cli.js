@@ -37,13 +37,13 @@ if (argv.api) {
 try {
   const record = new RecordNode(opts)
   record.on('ready', async () => {
-    const profileData = {
+    const aboutData = {
       name: `${name}`,
       bio: 'dweb > web',
       location: 'not on the world wide web'
     }
-    const profile = await record.profile.set(profileData)
-    console.log(profile)
+    const about = await record.about.set(aboutData)
+    console.log(about)
 
     const feedEntries = await record.feed.list()
     console.log(`${feedEntries.length} items in feed`)
