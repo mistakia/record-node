@@ -1,13 +1,26 @@
 const express = require('express')
 const router = express.Router()
 
+router.get('/all', async (req, res) => {
+  try {
+    const { record } = req.app.locals
+    const contacts = await record.contacts.all()
+    res.send(contacts)
+  } catch (err) {
+    req.app.locals.record.logger.err(err)
+    res.send({ error: err.toString() })
+  }
+})
+
 router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
     const { record } = req.app.locals
+
     const contacts = await record.contacts.list(logAddress)
     res.send(contacts)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -42,6 +55,7 @@ router.post('/?', (req, res, next) => {
     const contact = await record.contacts.add({ address, alias })
     res.send(contact)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -53,6 +67,7 @@ router.delete('/?', async (req, res) => {
     const contact = await record.contacts.remove(contactId)
     res.send(contact)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })

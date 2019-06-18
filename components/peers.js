@@ -1,16 +1,11 @@
 const Room = require('ipfs-pubsub-room')
-const extend = require('deep-extend')
-
-const defaults = {
-  pollInterval: 5000
-}
 
 module.exports = function peers (self) {
   return {
     _topic: 'RECORD',
     _index: {},
     _init: () => {
-      self._room = Room(self._ipfs, self.peers._topic, defaults)
+      self._room = Room(self._ipfs, self.peers._topic, self._options.pubsubRoom)
       self._room.on('peer joined', self.peers._onJoin)
       self._room.on('peer left', self.peers._onLeave)
       self._room.on('message', self.peers._onMessage)
@@ -19,46 +14,46 @@ module.exports = function peers (self) {
     _stop: async () => {
       await self._room.leave()
     },
-    list: () => {
-      return Object.keys(self.peers._index).map(id => self.peers._index[id])
+    get: (contactId) => {
+      const peerIds = Object.keys(self.peers._index)
+      const peers = peerIds.map(peerId => self.peers._index[peerId])
+      return peers.find(p => p._id === contactId)
     },
-    get: (address) => {
-      return Object.keys(self.peers._index).find(id =>
-        self.peers._index[id].content.address === address
-      )
-    },
-    update: async (address) => {
-      const peerId = self.peers.get(address)
-      if (!peerId) {
-        return
+    list: async () => {
+      const peerIds = Object.keys(self.peers._index)
+      let peers = []
+      for (const peerId of peerIds) {
+        const about = self.peers._index[peerId]
+        const contact = await self.contacts.get({
+          logId: self.address,
+          contactId: about._id,
+          contactAddress: about.content.address
+        })
+        peers.push(contact)
       }
 
-      const profile = await self.profile.get(address)
-      const peer = self.peers._index[peerId]
-      self.peers._index[peerId] = extend(peer, profile)
+      return peers
     },
     _onJoin: async (peer) => {
-      const profile = await self.profile.get(self.address)
-      const data = extend(profile, { isMe: false })
-      const message = Buffer.from(JSON.stringify(data))
+      const about = await self.about.get(self.address)
+      const message = Buffer.from(JSON.stringify(about))
       self._room.sendTo(peer, message)
     },
-    _onLeave: (peer) => {
-      delete self.peers._index[peer]
+    _onLeave: (peerId) => {
+      delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
     },
     _onMessage: async (message) => {
       try {
-        const contact = JSON.parse(message.data)
-        const { address } = contact.content
+        const about = JSON.parse(message.data)
+        const { address } = about.content
         if (!address) {
           throw new Error('peer message missing address')
         }
 
         if (self.isValidAddress(address)) {
-          const profile = await self.profile.get(address)
-          self.peers._index[message.from] = extend(contact, profile)
+          self.peers._index[message.from] = about
         }
         const peerCount = Object.keys(self.peers._index).length
         self.logger.log(`Record peer added, current count: ${peerCount}`)

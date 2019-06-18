@@ -38,16 +38,16 @@ module.exports = function log (self) {
       }
 
       if (this.isOpen(logId)) {
-        return self._orbitdb.stores[logId]
+        const openLog = self._orbitdb.stores[logId]
+        if (!options.replicate || (options.replicate === openLog.options.replicate)) {
+          return openLog
+        }
       }
 
       const opts = extend({}, self._options.store, options)
-      self.logger(opts)
+      self.logger(`Loading log: ${logId}`, opts)
       const log = await self._orbitdb.open(logId, opts)
-
-      self.logger(`Loading log: ${log.address}`)
       await log.load()
-
       return log
     }
   }

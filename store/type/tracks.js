@@ -34,13 +34,8 @@ module.exports = function (self) {
         entryHashes = indexEntries.map(e => e.hash)
       }
 
-      let entries = []
-      for (const entryHash of entryHashes) {
-        const entry = await self.tracks.getFromHash(entryHash)
-        entries.push(entry)
-      }
-
-      return entries
+      let promises = entryHashes.map(e => self.tracks.getFromHash(e))
+      return Promise.all(promises)
     },
 
     has: (id) => {

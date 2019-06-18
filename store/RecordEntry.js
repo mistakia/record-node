@@ -52,11 +52,11 @@ class ContactEntry extends Entry {
 }
 
 class FeedEntry {
-  create (content, contact) {
+  create ({ entryId, logId, entryType }) {
     this._entry = {
-      entryId: content.payload.key,
-      contactId: contact._id,
-      type: content.payload.value.type,
+      entryId,
+      logId,
+      entryType,
       timestamp: Date.now()
     }
 
