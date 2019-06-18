@@ -7,6 +7,7 @@ router.get('/?', async (req, res) => {
     const listens = await record.listens.list(req.query)
     res.send(listens)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.send({ error: err.toString() })
   }
 })
@@ -18,6 +19,7 @@ router.post('/?', async (req, res) => {
     const entry = await record.listens.add({ trackId, logId })
     res.send(entry)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })

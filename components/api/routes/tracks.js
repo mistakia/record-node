@@ -8,6 +8,7 @@ router.get(':logAddress(*)', async (req, res) => {
     const tracks = await record.tracks.list(logAddress, req.query)
     res.send(tracks)
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -34,6 +35,7 @@ router.post('/?', async (req, res) => {
 
     res.status(400).send({ error: 'Body missing one of \'cid\', \'url\', or \'file\'' })
   } catch (err) {
+    req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
   }
 })
