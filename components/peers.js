@@ -40,9 +40,14 @@ module.exports = function peers (self) {
       self._room.sendTo(peer, message)
     },
     _onLeave: (peerId) => {
+      const { address } = self.peers._index[peerId].content
       delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
+      self.emit('redux', {
+        type: 'PEER_LEFT',
+        payload: { logId: address, peerCount }
+      })
     },
     _onMessage: async (message) => {
       try {
@@ -57,6 +62,10 @@ module.exports = function peers (self) {
         }
         const peerCount = Object.keys(self.peers._index).length
         self.logger.log(`Record peer added, current count: ${peerCount}`)
+        self.emit('redux', {
+          type: 'PEER_JOINED',
+          payload: { logId: address, peerCount }
+        })
       } catch (e) {
         self.logger.err(e)
       }
