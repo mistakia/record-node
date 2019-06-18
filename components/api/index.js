@@ -37,6 +37,14 @@ module.exports = (self) => {
   app.use('/file', routes.file)
   app.use('/tracks', routes.tracks)
 
+  /* const server = Server(app)
+   * const ws = WS(server)
+
+   * ws.on('connection', (socket) => {
+   *   self.logger(socket)
+   *   self.on('redux', ({ type, payload }) => socket.emit('message', { type, payload }))
+   * })
+   */
   const { port } = options
   return app.listen(port, () => self.logger(`API listening on port ${port}`))
 }

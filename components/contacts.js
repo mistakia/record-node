@@ -3,39 +3,60 @@ const extend = require('deep-extend')
 
 module.exports = function contacts (self) {
   return {
-    connect: async function (address) {
+    connect: async function (address, contactId) {
       if (address) {
-        return this._connect(address)
+        return this._connect(address, contactId)
       }
+
+      self.isReplicating = true
 
       const log = self.log.mine()
       const entries = await log.contacts.all()
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
         const { address } = contact.content
-        this._connect(address)
+        this._connect(address, contact._id)
       }
+
+      self.emit('redux', { type: 'CONTACTS_CONNECTED' })
     },
 
     disconnect: async function (address) {
       if (address) {
-        return this._disconnect(address)
+        const contactId = await sha256(address)
+        return this._disconnect(address, contactId)
       }
+
+      self.isReplicating = false
 
       const log = self.log.mine()
       const entries = await log.contacts.all()
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
         const { address } = contact.content
-        this._disconnect(address)
+        this._disconnect(address, contact._id)
       }
+
+      self.emit('redux', { type: 'CONTACTS_DISCONNECTED' })
     },
 
-    _connect: async (address) => {
+    _connect: async (address, contactId) => {
       self.logger(`Connecting contact: ${address}`)
       const log = await self.log.get(address, { replicate: true })
 
-      log.events.on('replicate.progress', async (id, hash, entry) => {
+      log.events.on('replicated', (logId) => {
+        self.emit('redux', {
+          type: 'CONTACT_REPLICATED',
+          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats }
+        })
+      })
+
+      log.events.on('replicate.progress', (logId, hash, entry, progress, total) => {
+        self.emit('redux', {
+          type: 'CONTACT_REPLICATE_PROGRESS',
+          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats }
+        })
+
         self.logger(`new entry ${address}/${entry.hash}`)
         const { op } = entry.payload
         if (op !== 'PUT') {
@@ -44,14 +65,16 @@ module.exports = function contacts (self) {
 
         const { type } = entry.payload.value
         if (type !== 'about') {
-          await self.feed.add({ entryType: type, entryId: entry.payload.key, logId: address })
+          self.feed.add({ entryType: type, entryId: entry.payload.key, logId: address })
         }
       })
+
+      self.emit('redux', { type: 'CONTACT_CONNECTED', payload: { logId: address, contactId } })
 
       return log.load()
     },
 
-    _disconnect: async (address) => {
+    _disconnect: async (address, contactId) => {
       self.logger(`Disconnecting contact: ${address}`)
       if (!self.log.isOpen(address)) {
         return self.loggr(`log is not open: ${address}`)
@@ -63,22 +86,26 @@ module.exports = function contacts (self) {
         return self.loggr(`log was not replicating: ${address}`)
       }
 
+      self.emit('redux', { type: 'CONTACT_DISCONNECTED', payload: { logId: address, contactId } })
+
       return log.close()
     },
 
-    isConnected: async (address) => {
+    isReplicating: async (address) => {
       if (!self.log.isOpen(address)) {
         return false
       }
 
-      const subs = await self._ipfs.pubsub.ls()
-      return subs.includes(address)
+      const log = await self.log.get(address)
+      return log.options.replicate
     },
 
     add: async ({ address, alias }) => {
       const log = self.log.mine()
       const entry = await log.contacts.findOrCreate({ address, alias })
-      await self.contacts.connect(entry.payload.value)
+      if (self.isReplicating) {
+        await self.contacts.connect(address, entry.payload.key)
+      }
       return self.contacts.get({
         logId: self.address,
         contactId: entry.payload.key,
@@ -107,14 +134,24 @@ module.exports = function contacts (self) {
         peerEntry = self.peers.get(contactId)
       }
 
-      const [ entry, about, isConnected ] = await Promise.all([
+      const [ entry, about, isReplicating ] = await Promise.all([
         self.contacts._getEntry(logId, contactId),
         self.about.get(contactAddress),
-        self.contacts.isConnected(contactAddress)
+        self.contacts.isReplicating(contactAddress)
       ])
 
+      let replicationStatus = {}
+      let replicationStats = {}
+      if (isReplicating) {
+        const log = await self.log.get(contactAddress)
+        replicationStatus = log.replicationStatus
+        replicationStats = log._replicator._stats
+      }
+
       return extend(about, peerEntry, entry, myEntry, {
-        isConnected,
+        isReplicating,
+        replicationStatus,
+        replicationStats,
         haveContact: self.log.mine().contacts.has(contactId),
         isMe: self.isMe(contactAddress)
       })
