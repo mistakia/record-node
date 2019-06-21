@@ -97,9 +97,11 @@ class RecordIndex {
     for (const [entryHash] of oplog._hashIndex) {
       if (!entryHashes.includes(entryHash)) {
         const entry = await oplog.get(entryHash)
-        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-        const dagNode = await oplog._storage.dag.get(entry.payload.value.content)
-        entry.payload.value.content = dagNode.value
+        if (entry.payload.op === 'PUT') {
+          entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
+          const dagNode = await oplog._storage.dag.get(entry.payload.value.content)
+          entry.payload.value.content = dagNode.value
+        }
         values.push(entry)
       }
     }
