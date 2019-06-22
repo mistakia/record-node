@@ -1,3 +1,4 @@
+const { CID } = require('ipfs')
 const { TrackEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
@@ -77,8 +78,12 @@ module.exports = function (self) {
       entry.payload.value.content = dagNode.value
 
       const { content } = entry.payload.value
-      entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
-      entry.payload.value.content.artwork = content.artwork.map(a => a.toBaseEncodedString('base58btc'))
+      if (CID.isCID(content.hash)) {
+        entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
+      }
+      entry.payload.value.content.artwork = content.artwork.map((a) => {
+        return CID.isCID(a) ? a.toBaseEncodedString('base58btc') : a
+      })
       return entry
     },
 
