@@ -165,12 +165,22 @@ module.exports = function tracks (self) {
       const log = self.log.mine()
       const track = await log.tracks.findOrCreate(trackData)
       self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
+      track.payload.value.haveTrack = true
       return track
     },
 
     get: async (logId, trackId) => {
       const log = await self.log.get(logId, { replicate: false })
       const entry = await log.tracks.getFromId(trackId)
+
+      if (!self.log.isMine(log)) {
+        const myLog = self.log.mine()
+        const haveTrack = myLog.tracks.has(entry.payload.key)
+        entry.payload.value.haveTrack = haveTrack
+      } else {
+        entry.payload.value.haveTrack = true
+      }
+
       return entry.payload.value
     },
 
@@ -189,10 +199,15 @@ module.exports = function tracks (self) {
         for (const index in entries) {
           const entry = entries[index]
           const trackId = entry.payload.key
-          if (myLog.tracks.has(trackId)) {
+          const haveTrack = myLog.tracks.has(trackId)
+          if (haveTrack) {
             entries[index] = await myLog.tracks.getFromId(trackId)
           }
+
+          entries[index].payload.value.haveTrack = haveTrack
         }
+      } else {
+        entries.forEach(e => { e.payload.value.haveTrack = true })
       }
 
       const tracks = entries.map(e => e.payload.value)
