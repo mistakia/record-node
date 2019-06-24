@@ -131,8 +131,7 @@ module.exports = function tracks (self) {
         trackData.resolver = [resolverData]
       }
 
-      const track = await self.tracks.add(trackData)
-      return track
+      return self.tracks.add(trackData)
     },
 
     addTrackFromUrl: async (resolverData) => {
@@ -153,8 +152,7 @@ module.exports = function tracks (self) {
       }
 
       const filepath = await downloadFile(resolverData)
-      const track = await self.tracks.addTrackFromFile(filepath, resolverData)
-      return track
+      return self.tracks.addTrackFromFile(filepath, resolverData)
     },
 
     addTrackFromCID: async (cid) => {
@@ -166,6 +164,7 @@ module.exports = function tracks (self) {
     add: async (trackData) => {
       const log = self.log.mine()
       const track = await log.tracks.findOrCreate(trackData)
+      self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
       return track
     },
 
