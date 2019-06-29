@@ -164,8 +164,8 @@ module.exports = function tracks (self) {
     add: async (trackData) => {
       const log = self.log.mine()
       const track = await log.tracks.findOrCreate(trackData)
-      self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
       track.payload.value.haveTrack = true
+      self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
       return track
     },
 
