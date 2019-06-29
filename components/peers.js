@@ -40,6 +40,10 @@ module.exports = function peers (self) {
       self._room.sendTo(peer, message)
     },
     _onLeave: (peerId) => {
+      if (!self.peers._index[peerId]) {
+        return
+      }
+
       const { address } = self.peers._index[peerId].content
       delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
