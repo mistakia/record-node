@@ -4,7 +4,7 @@ const { TrackEntry } = require('../RecordEntry')
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      let { start, end, random } = opts
+      let { start, end, random, query } = opts
       const tags = opts.tags && !Array.isArray(opts.tags) ? [opts.tags] : (opts.tags || [])
 
       if (tags.length && !tags.some(t => self._index.hasTag(t))) {
@@ -16,23 +16,40 @@ module.exports = function (self) {
         end = start + 1
       }
 
-      const indexEntries = Array
-        .from(self._index._index.track.values())
-        .reverse()
-        .slice(start, end)
-
       let entryHashes = []
 
-      if (tags.length) {
-        let i = 0
-        while (entryHashes.length < (end || Infinity) && indexEntries[i]) {
-          if (tags.every(t => indexEntries[i].tags.includes(t))) {
-            entryHashes.push(indexEntries[i].hash)
-          }
-          i++
+      if (query) {
+        let results = []
+        if (tags.length) {
+          results = await self._index._searchIndex.search(query, { where: (doc) => {
+            return tags.every((tag) => {
+              return doc.tags.indexOf(tag) !== -1
+            })
+          }})
+        } else {
+          results = await self._index._searchIndex.search(query)
         }
+
+        entryHashes = results.map(e => self._index._index.track.get(e.key).hash)
+
       } else {
-        entryHashes = indexEntries.map(e => e.hash)
+
+        const indexEntries = Array
+          .from(self._index._index.track.values())
+          .reverse()
+          .slice(start, end)
+
+        if (tags.length) {
+          let i = 0
+          while (entryHashes.length < (end || Infinity) && indexEntries[i]) {
+            if (tags.every(t => indexEntries[i].tags.includes(t))) {
+              entryHashes.push(indexEntries[i].hash)
+            }
+            i++
+          }
+        } else {
+          entryHashes = indexEntries.map(e => e.hash)
+        }
       }
 
       let promises = entryHashes.map(e => self.tracks.getFromHash(e))
