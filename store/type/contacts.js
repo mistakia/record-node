@@ -20,7 +20,7 @@ module.exports = function (self) {
 
     findOrCreate: async function (data) {
       const entry = await new ContactEntry().create(self._ipfs, data)
-      let contact = await self.get(entry._id, 'contact')
+      let contact = await self.get(entry.id, 'contact')
 
       if (!contact) {
         return this._add(entry)
@@ -35,7 +35,7 @@ module.exports = function (self) {
 
     _add: async (entry) => {
       await self.put(entry)
-      return self.contacts.getFromId(entry._id)
+      return self.contacts.getFromId(entry.id)
     },
 
     add: async (data) => {

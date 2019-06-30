@@ -17,7 +17,7 @@ module.exports = function peers (self) {
     get: (contactId) => {
       const peerIds = Object.keys(self.peers._index)
       const peers = peerIds.map(peerId => self.peers._index[peerId])
-      return peers.find(p => p._id === contactId)
+      return peers.find(p => p.id === contactId)
     },
     list: async () => {
       const peerIds = Object.keys(self.peers._index)
@@ -26,7 +26,7 @@ module.exports = function peers (self) {
         const about = self.peers._index[peerId]
         const contact = await self.contacts.get({
           logId: self.address,
-          contactId: about._id,
+          contactId: about.id,
           contactAddress: about.content.address
         })
         peers.push(contact)

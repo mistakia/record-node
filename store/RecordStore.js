@@ -20,7 +20,7 @@ function throttled (delay, fn) {
 
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
-    if (!options.indexBy) Object.assign(options, { indexBy: '_id' })
+    if (!options.indexBy) Object.assign(options, { indexBy: 'id' })
     if (!options.Index) Object.assign(options, { Index: RecordIndex })
     super(ipfs, id, dbname, options)
     this._type = RecordStore.type

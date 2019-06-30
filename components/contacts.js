@@ -15,7 +15,7 @@ module.exports = function contacts (self) {
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
         const { address } = contact.content
-        this._connect(address, contact._id)
+        this._connect(address, contact.id)
       }
 
       self.emit('redux', { type: 'CONTACTS_CONNECTED' })
@@ -34,7 +34,7 @@ module.exports = function contacts (self) {
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
         const { address } = contact.content
-        this._disconnect(address, contact._id)
+        this._disconnect(address, contact.id)
       }
 
       self.emit('redux', { type: 'CONTACTS_DISCONNECTED' })
@@ -165,24 +165,24 @@ module.exports = function contacts (self) {
     remove: async (contactId) => {
       const log = self.log.mine()
       await log.contacts.del(contactId)
-      return { _id: contactId }
+      return { id: contactId }
     },
 
     all: async () => {
       const all = new Map()
 
       const considerContact = async (contact) => {
-        const haveContact = await self.contacts.has(self.address, contact._id)
+        const haveContact = await self.contacts.has(self.address, contact.id)
         if (!haveContact) {
-          const suggestedContact = all.get(contact._id)
+          const suggestedContact = all.get(contact.id)
           const count = suggestedContact ? suggestedContact.count++ : 0
-          all.set(contact._id, extend(contact, { count }))
+          all.set(contact.id, extend(contact, { count }))
         }
       }
 
       const contacts = await self.contacts.list(self.address)
       for (const contact of contacts) {
-        all.set(contact._id, contact)
+        all.set(contact.id, contact)
         const contactsOfContact = await self.contacts.list(contact.content.address)
         for (const contactOfContact of contactsOfContact) {
           await considerContact(contactOfContact)
@@ -197,7 +197,7 @@ module.exports = function contacts (self) {
       const entries = await log.contacts.all()
       const getContact = (e) => self.contacts.get({
         logId,
-        contactId: e.payload.value._id,
+        contactId: e.payload.value.id,
         contactAddress: e.payload.value.content.address
       })
       const promises = entries.map(e => getContact(e))
