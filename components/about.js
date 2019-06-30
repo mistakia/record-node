@@ -14,12 +14,12 @@ module.exports = function about (self) {
       let entry = await log.about.get()
       let entryValue = entry ? entry.payload.value : { content: {} }
 
-      if (!entryValue._id) {
-        entryValue._id = await sha256(log.address.toString())
+      if (!entryValue.id) {
+        entryValue.id = await sha256(log.address.toString())
       }
 
       if (!entryValue.content.avatar) {
-        entryValue.content.avatar = generateAvatar(entryValue._id)
+        entryValue.content.avatar = generateAvatar(entryValue.id)
       }
 
       if (!entryValue.content.address) {

@@ -31,9 +31,7 @@ module.exports = function (self) {
         }
 
         entryHashes = results.map(e => self._index._index.track.get(e.key).hash)
-
       } else {
-
         const indexEntries = Array
           .from(self._index._index.track.values())
           .reverse()
@@ -62,7 +60,7 @@ module.exports = function (self) {
 
     findOrCreate: async function (content) {
       const entry = await new TrackEntry().create(self._ipfs, content)
-      let track = await self.get(entry._id, 'track')
+      let track = await self.get(entry.id, 'track')
 
       if (!track) {
         return this._add(entry)
@@ -77,7 +75,7 @@ module.exports = function (self) {
 
     _add: async (entry) => {
       await self.put(entry)
-      return self.tracks.getFromId(entry._id)
+      return self.tracks.getFromId(entry.id)
     },
 
     add: async (content, tags) => {
