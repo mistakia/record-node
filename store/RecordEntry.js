@@ -8,7 +8,7 @@ class Entry {
 
   async create (ipfs, id, content) {
     this._entry = {
-      _id: id,
+      id,
       timestamp: Date.now(),
       v: 0,
       type: this._type,
