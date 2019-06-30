@@ -1,4 +1,5 @@
 const Log = require('ipfs-log')
+const FlexSearch = require('flexsearch')
 
 class RecordIndex {
   constructor (id) {
@@ -8,6 +9,21 @@ class RecordIndex {
       track: new Map(),
       contact: new Map()
     }
+
+    // TODO: import from disk
+    this._searchIndex = new FlexSearch('speed', {
+      async: true,
+      doc: {
+        id: 'key',
+        field: [
+          'title',
+          'artist',
+          'album',
+          'resolver'
+        ],
+        tag: ['tags']
+      }
+    })
   }
 
   hasTag (tag) {
@@ -55,9 +71,16 @@ class RecordIndex {
         cache.tags = item.payload.value.tags
         const { resolver } = item.payload.value.content
         cache.resolver = resolver.map(r => `${r.extractor}:${r.id}`)
+        this._searchIndex.add({
+          key,
+          resolver: resolver.map(r => r.fulltitle).join(' '),
+          tags: item.payload.value.tags,
+          ...item.payload.value.content.tags
+        })
       }
       this._index[type].set(key, cache)
     } else if (item.payload.op === 'DEL') {
+      this._searchIndex.remove(key)
       this._index[type].delete(key)
     }
   }

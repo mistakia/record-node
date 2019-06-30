@@ -54,6 +54,13 @@ try {
     } catch (e) {
       console.log(e)
     }
+
+    try {
+      const tracks = await record.tracks.list(record.address, { query: 'asa moto' })
+      console.log(tracks)
+    } catch (e) {
+      console.log(e)
+    }
   })
 } catch (e) {
   console.log(e)
