@@ -43,7 +43,7 @@ const downloadFile = (resolverData) => {
 
     fetch(resolverData.url).then(res => {
       if (!res.ok) {
-        return reject(new Error('unexpected status code: ' + res.status))
+        return reject(new Error(`unexpected status code: ${res.status} - ${resolverData.url}`))
       }
 
       peek(res.body, fileType.minimumBytes, (err, chunk, outputStream) => {
