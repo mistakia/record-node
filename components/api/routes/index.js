@@ -1,6 +1,8 @@
 exports.about = require('./about')
+exports.connect = require('./connect')
 exports.contact = require('./contact')
 exports.contacts = require('./contacts')
+exports.disconnect = require('./disconnect')
 exports.feed = require('./feed')
 exports.info = require('./info')
 exports.listens = require('./listens')
