@@ -26,8 +26,10 @@ module.exports = (self) => {
   })
 
   app.use('/about', routes.about)
+  app.use('/connect', routes.connect)
   app.use('/contact', routes.contact)
   app.use('/contacts', routes.contacts)
+  app.use('/disconnect', routes.disconnect)
   app.use('/feed', routes.feed)
   app.use('/info', routes.info)
   app.use('/listens', routes.listens)
