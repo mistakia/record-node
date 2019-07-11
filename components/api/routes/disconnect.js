@@ -13,3 +13,5 @@ router.get(':logAddress(*)', async (req, res) => {
     res.status(500).send({ error: err.toString() })
   }
 })
+
+module.exports = router
