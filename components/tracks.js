@@ -9,6 +9,7 @@ const fetch = require('node-fetch')
 const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
+const { sha256 } = require('crypto-hash')
 const { CID } = require('ipfs')
 
 const getAcoustID = (filepath) => {
@@ -102,6 +103,14 @@ module.exports = function tracks (self) {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath)
       self.logger(`Generated AcoustID Fingerprint`)
+
+      const log = self.log.mine()
+      const id = await sha256(acoustid.fingerprint)
+      const exists = await log.tracks.getFromId(id)
+      if (exists) {
+        return exists
+      }
+
       const metadata = await musicMetadata.parseFile(filepath)
       const pictures = metadata.common.picture
       delete metadata.common.picture
