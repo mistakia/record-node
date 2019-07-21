@@ -88,17 +88,23 @@ module.exports = function (self) {
         return null
       }
 
-      entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-      const dagNode = await self._ipfs.dag.get(entry.payload.value.content, { localResolve: true })
-      entry.payload.value.content = dagNode.value
+      // convert entry content cid to value of dagNode
+      if (CID.isCID(entry.payload.value.content)) {
+        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
+        const dagNode = await self._ipfs.dag.get(entry.payload.value.content, { localResolve: true })
+        entry.payload.value.content = dagNode.value
 
-      const { content } = entry.payload.value
-      if (CID.isCID(content.hash)) {
-        entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
+        const { content } = entry.payload.value
+        if (CID.isCID(content.hash)) {
+          entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
+        }
+
+        // convert artwork cids to string
+        entry.payload.value.content.artwork = content.artwork.map((a) => {
+          return CID.isCID(a) ? a.toBaseEncodedString('base58btc') : a
+        })
       }
-      entry.payload.value.content.artwork = content.artwork.map((a) => {
-        return CID.isCID(a) ? a.toBaseEncodedString('base58btc') : a
-      })
+
       return entry
     },
 
