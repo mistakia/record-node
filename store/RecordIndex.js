@@ -1,16 +1,30 @@
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
+const { CID } = require('ipfs')
+
+const debounce = (callback, wait) => {
+  let timeout = null
+  return (...args) => {
+    const next = () => callback(...args)
+    clearTimeout(timeout)
+    timeout = setTimeout(next, wait)
+  }
+}
 
 class RecordIndex {
-  constructor (id) {
+  constructor (oplog, cache) {
+    this._cacheIndexKey = '_recordStoreIndex'
+    this._cacheSearchIndexKey = '_recordStoreSearchIndex'
+    this._oplog = oplog
+    this._cache = cache
+    this._queue = new Map()
+    this._throttledProcess = debounce(this._processOne.bind(this), 1)
     this._index = {
       tags: {},
       about: null,
       track: new Map(),
       contact: new Map()
     }
-
-    // TODO: import from disk
     this._searchIndex = new FlexSearch('speed', {
       async: true,
       doc: {
@@ -24,6 +38,62 @@ class RecordIndex {
         tag: ['tags']
       }
     })
+  }
+
+  async save () {
+    await this._cache.set(this._cacheIndexKey, this._exportIndex())
+    await this._cache.set(this._cacheSearchIndexKey, this._searchIndex.export())
+  }
+
+  _exportIndex () {
+    let tmp = {
+      track: Array.from(this._index.track.entries()),
+      contact: Array.from(this._index.contact.entries()),
+      tags: this._index.tags,
+      about: this._index.about
+    }
+    return JSON.stringify(tmp)
+  }
+
+  _importIndex (str) {
+    const idx = JSON.parse(str)
+    this._index = {
+      tags: idx.tags,
+      about: idx.about,
+      track: new Map(idx.track),
+      contact: new Map(idx.contact)
+    }
+  }
+
+  async _processOne () {
+    const hash = this._queue.keys().next().value
+    let entry = this._queue.get(hash)
+
+    // load entry if necessary
+    if (!entry.payload) {
+      entry = await this._oplog.get(entry)
+    }
+
+    // load content from ipfs
+    if (CID.isCID(entry.payload.value.content)) {
+      entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
+      const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
+      entry.payload.value.content = dagNode.value
+    }
+
+    this.add(entry)
+
+    this.updateTags()
+    this.sort()
+
+    this._queue.delete(hash)
+    if (this._queue.size) this._throttledProcess()
+    else await this.save()
+  }
+
+  process (entry) {
+    this._queue.set(entry.hash || entry, entry)
+    this._throttledProcess()
   }
 
   hasTag (tag) {
@@ -97,46 +167,52 @@ class RecordIndex {
     this._index.contact = new Map([...this._index.contact.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
   }
 
-  async updateIndex (oplog, onProgressCallback) {
-    const reducer = (handled, item, idx) => {
-      const { key } = item.payload
+  async loadIndex (oplog) {
+    this._oplog = oplog
+    const idx = await this._cache.get(this._cacheIndexKey)
+    if (idx) this._importIndex(idx)
 
-      if (handled[key] !== true) {
-        handled[key] = true
-        this.add(item)
-      }
-
-      if (onProgressCallback) onProgressCallback(item, idx)
-      return handled
-    }
+    const searchIdx = await this._cache.get(this._cacheSearchIndexKey)
+    if (searchIdx) this._searchIndex.import(searchIdx)
 
     // Get all Hashes in Index
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
-    const entryHashes = [].concat(trackHashes, contactHashes)
+    const queueHashes = Array.from(this._queue.keys())
+    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
-    // Get Hashes from oplog not in Index
-    let values = []
-    for (const [entryHash] of oplog._hashIndex) {
+    // queue up entries not already in index or in queue
+    for (const [entryHash] of this._oplog._hashIndex) {
       if (!entryHashes.includes(entryHash)) {
-        const entry = await oplog.get(entryHash)
-        if (entry.payload.op === 'PUT') {
-          entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-          const dagNode = await oplog._storage.dag.get(entry.payload.value.content)
-          entry.payload.value.content = dagNode.value
-        }
-        values.push(entry)
+        this.process(entryHash)
       }
     }
+  }
 
-    // Reverse new Hashes and add to Index
-    values.sort(Log.Entry.compare).reverse().reduce(reducer, {})
+  async updateIndex (entry) {
+    // Get all Hashes in Index + Queue
+    const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
+    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
+    const queueHashes = Array.from(this._queue.keys())
+    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
-    // Build tags Index
-    this.updateTags()
+    if (!entryHashes.includes(entry.hash)) {
+      if (entry.payload.op === 'PUT' && CID.isCID(entry.payload.value.content)) {
+        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
+        const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
+        entry.payload.value.content = dagNode.value
+      }
+      this.add(entry)
 
-    // Re-sort Index
-    this.sort()
+      // Build tags Index
+      this.updateTags()
+
+      // Re-sort Index
+      this.sort()
+
+      // Save to disk
+      await this.save()
+    }
   }
 }
 
