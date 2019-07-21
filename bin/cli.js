@@ -56,8 +56,27 @@ try {
     }
 
     try {
-      const tracks = await record.tracks.list(record.address, { query: 'asa moto' })
+      const tracks = await record.tracks.list(record.address, { query: 'kifesh' })
       console.log(tracks)
+    } catch (e) {
+      console.log(e)
+    }
+
+    try {
+      setTimeout(async () => {
+        await record.contacts.connect()
+        await record.contacts.add({ address: '/orbitdb/zdpuB13FxzpXQjHggqHsLkPWeXDabcPucNs7vesGRaBHgaqxU/record' })
+      }, 5000)
+
+      record.on('redux', (data) => {
+        if (data.type === 'CONTACT_REPLICATE_PROGRESS') {
+          const { replicationStatus, replicationStats } = data.payload
+          const progress = Math.max(replicationStats.tasksProcessed, replicationStatus.progress)
+          const percent = Math.round((progress / replicationStatus.max) * 100)
+          console.log(`Replication: ${percent}%`)
+        }
+      })
+
     } catch (e) {
       console.log(e)
     }

@@ -1,14 +1,19 @@
 class RecordFeedIndex {
-  constructor (id) {
+  constructor (oplog) {
+    this._oplog = oplog
     this._index = []
   }
 
   getEntryIndex (hash) {
-    return this._index.indexOf(hash)
+    return Array.from(this._oplog._hashIndex.keys()).indexOf(hash)
   }
 
-  async updateIndex (oplog) {
-    this._index = Array.from(oplog._hashIndex.keys())
+  async loadIndex () {
+    // TODO
+  }
+
+  async updateIndex () {
+    // do nothing
   }
 }
 
