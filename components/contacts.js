@@ -47,14 +47,14 @@ module.exports = function contacts (self) {
       log.events.on('replicated', (logId) => {
         self.emit('redux', {
           type: 'CONTACT_REPLICATED',
-          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats }
+          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
       })
 
       log.events.on('replicate.progress', (logId, hash, entry, progress, total) => {
         self.emit('redux', {
           type: 'CONTACT_REPLICATE_PROGRESS',
-          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats }
+          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
 
         self.logger(`new entry ${address}/${entry.hash}`)
@@ -142,16 +142,19 @@ module.exports = function contacts (self) {
 
       let replicationStatus = {}
       let replicationStats = {}
+      let length = 0
       if (isReplicating) {
         const log = await self.log.get(contactAddress)
         replicationStatus = log.replicationStatus
         replicationStats = log._replicator._stats
+        length = log._oplog._hashIndex.size
       }
 
       return extend(about, peerEntry, entry, myEntry, {
         isReplicating,
         replicationStatus,
         replicationStats,
+        length,
         haveContact: self.log.mine().contacts.has(contactId),
         isMe: self.isMe(contactAddress)
       })
