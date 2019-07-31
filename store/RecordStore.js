@@ -6,18 +6,6 @@ const contacts = require('./type/contacts')
 const tags = require('./type/tags')
 const about = require('./type/about')
 
-function throttled (delay, fn) {
-  let lastCall = 0
-  return function (...args) {
-    const now = (new Date()).getTime()
-    if (now - lastCall < delay) {
-      return
-    }
-    lastCall = now
-    return fn(...args)
-  }
-}
-
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
     if (!options.indexBy) Object.assign(options, { indexBy: 'id' })

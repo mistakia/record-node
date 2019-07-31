@@ -134,10 +134,11 @@ module.exports = function contacts (self) {
         peerEntry = self.peers.get(contactId)
       }
 
-      const [ entry, about, isReplicating ] = await Promise.all([
+      const [ entry, about, isReplicating, peers ] = await Promise.all([
         self.contacts._getEntry(logId, contactId),
         self.about.get(contactAddress),
-        self.contacts.isReplicating(contactAddress)
+        self.contacts.isReplicating(contactAddress),
+        self._ipfs.pubsub.peers(contactAddress)
       ])
 
       let replicationStatus = {}
@@ -152,6 +153,7 @@ module.exports = function contacts (self) {
 
       return extend(about, peerEntry, entry, myEntry, {
         isReplicating,
+        peers,
         replicationStatus,
         replicationStats,
         length,

@@ -76,7 +76,6 @@ try {
           console.log(`Replication: ${percent}%`)
         }
       })
-
     } catch (e) {
       console.log(e)
     }

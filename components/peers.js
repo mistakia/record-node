@@ -27,7 +27,8 @@ module.exports = function peers (self) {
         const contact = await self.contacts.get({
           logId: self.address,
           contactId: about.id,
-          contactAddress: about.content.address
+          contactAddress: about.content.address,
+          peerId
         })
         peers.push(contact)
       }
@@ -49,8 +50,8 @@ module.exports = function peers (self) {
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
       self.emit('redux', {
-        type: 'PEER_LEFT',
-        payload: { logId: address, peerCount }
+        type: 'RECORD_PEER_LEFT',
+        payload: { logId: address, peerCount, peerId }
       })
     },
     _onMessage: async (message) => {
@@ -67,8 +68,8 @@ module.exports = function peers (self) {
         const peerCount = Object.keys(self.peers._index).length
         self.logger.log(`Record peer added, current count: ${peerCount}`)
         self.emit('redux', {
-          type: 'PEER_JOINED',
-          payload: { logId: address, peerCount }
+          type: 'RECORD_PEER_JOINED',
+          payload: { logId: address, peerCount, peerId: message.from }
         })
       } catch (e) {
         self.logger.err(e)

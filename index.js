@@ -134,7 +134,14 @@ class RecordNode extends EventEmitter {
     this.bootstrap._init()
     this.peers._init()
 
-    this.emit('ready')
+    const ipfs = await this._ipfs.id()
+    this.emit('ready', {
+      orbitdb: {
+        address: this._log.address.toString(),
+        publicKey: this._log.identity.publicKey
+      },
+      ipfs
+    })
   }
 
   async stop () {
@@ -162,6 +169,8 @@ class RecordNode extends EventEmitter {
   }
 
   async start () {
+    this.info._init()
+
     await this._ipfs.start()
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
