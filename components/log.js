@@ -47,6 +47,12 @@ module.exports = function log (self) {
       const opts = extend({}, self._options.store, options)
       self.logger(`Loading log: ${logId}`, opts)
       const log = await self._orbitdb.open(logId, opts)
+      log.events.on('peer', (peerId) => {
+        self.emit('redux', {
+          type: 'CONTACT_PEER_JOINED',
+          payload: { logId, peerId }
+        })
+      })
       await log.load()
       return log
     }
