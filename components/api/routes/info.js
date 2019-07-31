@@ -4,7 +4,7 @@ const router = express.Router()
 router.get('/?', async (req, res) => {
   try {
     const { record } = req.app.locals
-    const data = await record.info()
+    const data = await record.info.get()
     res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
