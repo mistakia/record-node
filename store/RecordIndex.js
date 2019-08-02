@@ -142,11 +142,14 @@ class RecordIndex {
         cache.tags = item.payload.value.tags
         const { resolver } = item.payload.value.content
         cache.resolver = resolver.map(r => `${r.extractor}:${r.id}`)
+        const { title, artist, album } = item.payload.value.content.tags
         this._searchIndex.add({
           key,
           resolver: resolver.map(r => r.fulltitle).join(' '),
           tags: item.payload.value.tags,
-          ...item.payload.value.content.tags
+          title,
+          artist,
+          album
         })
       }
       this._index[type].set(key, cache)
