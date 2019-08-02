@@ -27,7 +27,8 @@ module.exports = function (self) {
         return this._add(entry)
       }
 
-      if (!entry.content.equals(contact.payload.value.content)) {
+      const contentCID = contact.payload.value.cid || contact.payload.value.content
+      if (!entry.content.equals(contentCID)) {
         return this._add(entry)
       }
 
@@ -51,6 +52,7 @@ module.exports = function (self) {
       }
 
       if (CID.isCID(entry.payload.value.content)) {
+        entry.payload.value.cid = entry.payload.value.content
         entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
         const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
         entry.payload.value.content = dagNode.value

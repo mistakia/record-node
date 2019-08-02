@@ -66,7 +66,9 @@ module.exports = function (self) {
         return this._add(entry)
       }
 
-      if (!entry.content.equals(track.payload.value.content)) {
+      const contentCID = track.payload.value.cid || track.payload.value.content
+
+      if (!entry.content.equals(contentCID)) {
         return this._add(entry)
       }
 
@@ -90,6 +92,7 @@ module.exports = function (self) {
 
       // convert entry content cid to value of dagNode
       if (CID.isCID(entry.payload.value.content)) {
+        entry.payload.value.cid = entry.payload.value.content
         entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
         const dagNode = await self._ipfs.dag.get(entry.payload.value.content, { localResolve: true })
         entry.payload.value.content = dagNode.value

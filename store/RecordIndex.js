@@ -76,6 +76,7 @@ class RecordIndex {
 
     // load content from ipfs
     if (CID.isCID(entry.payload.value.content)) {
+      entry.payload.value.cid = entry.payload.value.content
       entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
       const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
       entry.payload.value.content = dagNode.value
@@ -198,6 +199,7 @@ class RecordIndex {
 
     if (!entryHashes.includes(entry.hash)) {
       if (entry.payload.op === 'PUT' && CID.isCID(entry.payload.value.content)) {
+        entry.payload.value.cid = entry.payload.value.content
         entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
         const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
         entry.payload.value.content = dagNode.value
