@@ -11,22 +11,34 @@ const debounce = (callback, wait) => {
   }
 }
 
+const isLocal = (ipfs, cid) => new Promise((resolve, reject) => {
+  ipfs._repo.blocks.has(cid, (err, exists) => {
+    if (err) reject(err)
+    resolve(exists)
+  })
+})
+
+const defaultIndex = {
+  tags: {},
+  about: null,
+  track: new Map(),
+  contact: new Map()
+}
+
+const CACHE_VERSION = 0
+
 class RecordIndex {
   constructor (oplog, cache) {
-    this._cacheIndexKey = '_recordStoreIndex'
-    this._cacheSearchIndexKey = '_recordStoreSearchIndex'
+    this._cacheIndexKey = '_recordStoreIndex:${CACHE_VERSION}'
+    this._cacheSearchIndexKey = '_recordStoreSearchIndex:${CACHE_VERSION}'
     this._oplog = oplog
     this._cache = cache
     this._queue = new Map()
     this._throttledProcess = debounce(this._processOne.bind(this), 1)
-    this._index = {
-      tags: {},
-      about: null,
-      track: new Map(),
-      contact: new Map()
-    }
+    this._index = defaultIndex
     this._searchIndex = new FlexSearch('speed', {
       async: true,
+      cache: 1000,
       doc: {
         id: 'key',
         field: [
@@ -38,6 +50,52 @@ class RecordIndex {
         tag: ['tags']
       }
     })
+  }
+
+  async rebuild () {
+    this._index = defaultIndex
+    this._searchIndex.clear()
+
+    await this.build()
+  }
+
+  async build () {
+    // Get all Hashes in Index
+    const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
+    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
+    const queueHashes = Array.from(this._queue.keys())
+    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
+
+    for (const entryHash of Array.from(this._oplog._hashIndex.keys()).reverse()) {
+      if (entryHashes.includes(entryHash)) {
+        continue
+      }
+
+      const entry = await this._oplog.get(entryHash)
+      const { key } = entry.payload
+      const { type } = entry.payload.value
+      const cache = this.getEntry(key, type)
+      if (cache && cache.clock.time > entry.clock.time) {
+        continue
+      }
+
+      if (CID.isCID(entry.payload.value.content)) {
+        const haveLocally = await isLocal(this._oplog._storage, entry.payload.value.content)
+        if (!haveLocally) {
+          this.process(entry)
+          continue
+        }
+
+        const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
+        entry.payload.value.content = dagNode.value
+      }
+      this.add(entry)
+    }
+
+    this.updateTags()
+    this.sort()
+
+    await this.save()
   }
 
   async save () {
@@ -179,18 +237,7 @@ class RecordIndex {
     const searchIdx = await this._cache.get(this._cacheSearchIndexKey)
     if (searchIdx) this._searchIndex.import(searchIdx)
 
-    // Get all Hashes in Index
-    const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
-    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
-    const queueHashes = Array.from(this._queue.keys())
-    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
-
-    // queue up entries not already in index or in queue
-    for (const [entryHash] of this._oplog._hashIndex) {
-      if (!entryHashes.includes(entryHash)) {
-        this.process(entryHash)
-      }
-    }
+    await this.build()
   }
 
   async updateIndex (entry) {

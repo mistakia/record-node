@@ -53,7 +53,17 @@ module.exports = function log (self) {
           payload: { logId, peerId }
         })
       })
+
+      self.emit('redux', {
+        type: 'CONTACT_LOADING',
+        payload: { logId }
+      })
       await log.load()
+      self.emit('redux', {
+        type: 'CONTACT_READY',
+        payload: { logId }
+      })
+
       return log
     }
   }
