@@ -18,12 +18,12 @@ const isLocal = (ipfs, cid) => new Promise((resolve, reject) => {
   })
 })
 
-const defaultIndex = {
+const defaultIndex = () => ({
   tags: {},
   about: null,
   track: new Map(),
   contact: new Map()
-}
+})
 
 const CACHE_VERSION = 0
 
@@ -35,7 +35,7 @@ class RecordIndex {
     this._cache = cache
     this._queue = new Map()
     this._throttledProcess = debounce(this._processOne.bind(this), 1)
-    this._index = defaultIndex
+    this._index = defaultIndex()
     this._searchIndex = new FlexSearch('speed', {
       async: true,
       cache: 1000,
@@ -53,7 +53,7 @@ class RecordIndex {
   }
 
   async rebuild () {
-    this._index = defaultIndex
+    this._index = defaultIndex()
     this._searchIndex.clear()
 
     await this.build()
