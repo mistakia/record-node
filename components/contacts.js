@@ -126,7 +126,7 @@ module.exports = function contacts (self) {
 
       let myEntry = {}
       if (!self.isMe(logId)) {
-        myEntry = self.contacts._getEntry(self.address, contactId)
+        myEntry = await self.contacts._getEntry(self.address, contactId)
       }
 
       let peerEntry = {}
