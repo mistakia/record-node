@@ -182,6 +182,10 @@ module.exports = function tracks (self) {
       const log = await self.log.get(logId, { replicate: false })
       const entry = await log.tracks.getFromId(trackId)
 
+      if (!entry) {
+        return null
+      }
+
       if (!self.log.isMine(log)) {
         const myLog = self.log.mine()
         const haveTrack = myLog.tracks.has(entry.payload.key)

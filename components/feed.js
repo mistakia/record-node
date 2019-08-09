@@ -32,7 +32,10 @@ module.exports = function feed (self) {
         const { entryType, logId, entryId } = feedEntry.payload
         const contact = await self.contacts.get({ logId: self.address, contactAddress: logId })
         const entry = await self[`${entryType}s`].get(logId, entryId)
-        entries.push(extend(feedEntry.payload, { contact }, { content: entry }))
+        // TODO: handle unindexed feed items
+        if (entry) {
+          entries.push(extend(feedEntry.payload, { contact }, { content: entry }))
+        }
       }
       return entries
     }
