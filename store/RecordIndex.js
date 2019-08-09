@@ -2,10 +2,10 @@ const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
 const { CID } = require('ipfs')
 
-const debounce = (callback, wait) => {
+const debounce = (func, wait) => {
   let timeout = null
   return (...args) => {
-    const next = () => callback(...args)
+    const next = () => func(...args)
     clearTimeout(timeout)
     timeout = setTimeout(next, wait)
   }
@@ -29,8 +29,8 @@ const CACHE_VERSION = 0
 
 class RecordIndex {
   constructor (oplog, cache) {
-    this._cacheIndexKey = '_recordStoreIndex:${CACHE_VERSION}'
-    this._cacheSearchIndexKey = '_recordStoreSearchIndex:${CACHE_VERSION}'
+    this._cacheIndexKey = `_recordStoreIndex:${CACHE_VERSION}`
+    this._cacheSearchIndexKey = `_recordStoreSearchIndex:${CACHE_VERSION}`
     this._oplog = oplog
     this._cache = cache
     this._queue = new Map()
