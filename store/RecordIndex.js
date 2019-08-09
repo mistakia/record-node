@@ -25,7 +25,7 @@ const defaultIndex = () => ({
   contact: new Map()
 })
 
-const CACHE_VERSION = 0
+const CACHE_VERSION = 1
 
 class RecordIndex {
   constructor (oplog, cache) {
@@ -86,6 +86,8 @@ class RecordIndex {
           continue
         }
 
+        entry.payload.value.cid = entry.payload.value.content
+        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
         const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
         entry.payload.value.content = dagNode.value
       }
