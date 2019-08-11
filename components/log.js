@@ -2,7 +2,7 @@ const extend = require('deep-extend')
 
 module.exports = function log (self) {
   return {
-    _init: async (address = self._options.address) => {
+    _init: async (address = 'record') => {
       const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
