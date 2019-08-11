@@ -84,7 +84,7 @@ class RecordNode extends EventEmitter {
 
     this._ipfs = new IPFS(this._options.ipfs)
     this._ipfs.on('error', this.emit.bind(this))
-    this._ipfs.on('ready', this._init.bind(this))
+    this._ipfs.on('ready', this._ready.bind(this))
     this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
 
     this.resolve = resolver
@@ -115,29 +115,8 @@ class RecordNode extends EventEmitter {
     return this.address === logId
   }
 
-  async _init () {
-    this._options.orbitdb.storage = Storage(leveldown)
-    let keyStorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
-    this._options.orbitdb.keystore = new Keystore(keyStorage)
-    const key = this._options.key ||
-      (this._options.id && await getKey(this._options.id, this._options.orbitdb.keystore)) ||
-      await createKey()
-    this._id = await sha256(key.publicKey)
-    keyStorage.put(this._id, JSON.stringify(key))
-
-    this._options.orbitdb.identity = await Identities.createIdentity({
-      id: this._id,
-      keystore: this._options.orbitdb.keystore
-    })
-
-    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-
-    await this.log._init()
-    await this.feed._init()
-    await this.listens._init()
-
-    this.bootstrap._init()
-    this.peers._init()
+  async _ready () {
+    await this._init(this._options.key, this._options.address)
 
     const ipfs = await this._ipfs.id()
     this.emit('ready', {
@@ -148,6 +127,37 @@ class RecordNode extends EventEmitter {
       },
       ipfs
     })
+  }
+
+  async _init (key, address) {
+    this._options.orbitdb.storage = Storage(leveldown)
+    this._keystorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
+    this._options.orbitdb.keystore = new Keystore(this._keystorage)
+
+    if (!key) {
+      if (this._options.id) {
+        key = await getKey(this._options.id, this._options.orbitdb.keystore)
+      } else {
+        key = await createKey()
+      }
+    }
+
+    this._id = await sha256(key.publicKey)
+    this._keystorage.put(this._id, JSON.stringify(key))
+
+    this._options.orbitdb.identity = await Identities.createIdentity({
+      id: this._id,
+      keystore: this._options.orbitdb.keystore
+    })
+
+    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+
+    await this.log._init(address)
+    await this.feed._init()
+    await this.listens._init()
+
+    this.bootstrap._init()
+    this.peers._init()
   }
 
   async stop () {
@@ -195,18 +205,14 @@ class RecordNode extends EventEmitter {
   }
 
   async setIdentity (pk) {
-    await this._orbitdb.stop()
+    await Promise.all([
+      this.bootstrap._stop(),
+      this._orbitdb.stop(),
+      this.peers._stop()
+    ])
 
     const key = await createKeyFromPk(pk)
-    this._id = await sha256(key.publicKey)
-    this._options.orbitdb.keystore.put(this._id, JSON.stringify(key))
-
-    this._options.orbitdb.identity = await Identities.createIdentity({
-      id: this._id,
-      keystore: this._options.orbitdb.keystore
-    })
-
-    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+    await this._init(key)
 
     const data = {
       id: this._id,
