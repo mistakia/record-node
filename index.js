@@ -189,6 +189,11 @@ class RecordNode extends EventEmitter {
     this.peers._init()
   }
 
+  async getKeys () {
+    const keys = await getKey(this._options.id, this._options.orbitdb.keystore)
+    return keys
+  }
+
   async setIdentity (pk) {
     await this._orbitdb.stop()
 
@@ -202,6 +207,16 @@ class RecordNode extends EventEmitter {
     })
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
+
+    const data = {
+      id: this._id,
+      orbitdb: {
+        address: this._log.address.toString(),
+        publicKey: this._log.identity.publicKey
+      }
+    }
+    this.emit('id', data)
+    return data
   }
 
   static async createFromKey (pk, opts = defaultConfig) {
