@@ -54,6 +54,33 @@ module.exports = function log (self) {
         })
       })
 
+      log.events.on('processed', () => {
+        self.emit('redux', {
+          type: 'CONTACT_INDEX_UPDATED',
+          payload: { logId, isProcessingIndex: log._index.isProcessing }
+        })
+      })
+
+      log.events.on('processing', (processingCount) => {
+        self.emit('redux', {
+          type: 'CONTACT_INDEX_UPDATED',
+          payload: { logId, isProcessingIndex: log._index.isProcessing, processingCount }
+        })
+      })
+
+      log.events.on('indexUpdated', (processingCount) => {
+        self.emit('redux', {
+          type: 'CONTACT_INDEX_UPDATED',
+          payload: {
+            logId,
+            isProcessingIndex: log._index.isProcessing,
+            processingCount,
+            trackCount: log._index.trackCount,
+            contactCount: log._index.contactCount
+          }
+        })
+      })
+
       self.emit('redux', {
         type: 'CONTACT_LOADING',
         payload: { logId }
