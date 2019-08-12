@@ -30,6 +30,7 @@ class RecordIndex {
     this._queue = new Map()
     this._throttledProcess = debounce(this._processOne.bind(this), 1)
     this._index = defaultIndex()
+    this._isBuilding = false
     this._searchIndex = new FlexSearch('speed', {
       async: true,
       cache: 1000,
@@ -46,6 +47,22 @@ class RecordIndex {
     })
   }
 
+  get isBuilding () {
+    return this._isBuilding
+  }
+
+  get isProcessing () {
+    return !!this._queue.size
+  }
+
+  get trackCount () {
+    return this._index.track.size
+  }
+
+  get contactCount () {
+    return this._index.contact.size
+  }
+
   async rebuild () {
     this._index = defaultIndex()
     this._searchIndex.clear()
@@ -54,6 +71,7 @@ class RecordIndex {
   }
 
   async build () {
+    this._isBuilding = true
     // Get all Hashes in Index
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
@@ -92,6 +110,7 @@ class RecordIndex {
     this.sort()
 
     await this.save()
+    this._isBuilding = false
   }
 
   async save () {

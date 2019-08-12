@@ -134,29 +134,47 @@ module.exports = function contacts (self) {
         peerEntry = self.peers.get(contactId)
       }
 
-      const [ entry, about, isReplicating, peers ] = await Promise.all([
+      const [ entry, about, peers ] = await Promise.all([
         self.contacts._getEntry(logId, contactId),
         self.about.get(contactAddress),
-        self.contacts.isReplicating(contactAddress),
         self._ipfs.pubsub.peers(contactAddress)
       ])
 
       let replicationStatus = {}
       let replicationStats = {}
       let length = 0
-      if (isReplicating) {
+      let trackCount = 0
+      let contactCount = 0
+      let isReplicating = false
+      let isBuildingIndex = false
+      let isProcessingIndex = false
+      let heads = []
+
+      if (self.log.isOpen(contactAddress)) {
         const log = await self.log.get(contactAddress)
+
+        isReplicating = log.options.replicate
         replicationStatus = log.replicationStatus
         replicationStats = log._replicator._stats
         length = log._oplog._hashIndex.size
+        heads = log._oplog.heads
+        isBuildingIndex = log._index.isBuilding
+        isProcessingIndex = log._index.isProcessing
+        trackCount = log._index.trackCount
+        contactCount = log._index.contactCount
       }
 
       return extend(about, peerEntry, entry, myEntry, {
         isReplicating,
+        isBuildingIndex,
+        isProcessingIndex,
+        trackCount,
+        contactCount,
         peers,
         replicationStatus,
         replicationStats,
         length,
+        heads,
         haveContact: self.log.mine().contacts.has(contactId),
         isMe: self.isMe(contactAddress)
       })
