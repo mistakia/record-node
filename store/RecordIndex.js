@@ -1,6 +1,7 @@
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
 const { CID } = require('ipfs')
+const { isLocal } = require('../utils')
 
 const debounce = (func, wait) => {
   let timeout = null
@@ -10,13 +11,6 @@ const debounce = (func, wait) => {
     timeout = setTimeout(next, wait)
   }
 }
-
-const isLocal = (ipfs, cid) => new Promise((resolve, reject) => {
-  ipfs._repo.blocks.has(cid, (err, exists) => {
-    if (err) reject(err)
-    resolve(exists)
-  })
-})
 
 const defaultIndex = () => ({
   tags: {},
