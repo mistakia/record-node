@@ -2,6 +2,9 @@ const express = require('express')
 const fileType = require('file-type')
 const mime = require('mime-types')
 const peek = require('buffer-peek-stream')
+const { CID } = require('ipfs')
+
+const { isLocal } = require('../../../utils')
 
 const router = express.Router()
 
@@ -15,10 +18,18 @@ const detectContentType = (chunk) => {
   return mime.contentType(mimeType)
 }
 
-router.get('/:cid(*)', async (req, res) => {
+router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
   try {
     const { cid } = req.params
+    const { localOnly } = req.query
     const { record } = req.app.locals
+
+    if (localOnly) {
+      const haveLocally = await isLocal(record._ipfs, new CID(cid))
+      if (!haveLocally) {
+        return res.status(204).send(null)
+      }
+    }
 
     const range = req.headers.range
     const { size } = await record._ipfs.files.stat(`/ipfs/${cid}`)
