@@ -19,7 +19,7 @@ module.exports = function about (self) {
       }
 
       if (!entryValue.content.avatar) {
-        entryValue.content.avatar = generateAvatar(entryValue.id)
+        entryValue.content.avatar = generateAvatar(logId)
       }
 
       if (!entryValue.content.address) {
