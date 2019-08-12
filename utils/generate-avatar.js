@@ -1,8 +1,8 @@
-const jdenticon = require('jdenticon')
+const hashicon = require('hashicon')
 
 const generateAvatar = (id) => {
-  const png = jdenticon.toPng(id, 100, 0.0)
-  return `data:image/png;base64,${png.toString('base64')}`
+  const canvas = hashicon(id, 100)
+  return canvas.toDataURL()
 }
 
 module.exports = generateAvatar
