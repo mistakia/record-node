@@ -200,7 +200,7 @@ class RecordNode extends EventEmitter {
   }
 
   async getKeys () {
-    const keys = await getKey(this._options.id, this._options.orbitdb.keystore)
+    const keys = await getKey(this._id, this._options.orbitdb.keystore)
     return keys
   }
 
