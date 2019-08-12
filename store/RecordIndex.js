@@ -22,11 +22,12 @@ const defaultIndex = () => ({
 const CACHE_VERSION = 1
 
 class RecordIndex {
-  constructor (oplog, cache) {
+  constructor (oplog, cache, events) {
     this._cacheIndexKey = `_recordStoreIndex:${CACHE_VERSION}`
     this._cacheSearchIndexKey = `_recordStoreSearchIndex:${CACHE_VERSION}`
     this._oplog = oplog
     this._cache = cache
+    this._events = events
     this._queue = new Map()
     this._throttledProcess = debounce(this._processOne.bind(this), 1)
     this._index = defaultIndex()
@@ -139,6 +140,7 @@ class RecordIndex {
   }
 
   async _processOne () {
+    this._events.emit('processing', this._queue.size)
     const hash = this._queue.keys().next().value
     let entry = this._queue.get(hash)
 
@@ -161,8 +163,12 @@ class RecordIndex {
     this.sort()
 
     this._queue.delete(hash)
-    if (this._queue.size) this._throttledProcess()
-    else await this.save()
+    if (this._queue.size) {
+      this._throttledProcess()
+    } else {
+      await this.save()
+      this._events.emit('processed')
+    }
   }
 
   process (entry) {
@@ -230,6 +236,8 @@ class RecordIndex {
       this._searchIndex.remove(key)
       this._index[type].delete(key)
     }
+
+    this._events.emit('indexUpdated', this._queue.size)
   }
 
   updateTags () {
