@@ -74,7 +74,7 @@ class AboutEntry extends Entry {
   async create (ipfs, content) {
     const id = await sha256(content.address)
     if (!content.avatar) {
-      content.avatar = generateAvatar(id)
+      content.avatar = generateAvatar(content.address)
     }
     return super.create(ipfs, id, content)
   }
