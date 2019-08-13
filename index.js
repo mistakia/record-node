@@ -204,6 +204,11 @@ class RecordNode extends EventEmitter {
     return keys
   }
 
+  async createIdentity () {
+    const keys = await createKey()
+    return this.setIdentity(keys.privateKey)
+  }
+
   async setIdentity (pk) {
     await Promise.all([
       this.bootstrap._stop(),
