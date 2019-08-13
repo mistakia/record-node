@@ -115,9 +115,9 @@ module.exports = function tracks (self) {
       const pictures = metadata.common.picture
       delete metadata.common.picture
 
-      const extension = metadata.format.encoder
+      const extension = path.extname(filepath)
       const filename = path.parse(filepath).name
-      const processPath = path.resolve(os.tmpdir(), `${filename}-notags.${extension}`)
+      const processPath = path.resolve(os.tmpdir(), `${filename}-notags${extension}`)
       await removeTags(filepath, processPath)
       const audioFile = await self._ipfs.addFromFs(processPath)
       await fsPromises.unlink(processPath)
