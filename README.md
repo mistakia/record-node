@@ -13,6 +13,17 @@ A proof of concept distributed social & music application (library, sharing, dis
 npm install
 ```
 
+Note: fpcalc ([chromaprint](https://github.com/acoustid/chromaprint)) must be installed to be able to import audio files.
+##### OSX using Homebrew
+```
+brew install chromaprint
+```
+
+##### Ubuntu
+```
+sudo apt-get install libchromaprint-tools
+```
+
 ## Usage
 
 ### Running
