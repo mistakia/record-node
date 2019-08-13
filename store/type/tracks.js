@@ -105,7 +105,6 @@ module.exports = function (self) {
       const { content } = entry.payload.value
       if (CID.isCID(content.hash)) {
         entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
-        console.log(entry.payload.value.content.hash)
       }
 
       // convert artwork cids to string
