@@ -5,7 +5,10 @@ router.post('/?', async (req, res) => {
   try {
     const { privateKey } = req.body
     const { record } = req.app.locals
-    const data = await record.setIdentity(privateKey)
+    const data = privateKey
+      ? await record.setIdentity(privateKey)
+      : await record.createIdentity()
+
     res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
