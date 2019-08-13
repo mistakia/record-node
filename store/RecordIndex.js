@@ -149,6 +149,10 @@ class RecordIndex {
       entry = await this._oplog.get(entry)
     }
 
+    if (typeof entry.payload.value.content === 'string') {
+      entry.payload.value.content = new CID(entry.payload.value.content)
+    }
+
     // load content from ipfs
     if (CID.isCID(entry.payload.value.content)) {
       entry.payload.value.cid = entry.payload.value.content
