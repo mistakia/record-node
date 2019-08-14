@@ -34,11 +34,8 @@ router.post('/?', (req, res, next) => {
   if (!address) {
     errors.push('Missing address field')
   } else if (!record.isValidAddress(address)) {
-    // TODO: validate
-    // errors.push('Invalid OrbitDB address')
+    errors.push('Invalid OrbitDB address')
   }
-
-  if (!alias) errors.push('Missing alias field')
 
   if (!errors.length) {
     res.locals.data = { address, alias }
