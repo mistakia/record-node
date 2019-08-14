@@ -24,7 +24,7 @@ router.post('/?', async (req, res) => {
     }
 
     if (file) {
-      const entry = await record.tracks.addTrackFromFile(file)
+      const entry = await record.tracks.addTracksFromFS(file)
       return res.send(entry)
     }
 
