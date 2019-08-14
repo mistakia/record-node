@@ -1,5 +1,6 @@
 const { sha256 } = require('crypto-hash')
 const { generateAvatar } = require('../utils')
+const { CID } = require('ipfs')
 
 class Entry {
   constructor () {
@@ -32,6 +33,16 @@ class TrackEntry extends Entry {
     const id = await sha256(content.tags.acoustid_fingerprint)
     this._entry = {
       tags
+    }
+
+    if (content.hash && !CID.isCID(content.hash)) {
+      content.hash = new CID(content.hash)
+    }
+
+    if (content.artwork && content.artwork.length) {
+      content.artwork = content.artwork.map((a) => {
+        return CID.isCID(a) ? a : new CID(a)
+      })
     }
 
     return super.create(ipfs, id, content)
