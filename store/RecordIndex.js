@@ -23,8 +23,8 @@ const CACHE_VERSION = 1
 
 class RecordIndex {
   constructor (oplog, cache, events) {
-    this._cacheIndexKey = `_recordStoreIndex:${CACHE_VERSION}`
-    this._cacheSearchIndexKey = `_recordStoreSearchIndex:${CACHE_VERSION}`
+    this._cacheIndexKey = oplog._id + `_recordStoreIndex:${CACHE_VERSION}`
+    this._cacheSearchIndexKey = oplog._id + `_recordStoreSearchIndex:${CACHE_VERSION}`
     this._oplog = oplog
     this._cache = cache
     this._events = events
