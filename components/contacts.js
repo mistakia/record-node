@@ -41,8 +41,23 @@ module.exports = function contacts (self) {
     },
 
     _connect: async (address, contactId) => {
+      if (self.isMe(address)) {
+        return
+      }
+
       self.logger(`Connecting contact: ${address}`)
       const log = await self.log.get(address, { replicate: true })
+      self.logger(`Connected contact: ${address}`)
+
+      if (!log.options.replicate) {
+        log.options.replicate = true
+        self._orbitdb._pubsub.subscribe(
+          address,
+          self._orbitdb._onMessage.bind(self._orbitdb),
+          self._orbitdb._onPeerConnected.bind(self._orbitdb)
+        )
+        log._replicator.resume()
+      }
 
       log.events.on('replicated', (logId) => {
         self.emit('redux', {
@@ -70,25 +85,29 @@ module.exports = function contacts (self) {
       })
 
       self.emit('redux', { type: 'CONTACT_CONNECTED', payload: { logId: address, contactId } })
-
-      return log.load()
     },
 
     _disconnect: async (address, contactId) => {
+      if (self.isMe(address)) {
+        return
+      }
+
       self.logger(`Disconnecting contact: ${address}`)
       if (!self.log.isOpen(address)) {
-        return self.loggr(`log is not open: ${address}`)
+        return self.logger(`log is not open: ${address}`)
       }
 
       const log = await self.log.get(address)
 
       if (!log.options.replicate) {
-        return self.loggr(`log was not replicating: ${address}`)
+        return self.logger(`log was not replicating: ${address}`)
       }
 
-      self.emit('redux', { type: 'CONTACT_DISCONNECTED', payload: { logId: address, contactId } })
+      await self._orbitdb._pubsub.unsubscribe(address)
+      log.options.replicate = false
+      log._replicator.stop()
 
-      return log.close()
+      self.emit('redux', { type: 'CONTACT_DISCONNECTED', payload: { logId: address, contactId } })
     },
 
     isReplicating: async (address) => {

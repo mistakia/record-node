@@ -8,6 +8,7 @@ const IPFS = require('ipfs')
 const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
 const Keystore = require('orbit-db-keystore')
+const Cache = require('orbit-db-cache')
 const Storage = require('orbit-db-storage-adapter')
 const Identities = require('orbit-db-identity-provider')
 const secp256k1 = require('secp256k1')
@@ -131,8 +132,8 @@ class RecordNode extends EventEmitter {
 
   async _init (key, address) {
     this._options.orbitdb.storage = Storage(leveldown)
-    this._keystorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
-    this._options.orbitdb.keystore = new Keystore(this._keystorage)
+    this._keyStorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
+    this._options.orbitdb.keystore = new Keystore(this._keyStorage)
 
     if (!key) {
       if (this._options.id) {
@@ -143,12 +144,15 @@ class RecordNode extends EventEmitter {
     }
 
     this._id = await sha256(key.publicKey)
-    this._keystorage.put(this._id, JSON.stringify(key))
+    this._keyStorage.put(this._id, JSON.stringify(key))
 
     this._options.orbitdb.identity = await Identities.createIdentity({
       id: this._id,
       keystore: this._options.orbitdb.keystore
     })
+
+    this._cacheStorage = await this._options.orbitdb.storage.createStore(this._options.cache)
+    this._options.orbitdb.cache = new Cache(this._cacheStorage)
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 

@@ -38,13 +38,10 @@ module.exports = function log (self) {
       }
 
       if (this.isOpen(logId)) {
-        const openLog = self._orbitdb.stores[logId]
-        if (!options.replicate || (options.replicate === openLog.options.replicate)) {
-          return openLog
-        }
+        return self._orbitdb.stores[logId]
       }
 
-      const opts = extend({}, self._options.store, options)
+      const opts = extend({ replicate: false }, self._options.store, options)
       self.logger(`Loading log: ${logId}`, opts)
       const log = await self._orbitdb.open(logId, opts)
       log.events.on('peer', (peerId) => {
