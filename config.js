@@ -5,6 +5,7 @@ module.exports = {
   api: false,
   address: 'record',
   keystore: './keystore',
+  cache: './cache',
   pubsubRoom: {
     pollInterval: 5000
   },
