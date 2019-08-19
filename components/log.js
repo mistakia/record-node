@@ -88,6 +88,10 @@ module.exports = function log (self) {
         payload: { logId }
       })
 
+      if (log._type === 'recordstore') {
+        self._logs[logId] = log.options.accessControllerAddress
+      }
+
       return log
     }
   }
