@@ -231,6 +231,13 @@ module.exports = function contacts (self) {
         }
       }
 
+      const logIds = Object.keys(self._logs)
+      for (let i = 0; i < logIds.length; i++) {
+        const logId = logIds[i]
+        const c = await self.contacts.get({ logId, contactAddress: logId })
+        all.set(c.id, c)
+      }
+
       return Array.from(all.values())
     },
 

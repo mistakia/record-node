@@ -14,6 +14,9 @@ const Identities = require('orbit-db-identity-provider')
 const secp256k1 = require('secp256k1')
 const leveldown = require('leveldown')
 
+const { CID } = IPFS
+const manifestRe = /\/orbitdb\/[a-zA-Z0-9]+\/[^/]+\/_manifest/
+
 const components = require('./components')
 const {
   RecordStore,
@@ -103,6 +106,8 @@ class RecordNode extends EventEmitter {
     this.tracks = components.tracks(this)
     this.peers = components.peers(this)
 
+    this._logs = {}
+
     if (this._options.api) {
       this._api = components.api(this)
     }
@@ -153,6 +158,19 @@ class RecordNode extends EventEmitter {
 
     this._cacheStorage = await this._options.orbitdb.storage.createStore(this._options.cache)
     this._options.orbitdb.cache = new Cache(this._cacheStorage)
+
+    this._cacheStorage.createKeyStream().on('data', async (data) => {
+      const key = data.toString()
+      if (key.match(manifestRe)) {
+        const dataValue = await this._cacheStorage.get(key)
+        const manifestAddress = JSON.parse(dataValue.toString())
+        const dagNode = await this._ipfs.dag.get(new CID(manifestAddress))
+        const logId = `/orbitdb/${manifestAddress}/${dagNode.value.name}`
+        if (dagNode.value.type === 'recordstore') {
+          this._logs[logId] = dagNode.value.accessController
+        }
+      }
+    })
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
