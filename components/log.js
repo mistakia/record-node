@@ -1,11 +1,15 @@
 const extend = require('deep-extend')
 
+const logNameRe = /^[0-9a-zA-Z-]*$/
+
 module.exports = function log (self) {
   return {
     _init: async (address = 'record') => {
       const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
+
+      // TODO - setup all logs I have write access to
     },
 
     mine: () => {
@@ -20,7 +24,7 @@ module.exports = function log (self) {
       return !!self._orbitdb.stores[logId]
     },
 
-    get: async function (logId = self.address, options = {}, load) {
+    get: async function (logId = self.address, options = {}) {
       if (self.isMe(logId)) {
         return self._log
       }
@@ -34,7 +38,14 @@ module.exports = function log (self) {
       }
 
       if (!self.isValidAddress(logId)) {
-        throw new Error(`${logId} is not a valid OrbitDB address`)
+        // TODO construct address from name and check if it exists
+        if (!options.create) {
+          throw new Error(`${logId} is not a valid OrbitDB address`)
+        }
+
+        if (!logNameRe.test(logId)) {
+          throw new Error(`${logId} is not a valid log name`)
+        }
       }
 
       if (this.isOpen(logId)) {

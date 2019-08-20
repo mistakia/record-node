@@ -119,8 +119,8 @@ module.exports = function contacts (self) {
       return log.options.replicate
     },
 
-    add: async ({ address, alias }) => {
-      const log = self.log.mine()
+    add: async ({ address, alias, logId }) => {
+      const log = await self.log.get(logId)
       const entry = await log.contacts.findOrCreate({ address, alias })
       if (self.isReplicating) {
         await self.contacts.connect(address, entry.payload.key)
