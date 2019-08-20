@@ -3,8 +3,8 @@ const { generateAvatar } = require('../utils')
 
 module.exports = function about (self) {
   return {
-    set: async function (data) {
-      const log = self.log.mine()
+    set: async function (data, { logId } = {}) {
+      const log = await self.log.get(logId)
       const entry = await log.about.set(data)
       return self.about.get(entry.payload.value.content.address)
     },

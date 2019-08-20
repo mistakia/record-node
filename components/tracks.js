@@ -72,7 +72,7 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
-    addTracksFromFS: async (filepath) => {
+    addTracksFromFS: async (filepath, { logId } = {}) => {
       self.logger(`Searching ${filepath} for tracks`)
 
       let result = []
@@ -80,7 +80,7 @@ module.exports = function tracks (self) {
 
       if (stat.isFile()) {
         try {
-          const track = await self.tracks.addTrackFromFile(filepath)
+          const track = await self.tracks.addTrackFromFile(filepath, { logId })
           result.push(track)
         } catch (e) {
           self.logger.err(e)
@@ -92,14 +92,17 @@ module.exports = function tracks (self) {
         const pathsInDir = await fsPromises.readdir(filepath)
         self.logger(`Found ${pathsInDir.length} paths in ${filepath}`)
         for (let i = 0; i < pathsInDir.length; i++) {
-          const tracks = await self.tracks.addTracksFromFS(path.resolve(filepath, pathsInDir[i]))
+          const tracks = await self.tracks.addTracksFromFS(
+            path.resolve(filepath, pathsInDir[i]),
+            { logId }
+          )
           result = tracks.concat(result)
         }
       }
 
       return result
     },
-    addTrackFromFile: async (filepath, resolverData) => {
+    addTrackFromFile: async (filepath, { resolverData, logId } = {}) => {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath)
       self.logger(`Generated AcoustID Fingerprint`)
@@ -140,10 +143,10 @@ module.exports = function tracks (self) {
         trackData.resolver = [resolverData]
       }
 
-      return self.tracks.add(trackData)
+      return self.tracks.add(trackData, { logId })
     },
 
-    addTrackFromUrl: async (resolverData) => {
+    addTrackFromUrl: async (resolverData, { logId } = {}) => {
       if (typeof resolverData === 'string') {
         const results = await self.resolve(resolverData)
         resolverData = results[0]
@@ -161,17 +164,17 @@ module.exports = function tracks (self) {
       }
 
       const filepath = await downloadFile(resolverData)
-      return self.tracks.addTrackFromFile(filepath, resolverData)
+      return self.tracks.addTrackFromFile(filepath, { resolverData, logId })
     },
 
-    addTrackFromCID: async (cid) => {
+    addTrackFromCID: async (cid, { logId }) => {
       const dagNode = await self._ipfs.dag.get(cid, { resolveLocal: true })
       const content = dagNode.value
-      return self.tracks.add(content)
+      return self.tracks.add(content, { logId })
     },
 
-    add: async (trackData) => {
-      const log = self.log.mine()
+    add: async (trackData, { logId } = {}) => {
+      const log = await self.log.get(logId)
       const track = await log.tracks.findOrCreate(trackData)
       track.payload.value.haveTrack = true
       self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
