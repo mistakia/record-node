@@ -1,5 +1,7 @@
 const extend = require('deep-extend')
 
+const { RecordStore } = require('../store')
+
 const logNameRe = /^[0-9a-zA-Z-]*$/
 
 module.exports = function log (self) {
@@ -38,12 +40,11 @@ module.exports = function log (self) {
       }
 
       if (!self.isValidAddress(logId)) {
-        // TODO construct address from name and check if it exists
         if (!options.create) {
-          throw new Error(`${logId} is not a valid OrbitDB address`)
-        }
-
-        if (!logNameRe.test(logId)) {
+          const addr = await self._orbitdb.determineAddress(logId, RecordStore.type)
+          logId = addr.toString()
+          options.localOnly = true
+        } else if (!logNameRe.test(logId)) {
           throw new Error(`${logId} is not a valid log name`)
         }
       }
@@ -99,7 +100,7 @@ module.exports = function log (self) {
         payload: { logId }
       })
 
-      if (log._type === 'recordstore') {
+      if (log._type === RecordStore.type) {
         self._logs[logId] = log.options.accessControllerAddress
       }
 

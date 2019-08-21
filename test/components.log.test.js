@@ -17,14 +17,14 @@ describe('record.log', function () {
     describe('errors', function () {
       it('throws an error if given invalid OrbitDB address', async function () {
         let error
-        const address = 'invalid-db-address'
+        const address = 'invalid address'
         try {
-          await record.log.get(address)
+          await record.log.get(address, { create: true })
         } catch (e) {
           error = e.toString()
         }
 
-        assert.equal(error, `Error: ${address} is not a valid OrbitDB address`)
+        assert.equal(error, `Error: ${address} is not a valid log name`)
       })
     })
 
