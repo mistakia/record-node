@@ -167,7 +167,7 @@ module.exports = function tracks (self) {
       return self.tracks.addTrackFromFile(filepath, { resolverData, logId })
     },
 
-    addTrackFromCID: async (cid, { logId }) => {
+    addTrackFromCID: async (cid, { logId } = {}) => {
       const dagNode = await self._ipfs.dag.get(cid, { resolveLocal: true })
       const content = dagNode.value
       return self.tracks.add(content, { logId })
