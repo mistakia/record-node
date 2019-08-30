@@ -27,7 +27,9 @@ module.exports = function (self) {
             })
           }})
         } else {
-          results = await self._index._searchIndex.search(query)
+          results = await self._index._searchIndex.search(query, {
+            field: ['title', 'artist', 'resolver']
+          })
         }
 
         entryHashes = results.map(e => self._index._index.track.get(e.key).hash)
@@ -58,31 +60,35 @@ module.exports = function (self) {
       return !!self._index.getEntryHash(id, 'track')
     },
 
-    findOrCreate: async function (content) {
-      const entry = await new TrackEntry().create(self._ipfs, content)
+    findOrCreate: async function (content, shouldPin) {
+      const entry = await new TrackEntry().create(self._ipfs, content, shouldPin)
       let track = await self.get(entry.id, 'track')
 
       if (!track) {
-        return this._add(entry)
+        return this._add(entry, shouldPin)
       }
 
       const contentCID = track.payload.value.cid || track.payload.value.content
 
       if (!entry.content.equals(contentCID)) {
-        return this._add(entry)
+        return this._add(entry, shouldPin)
       }
 
       return self.tracks._loadContent(track)
     },
 
-    _add: async (entry) => {
-      await self.put(entry)
+    _add: async (entry, shouldPin) => {
+      const hash = await self.put(entry)
+      console.log(`track entry hash: ${hash}`)
+      if (shouldPin) await self._ipfs.pin.add(hash)
+      const pins = await self._ipfs.pin.ls(hash)
+      console.log(pins)
       return self.tracks.getFromId(entry.id)
     },
 
-    add: async (content, tags) => {
-      const entry = await new TrackEntry().create(self._ipfs, content, tags)
-      return self.tracks._add(entry)
+    add: async (content, tags, shouldPin) => {
+      const entry = await new TrackEntry().create(self._ipfs, content, shouldPin, tags)
+      return self.tracks._add(entry, shouldPin)
     },
 
     _loadContent: async (entry) => {

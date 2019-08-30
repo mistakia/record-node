@@ -139,6 +139,11 @@ module.exports = function tracks (self) {
         resolver: []
       }
 
+      await self._ipfs.pin.add(trackData.hash)
+      for (let i = 0; i < trackData.artwork.length; i++) {
+        await self._ipfs.pin.add(trackData.artwork[i])
+      }
+
       if (resolverData) {
         trackData.resolver = [resolverData]
       }
@@ -175,7 +180,8 @@ module.exports = function tracks (self) {
 
     add: async (trackData, { logId } = {}) => {
       const log = await self.log.get(logId)
-      const track = await log.tracks.findOrCreate(trackData)
+      const shouldPin = true
+      const track = await log.tracks.findOrCreate(trackData, shouldPin)
       track.payload.value.haveTrack = true
       self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
       return track
@@ -200,9 +206,46 @@ module.exports = function tracks (self) {
       return entry.payload.value
     },
 
-    remove: async (trackId) => {
+    _contactsHaveTrack: async (trackId) => {
+      let result = false
       const log = self.log.mine()
+      const entries = await log.contacts.all()
+      const contacts = entries.map(e => e.payload.value)
+      for (const contact of contacts) {
+        const { address } = contact.content
+        const l = await self.log.get(address)
+        if (l.tracks.has(trackId)) {
+          result = true
+          return
+        }
+      }
+
+      return result
+    },
+
+    remove: async (trackId, { logId } = {}) => {
+      const log = await self.log.get(logId)
+      const entry = await log.tracks.getFromId(trackId)
       const hash = await log.tracks.del(trackId)
+
+      const contactsHaveTrack = await self.tracks._contactsHaveTrack(trackId)
+      if (contactsHaveTrack) {
+        return hash
+      }
+
+      // TODO check logs I have write access before unpinning
+
+      const { content, contentCID } = entry.payload.value
+      if (contentCID) {
+        await self._ipfs.pin.rm(contentCID)
+        return hash
+      }
+
+      if (CID.isCID(content)) {
+        await self._ipfs.pin.rm(content)
+        return hash
+      }
+
       return hash
     },
 

@@ -32,7 +32,7 @@ class RecordIndex {
     this._throttledProcess = debounce(this._processOne.bind(this), 1)
     this._index = defaultIndex()
     this._isBuilding = false
-    this._searchIndex = new FlexSearch('speed', {
+    this._searchIndex = new FlexSearch('balance', {
       async: true,
       cache: 1000,
       doc: {

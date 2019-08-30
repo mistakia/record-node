@@ -12,7 +12,7 @@ module.exports = function peers (self) {
       self._room.on('error', (e) => self.logger.err(e))
     },
     _stop: async () => {
-      await self._room.leave()
+      self._room && await self._room.leave()
     },
     get: (contactId) => {
       const peerIds = Object.keys(self.peers._index)

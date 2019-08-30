@@ -1,4 +1,4 @@
-class RecordFeedIndex {
+class ListensIndex {
   constructor (oplog) {
     this._oplog = oplog
     this._index = []
@@ -18,4 +18,4 @@ class RecordFeedIndex {
   }
 }
 
-module.exports = RecordFeedIndex
+module.exports = ListensIndex

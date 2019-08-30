@@ -1,5 +1,7 @@
-const { ContactEntry } = require('../RecordEntry')
 const { CID } = require('ipfs')
+const { sha256 } = require('crypto-hash')
+
+const { ContactEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
   return {
@@ -19,31 +21,31 @@ module.exports = function (self) {
       return entries
     },
 
-    findOrCreate: async function (data) {
-      const entry = await new ContactEntry().create(self._ipfs, data)
+    findOrCreate: async function (data, shouldPin) {
+      const entry = await new ContactEntry().create(self._ipfs, data, shouldPin)
       let contact = await self.get(entry.id, 'contact')
 
       if (!contact) {
-        return this._add(entry)
+        return this._add(entry, shouldPin)
       }
 
       const contentCID = contact.payload.value.cid || contact.payload.value.content
       if (!entry.content.equals(contentCID)) {
-        return this._add(entry)
+        return this._add(entry, shouldPin)
       }
 
       return this._loadContent(contact)
     },
 
-    _add: async (entry) => {
-      await self.put(entry)
+    _add: async (entry, shouldPin) => {
+      const hash = await self.put(entry)
+      if (shouldPin) await self._ipfs.pin.add(hash)
       return self.contacts.getFromId(entry.id)
     },
 
-    add: async (data) => {
-      const entry = await new ContactEntry().create(self._ipfs, data)
-      const hash = await self.put(entry)
-      return hash
+    add: async (data, shouldPin) => {
+      const entry = await new ContactEntry().create(self._ipfs, data, shouldPin)
+      return this._add(entry, shouldPin)
     },
 
     _loadContent: async (entry) => {
@@ -72,6 +74,11 @@ module.exports = function (self) {
 
     has: (id) => {
       return !!self._index.getEntryHash(id, 'contact')
+    },
+
+    hasLogId: async (logId) => {
+      const id = await sha256(logId)
+      return self.contacts.has(id)
     },
 
     del: (id) => {

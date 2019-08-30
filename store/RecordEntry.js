@@ -7,7 +7,7 @@ class Entry {
     this._entry = {}
   }
 
-  async create (ipfs, id, content) {
+  async create (ipfs, id, content, shouldPin) {
     this._entry = {
       id,
       timestamp: Date.now(),
@@ -19,6 +19,8 @@ class Entry {
     const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
     this._entry.content = cid
 
+    if (shouldPin) await ipfs.pin.add(cid)
+
     return this._entry
   }
 }
@@ -29,7 +31,7 @@ class TrackEntry extends Entry {
     this._type = 'track'
   }
 
-  async create (ipfs, content, tags = []) {
+  async create (ipfs, content, shouldPin, tags = []) {
     const id = await sha256(content.tags.acoustid_fingerprint)
     this._entry = {
       tags
@@ -45,7 +47,7 @@ class TrackEntry extends Entry {
       })
     }
 
-    return super.create(ipfs, id, content)
+    return super.create(ipfs, id, content, shouldPin)
   }
 }
 
@@ -56,22 +58,9 @@ class ContactEntry extends Entry {
     this._type = 'contact'
   }
 
-  async create (ipfs, content) {
+  async create (ipfs, content, shouldPin) {
     const id = await sha256(content.address)
-    return super.create(ipfs, id, content)
-  }
-}
-
-class FeedEntry {
-  create ({ entryId, logId, entryType }) {
-    this._entry = {
-      entryId,
-      logId,
-      entryType,
-      timestamp: Date.now()
-    }
-
-    return this._entry
+    return super.create(ipfs, id, content, shouldPin)
   }
 }
 
@@ -82,19 +71,18 @@ class AboutEntry extends Entry {
     this._type = 'about'
   }
 
-  async create (ipfs, content) {
+  async create (ipfs, content, shouldPin) {
     const id = await sha256(content.address)
     if (!content.avatar) {
       content.avatar = generateAvatar(content.address)
     }
-    return super.create(ipfs, id, content)
+    return super.create(ipfs, id, content, shouldPin)
   }
 }
 
 module.exports = {
   Entry,
   AboutEntry,
-  FeedEntry,
   TrackEntry,
   ContactEntry
 }

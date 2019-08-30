@@ -24,7 +24,6 @@ describe('record', function () {
       assert.notStrictEqual(record.about, undefined)
       assert.notStrictEqual(record.bootstrap, undefined)
       assert.notStrictEqual(record.contacts, undefined)
-      assert.notStrictEqual(record.feed, undefined)
       assert.notStrictEqual(record.info, undefined)
       assert.notStrictEqual(record.listens, undefined)
       assert.notStrictEqual(record.log, undefined)

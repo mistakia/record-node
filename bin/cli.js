@@ -48,13 +48,40 @@ try {
   record.on('ready', async (data) => {
     console.log(data)
 
-    const aboutData = {
-      name: `${name}`,
-      bio: 'dweb > web',
-      location: 'not on the world wide web'
+    try {
+      const pins = await record._ipfs.pin.ls()
+      console.log(pins)
+    } catch (e) {
+      console.log(e)
     }
-    const about = await record.about.set(aboutData)
-    console.log(about)
+
+    try {
+      const aboutData = {
+        name: `${name}`,
+        bio: 'dweb > web',
+        location: 'not on the world wide web'
+      }
+      const about = await record.about.set(aboutData)
+      console.log(about)
+    } catch (e) {
+      console.log(e)
+    }
+
+    // try {
+    //   const track = await record.tracks.addTrackFromUrl('https://soundcloud.com/asa-moto101/kifesh?in=deewee-2/sets/asa-moto-playtime-deewee030')
+    //   console.log(track)
+
+    //   const hash = await record.tracks.remove(track.payload.key)
+    //   console.log(hash)
+    // } catch (e) {
+    //   console.log(e)
+    // }
+
+    // try {
+    //   await record.contacts.add({ address: '/orbitdb/zdpuB13FxzpXQjHggqHsLkPWeXDabcPucNs7vesGRaBHgaqxU/record' })
+    // } catch (e) {
+    //   console.log(e)
+    // }
   })
 } catch (e) {
   console.log(e)
