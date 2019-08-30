@@ -7,7 +7,7 @@ const logNameRe = /^[0-9a-zA-Z-]*$/
 module.exports = function log (self) {
   return {
     _init: async (address = 'record') => {
-      const opts = extend({}, self._options.store, { create: true, replicate: true })
+      const opts = extend({}, self._options.store, { create: true, replicate: true, pin: true })
       self._log = await self._orbitdb.open(address, opts)
       await self._log.load()
 
@@ -29,10 +29,6 @@ module.exports = function log (self) {
     get: async function (logId = self.address, options = {}) {
       if (self.isMe(logId)) {
         return self._log
-      }
-
-      if (self.feed.isMe(logId)) {
-        return self._feedLog
       }
 
       if (self.listens.isMe(logId)) {

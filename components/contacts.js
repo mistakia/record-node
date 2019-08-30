@@ -15,7 +15,7 @@ module.exports = function contacts (self) {
       const contacts = entries.map(e => e.payload.value)
       for (const contact of contacts) {
         const { address } = contact.content
-        this._connect(address, contact.id)
+        this._connect(address, contact.id, true)
       }
 
       self.emit('redux', { type: 'CONTACTS_CONNECTED' })
@@ -40,13 +40,13 @@ module.exports = function contacts (self) {
       self.emit('redux', { type: 'CONTACTS_DISCONNECTED' })
     },
 
-    _connect: async (address, contactId) => {
+    _connect: async (address, contactId, pin = false) => {
       if (self.isMe(address)) {
         return
       }
 
       self.logger(`Connecting contact: ${address}`)
-      const log = await self.log.get(address, { replicate: true })
+      const log = await self.log.get(address, { replicate: true, pin })
       self.logger(`Connected contact: ${address}`)
 
       if (!log.options.replicate) {
@@ -66,21 +66,17 @@ module.exports = function contacts (self) {
         })
       })
 
-      log.events.on('replicate.progress', (logId, hash, entry, progress, total) => {
+      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
+        self.logger(`new entry ${address}/${entry.hash}`)
         self.emit('redux', {
           type: 'CONTACT_REPLICATE_PROGRESS',
           payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
 
-        self.logger(`new entry ${address}/${entry.hash}`)
-        const { op } = entry.payload
-        if (op !== 'PUT') {
-          return
-        }
-
-        const { type } = entry.payload.value
-        if (type !== 'about') {
-          self.feed.add({ entryType: type, entryId: entry.payload.key, logId: address })
+        const shouldPin = await log.contacts.hasLogId(logId)
+        if (shouldPin) {
+          await self._ipfs.pin.add(hash, { recursive: false })
+          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
         }
       })
 
@@ -121,13 +117,25 @@ module.exports = function contacts (self) {
 
     add: async ({ address, alias, logId }) => {
       const log = await self.log.get(logId)
-      const entry = await log.contacts.findOrCreate({ address, alias })
+      const contactEntry = await log.contacts.findOrCreate({ address, alias })
       if (self.isReplicating) {
-        await self.contacts.connect(address, entry.payload.key)
+        await self.contacts._connect(address, contactEntry.payload.key, true)
       }
+
+      // TODO go through log and pin any local hashes
+      const contactLog = self.log.get(contactEntry.payload.value.content.address)
+      for (const hash of contactLog._oplog._hashIndex.keys()) {
+        const entry = await log._oplog.get(hash)
+        const { content } = entry.payload.value
+        const { key } = entry.payload
+
+        await self._ipfs.pin.add(content, { recursive: false }) // add content pin
+        await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins
+      }
+
       return self.contacts.get({
         logId: self.address,
-        contactId: entry.payload.key,
+        contactId: contactEntry.payload.key,
         contactAddress: address
       })
     },
@@ -206,7 +214,19 @@ module.exports = function contacts (self) {
 
     remove: async (contactId) => {
       const log = self.log.mine()
+      const contactEntry = await log.contacts.getFromId(contactId)
       await log.contacts.del(contactId)
+
+      const contactLog = self.log.get(contactEntry.payload.value.content.address)
+      for (const hash of contactLog._oplog._hashIndex.keys()) {
+        const entry = await log._oplog.get(hash)
+        const { content, type } = entry.payload.value
+        const { key } = entry.payload
+
+        await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
+        await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins
+      }
+
       return { id: contactId }
     },
 

@@ -21,7 +21,7 @@ const detectContentType = (chunk) => {
 router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
   try {
     const { cid } = req.params
-    const { localOnly } = req.query
+    const { localOnly, logId } = req.query
     const { record } = req.app.locals
 
     if (localOnly) {
@@ -68,6 +68,11 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     head['Content-Type'] = contentType
     res.writeHead(range ? 206 : 200, head)
     peekedStream.pipe(res)
+
+    if (logId) {
+      const shouldPin = await record.contacts.hasLogId(logId)
+      if (shouldPin) await record._ipfs.pin.add(cid)
+    }
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
