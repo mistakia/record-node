@@ -1,11 +1,11 @@
 const RecordStore = require('./RecordStore')
-const RecordFeedIndex = require('./RecordFeedIndex')
+const ListensIndex = require('./ListensIndex')
 
-class RecordListensStore extends RecordStore {
+class ListensStore extends RecordStore {
   constructor (ipfs, id, dbname, options = {}) {
-    if (!options.Index) Object.assign(options, { Index: RecordFeedIndex })
+    if (!options.Index) Object.assign(options, { Index: ListensIndex })
     super(ipfs, id, dbname, options)
-    this._type = RecordListensStore.type
+    this._type = ListensStore.type
   }
 
   async query (opts = {}) {
@@ -31,8 +31,8 @@ class RecordListensStore extends RecordStore {
   }
 
   static get type () {
-    return 'recordlistensstore'
+    return 'listens'
   }
 }
 
-module.exports = RecordListensStore
+module.exports = ListensStore

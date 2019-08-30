@@ -5,9 +5,11 @@ module.exports = function (self) {
     set: async function (data) {
       data.address = self.address.toString()
 
-      const entry = await new AboutEntry().create(self._ipfs, data)
+      const shouldPin = true
+      const entry = await new AboutEntry().create(self._ipfs, data, shouldPin)
       const save = async () => {
-        await self.put(entry)
+        const hash = await self.put(entry)
+        await self._ipfs.pin.add(hash)
         return this.get()
       }
 

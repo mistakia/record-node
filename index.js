@@ -20,8 +20,7 @@ const manifestRe = /\/orbitdb\/[a-zA-Z0-9]+\/[^/]+\/_manifest/
 const components = require('./components')
 const {
   RecordStore,
-  RecordFeedStore,
-  RecordListensStore
+  ListensStore
 } = require('./store')
 const defaultConfig = require('./config')
 
@@ -72,8 +71,7 @@ const createKeyFromPk = async (pk) => {
 }
 
 OrbitDB.addDatabaseType(RecordStore.type, RecordStore)
-OrbitDB.addDatabaseType(RecordFeedStore.type, RecordFeedStore)
-OrbitDB.addDatabaseType(RecordListensStore.type, RecordListensStore)
+OrbitDB.addDatabaseType(ListensStore.type, ListensStore)
 
 class RecordNode extends EventEmitter {
   constructor (options = {}) {
@@ -98,7 +96,6 @@ class RecordNode extends EventEmitter {
     this.about = components.about(this)
     this.bootstrap = components.bootstrap(this)
     this.contacts = components.contacts(this)
-    this.feed = components.feed(this)
     this.info = components.info(this)
     this.listens = components.listens(this)
     this.log = components.log(this)
@@ -175,7 +172,6 @@ class RecordNode extends EventEmitter {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
     await this.log._init(address)
-    await this.feed._init()
     await this.listens._init()
 
     this.bootstrap._init()
@@ -219,6 +215,24 @@ class RecordNode extends EventEmitter {
 
     this.bootstrap._init()
     this.peers._init()
+  }
+
+  async checkContentPin ({ id, cid, type }) {
+    if (type !== 'about') {
+      const log = this.log.mine()
+      const entries = await log.contacts.all()
+      const logIds = entries.map(e => e.payload.value.content.address)
+      for (const logId of logIds) {
+        const l = await this.log.get(logId)
+        const hasContent = !!l._index.getEntryHash(id, type)
+
+        if (hasContent) {
+          return
+        }
+      }
+    }
+
+    await this._ipfs.pin.rm(cid)
   }
 
   async getKeys () {
