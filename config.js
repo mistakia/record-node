@@ -6,6 +6,7 @@ module.exports = {
   address: 'record',
   keystore: './keystore',
   cache: './cache',
+  gcInterval: 10000000, // 10mb
   pubsubRoom: {
     pollInterval: 5000
   },

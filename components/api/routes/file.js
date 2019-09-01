@@ -73,6 +73,8 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
       const shouldPin = await record.contacts.hasLogId(logId)
       if (shouldPin) await record._ipfs.pin.add(cid)
     }
+
+    record.gc()
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
