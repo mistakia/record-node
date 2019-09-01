@@ -104,6 +104,11 @@ class RecordNode extends EventEmitter {
     this.peers = components.peers(this)
 
     this._logs = {}
+    this._gcLock = false
+    this._gcPosition = 0
+    this._gcInterval = this._options.gcInterval
+    this._bwStats = {}
+    this._repoStats = {}
 
     if (this._options.api) {
       this._api = components.api(this)
@@ -130,6 +135,8 @@ class RecordNode extends EventEmitter {
       },
       ipfs
     })
+
+    this._repoStats = await this._ipfs.repo.stat()
   }
 
   async _init (key, address) {
@@ -176,6 +183,8 @@ class RecordNode extends EventEmitter {
 
     this.bootstrap._init()
     this.peers._init()
+
+    this._bwStats = await this._ipfs.stats.bw()
   }
 
   async stop () {
@@ -215,6 +224,30 @@ class RecordNode extends EventEmitter {
 
     this.bootstrap._init()
     this.peers._init()
+  }
+
+  async gc () {
+    if (this._gcLock) return
+
+    this._gcLock = true
+
+    this._bwStats = await this._ipfs.stats.bw()
+    if (this._bwStats.totalIn.minus(this._gcPosition) > this._gcInterval) {
+      this.logger(`Running ipfs gc at ${this._gcPosition}`)
+      const res = await this._ipfs.repo.gc()
+      console.log(res)
+      this._gcPosition = this._bwStats.totalIn.toNumber()
+    }
+
+    this._repoStats = await this._ipfs.repo.stat()
+    this._gcLock = false
+  }
+
+  async pinAC (accessControllerAddress) {
+    const acAddress = accessControllerAddress.split('/')[2]
+    await this._ipfs.pin.add(acAddress)
+    const dagNode = await this._ipfs.dag.get(acAddress)
+    await this._ipfs.pin.add(dagNode.value.params.address)
   }
 
   async checkContentPin ({ id, cid, type }) {

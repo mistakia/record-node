@@ -7,8 +7,13 @@ const logNameRe = /^[0-9a-zA-Z-]*$/
 module.exports = function log (self) {
   return {
     _init: async (address = 'record') => {
-      const opts = extend({}, self._options.store, { create: true, replicate: true, pin: true })
+      const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
+      await self._ipfs.pin.add(self._log.address.root)
+
+      const { accessControllerAddress } = self._log.options
+      await self.pinAC(accessControllerAddress)
+
       await self._log.load()
 
       // TODO - setup all logs I have write access to
@@ -52,6 +57,10 @@ module.exports = function log (self) {
       const opts = extend({ replicate: false }, self._options.store, options)
       self.logger(`Loading log: ${logId}`, opts)
       const log = await self._orbitdb.open(logId, opts)
+      await self._ipfs.pin.add(log.address.root)
+      const { accessControllerAddress } = log.options
+      await self.pinAC(accessControllerAddress)
+
       log.events.on('peer', (peerId) => {
         self.emit('redux', {
           type: 'CONTACT_PEER_JOINED',

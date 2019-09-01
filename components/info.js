@@ -17,19 +17,12 @@ module.exports = function info (self) {
       // TODO emit event on ipfs peer leave
     },
     get: async () => {
-      const [
-        subs,
-        bitswap,
-        repo
-      ] = await Promise.all([
-        getSubs(),
-        self._ipfs.bitswap.stat(),
-        self._ipfs.repo.stat({ human: true })
-      ])
+      const subs = await getSubs()
+
       return {
         subs,
-        bitswap,
-        repo
+        bw: self._bwStats,
+        repo: self._repoStats
       }
     }
   }
