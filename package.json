@@ -39,7 +39,7 @@
     "node-fetch": "^2.6.0",
     "orbit-db": "github:mistakia/orbit-db#proto/record",
     "orbit-db-identity-provider": "^0.1.6",
-    "orbit-db-keystore": "github:orbitdb/orbit-db-keystore#021ca44",
+    "orbit-db-keystore": "github:orbitdb/orbit-db-keystore#f9fde2b",
     "orbit-db-storage-adapter": "^0.4.2",
     "orbit-db-store": "github:mistakia/orbit-db-store#proto/record",
     "record-resolver": "github:mistakia/record-resolver#8588af5"
