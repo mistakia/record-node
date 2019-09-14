@@ -123,7 +123,7 @@ module.exports = function contacts (self) {
       }
 
       // TODO go through log and pin any local hashes
-      const contactLog = self.log.get(contactEntry.payload.value.content.address)
+      const contactLog = await self.log.get(contactEntry.payload.value.content.address)
       for (const hash of contactLog._oplog._hashIndex.keys()) {
         const entry = await log._oplog.get(hash)
         const { content } = entry.payload.value
