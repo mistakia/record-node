@@ -62,9 +62,12 @@ module.exports = function peers (self) {
           throw new Error('peer message missing address')
         }
 
-        if (self.isValidAddress(address)) {
-          self.peers._index[message.from] = about
+        if (!self.isValidAddress(address)) {
+          return
         }
+
+        await self.log.get(address, { replicate: false })
+        self.peers._index[message.from] = about
         const peerCount = Object.keys(self.peers._index).length
         self.logger.log(`Record peer added, current count: ${peerCount}`)
         self.emit('redux', {
