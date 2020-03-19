@@ -1,4 +1,5 @@
 const EventEmitter = require('events')
+const fs = require('fs')
 
 const { sha256 } = require('crypto-hash')
 const crypto = require('libp2p-crypto')
@@ -25,16 +26,7 @@ const {
 const defaultConfig = require('./config')
 
 const createKey = async () => {
-  const genKeyPair = () => new Promise((resolve, reject) => {
-    crypto.keys.generateKeyPair('secp256k1', 256, (err, key) => {
-      if (!err) {
-        resolve(key)
-      }
-      reject(err)
-    })
-  })
-
-  const keys = await genKeyPair()
+  const keys = await crypto.keys.generateKeyPair('secp256k1', 256)
   const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
   return {
     publicKey: decompressedKey.toString('hex'),
@@ -52,21 +44,11 @@ const getKey = async (id, storage) => {
 }
 
 const createKeyFromPk = async (pk) => {
-  const getKey = (pk) => new Promise((resolve, reject) => {
-    crypto.keys.supportedKeys.secp256k1.unmarshalSecp256k1PrivateKey(pk, (err, key) => {
-      if (!err) {
-        resolve(key)
-      }
-      reject(err)
-    })
-  })
-
-  const key = await getKey(Buffer.from(pk, 'hex'))
-  const decompressedKey = secp256k1.publicKeyConvert(key.public.marshal(), false)
-
+  const keys = await crypto.keys.unmarshalPrivateKey(Buffer.from(pk, 'hex'))
+  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
   return {
     publicKey: decompressedKey.toString('hex'),
-    privateKey: key.marshal().toString('hex')
+    privateKey: keys.marshal().toString('hex')
   }
 }
 
@@ -83,11 +65,6 @@ class RecordNode extends EventEmitter {
 
     this._options = extend(defaultConfig, options)
     this.logger(this._options)
-
-    this._ipfs = new IPFS(this._options.ipfs)
-    this._ipfs.on('error', this.emit.bind(this))
-    this._ipfs.on('ready', this._ready.bind(this))
-    this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
 
     this.resolve = resolver
     this.isValidAddress = OrbitDB.isValidAddress
@@ -113,6 +90,14 @@ class RecordNode extends EventEmitter {
     if (this._options.api) {
       this._api = components.api(this)
     }
+  }
+
+  async init () {
+    this._ipfs = await IPFS.create(this._options.ipfs)
+    await this._ready()
+    // TODO this._ipfs.on('error', this.emit.bind(this))
+    // TODO this._ipfs.on('ready', this._ready.bind(this))
+    // TODO this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
   }
 
   get address () {
@@ -141,6 +126,7 @@ class RecordNode extends EventEmitter {
 
   async _init (key, address) {
     this._options.orbitdb.storage = Storage(leveldown)
+    if (!fs.existsSync(this._options.keystore)) fs.mkdirSync(this._options.keystore, { recursive: true })
     this._keyStorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
     this._options.orbitdb.keystore = new Keystore(this._keyStorage)
 
@@ -153,13 +139,14 @@ class RecordNode extends EventEmitter {
     }
 
     this._id = await sha256(key.publicKey)
-    this._keyStorage.put(this._id, JSON.stringify(key))
+    await this._keyStorage.put(this._id, JSON.stringify(key))
 
     this._options.orbitdb.identity = await Identities.createIdentity({
       id: this._id,
       keystore: this._options.orbitdb.keystore
     })
 
+    if (!fs.existsSync(this._options.cache)) fs.mkdirSync(this._options.cache, { recursive: true })
     this._cacheStorage = await this._options.orbitdb.storage.createStore(this._options.cache)
     this._options.orbitdb.cache = new Cache(this._cacheStorage)
 
@@ -201,14 +188,18 @@ class RecordNode extends EventEmitter {
       })
     })
 
-    await Promise.all([
-      closeAPI(),
-      this.bootstrap._stop(),
-      this._orbitdb.stop(),
-      this.peers._stop()
-    ])
+    try {
+      await Promise.all([
+        closeAPI(),
+        this.bootstrap._stop(),
+        this._orbitdb.stop(),
+        this.peers._stop()
+      ])
 
-    await this._ipfs.stop()
+      await this._ipfs.stop()
+    } catch (e) {
+      this.logger.err(e)
+    }
   }
 
   async start () {
@@ -227,20 +218,19 @@ class RecordNode extends EventEmitter {
   }
 
   async gc () {
-    if (this._gcLock) return
+    /* if (this._gcLock) return
 
-    this._gcLock = true
+     * this._gcLock = true
 
-    this._bwStats = await this._ipfs.stats.bw()
-    if (this._bwStats.totalIn.minus(this._gcPosition) > this._gcInterval) {
-      this.logger(`Running ipfs gc at ${this._gcPosition}`)
-      const res = await this._ipfs.repo.gc()
-      console.log(res)
-      this._gcPosition = this._bwStats.totalIn.toNumber()
-    }
+     * this._bwStats = await this._ipfs.stats.bw()
+     * if (this._bwStats.totalIn.minus(this._gcPosition) > this._gcInterval) {
+     *   this.logger(`Running ipfs gc at ${this._gcPosition}`)
+     *   await this._ipfs.repo.gc()
+     *   this._gcPosition = this._bwStats.totalIn.toNumber()
+     * }
 
-    this._repoStats = await this._ipfs.repo.stat()
-    this._gcLock = false
+     * this._repoStats = await this._ipfs.repo.stat()
+     * this._gcLock = false */
   }
 
   async pinAC (accessControllerAddress) {

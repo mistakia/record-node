@@ -10,7 +10,7 @@ const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
-const { CID } = require('ipfs')
+const { CID, globSource } = require('ipfs')
 
 const getAcoustID = (filepath) => {
   return new Promise((resolve, reject) => {
@@ -41,7 +41,6 @@ const removeTags = (inputPath, outputPath) => {
 const downloadFile = (resolverData) => {
   return new Promise((resolve, reject) => {
     let filepath
-
     fetch(resolverData.url).then(res => {
       if (!res.ok) {
         return reject(new Error(`unexpected status code: ${res.status} - ${resolverData.url}`))
@@ -56,6 +55,7 @@ const downloadFile = (resolverData) => {
         const filename = `${resolverData.extractor}-${resolverData.id}.${type.ext}`
         filepath = path.resolve(os.tmpdir(), filename)
         const file = fs.createWriteStream(filepath)
+        file.on('error', (error) => reject(error))
         file.on('finish', () => {
           resolve(filepath)
         })
@@ -105,7 +105,7 @@ module.exports = function tracks (self) {
     addTrackFromFile: async (filepath, { resolverData, logId } = {}) => {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath)
-      self.logger(`Generated AcoustID Fingerprint`)
+      self.logger('Generated AcoustID Fingerprint')
 
       const log = self.log.mine()
       const id = await sha256(acoustid.fingerprint)
@@ -117,34 +117,49 @@ module.exports = function tracks (self) {
       const metadata = await musicMetadata.parseFile(filepath)
       const pictures = metadata.common.picture
       delete metadata.common.picture
+      self.logger('Extracted metadata')
 
       const extension = path.extname(filepath)
       const filename = path.parse(filepath).name
       const processPath = path.resolve(os.tmpdir(), `${filename}-notags${extension}`)
       await removeTags(filepath, processPath)
-      const audioFile = await self._ipfs.addFromFs(processPath)
-      await fsPromises.unlink(processPath)
+      self.logger('Cleanded file tags')
 
-      const promises = pictures ? pictures.map(p => self._ipfs.add(p.data)) : []
-      const results = await Promise.all(promises)
+      let audioFile
+      for await (const file of self._ipfs.add(globSource(processPath))) {
+        audioFile = file
+      }
+      await fsPromises.unlink(processPath)
+      self.logger('Added audio to ipfs')
+
+      const results = []
+      if (pictures) {
+        for await (const file of self._ipfs.add(pictures.map(p => p.data))) {
+          results.push(file)
+        }
+      }
+      self.logger('Added artwork to ipfs')
 
       const trackData = {
-        hash: new CID(audioFile[0].hash),
+        hash: audioFile.cid,
         tags: {
           ...metadata.common,
           acoustid_fingerprint: acoustid.fingerprint
         },
         audio: metadata.format,
-        artwork: results.map(r => new CID(r[0].hash)),
+        artwork: results.map(r => r.cid),
         resolver: []
       }
 
       await self._ipfs.pin.add(trackData.hash)
+      self.logger('Pinned audio')
       for (let i = 0; i < trackData.artwork.length; i++) {
         await self._ipfs.pin.add(trackData.artwork[i])
       }
+      self.logger('Pinned artwork')
 
       if (resolverData) {
+        delete resolverData.url
         trackData.resolver = [resolverData]
       }
 
@@ -173,7 +188,7 @@ module.exports = function tracks (self) {
     },
 
     addTrackFromCID: async (cid, { logId } = {}) => {
-      const dagNode = await self._ipfs.dag.get(cid, { resolveLocal: true })
+      const dagNode = await self._ipfs.dag.get(cid, { localResolve: true })
       const content = dagNode.value
       return self.tracks.add(content, { logId })
     },
@@ -237,12 +252,20 @@ module.exports = function tracks (self) {
 
       const { content, contentCID } = entry.payload.value
       if (contentCID) {
-        await self._ipfs.pin.rm(contentCID)
+        try {
+          await self._ipfs.pin.rm(contentCID)
+        } catch (error) {
+          self.logger.err(error)
+        }
         return hash
       }
 
       if (CID.isCID(content)) {
-        await self._ipfs.pin.rm(content)
+        try {
+          await self._ipfs.pin.rm(content)
+        } catch (error) {
+          self.logger.err(error)
+        }
         return hash
       }
 
@@ -251,7 +274,7 @@ module.exports = function tracks (self) {
 
     list: async (logId, opts) => {
       const log = await self.log.get(logId, { replicate: false })
-      let entries = await log.tracks.all(opts)
+      const entries = await log.tracks.all(opts)
 
       if (!self.log.isMine(log)) {
         const myLog = self.log.mine()

@@ -13,7 +13,7 @@ module.exports = function (self) {
         .slice(start, end)
         .map(e => e.hash)
 
-      let entries = []
+      const entries = []
       for (const entryHash of entryHashes) {
         const entry = await self.contacts.getFromHash(entryHash)
         entries.push(entry)
@@ -23,7 +23,7 @@ module.exports = function (self) {
 
     findOrCreate: async function (data, shouldPin) {
       const entry = await new ContactEntry().create(self._ipfs, data, shouldPin)
-      let contact = await self.get(entry.id, 'contact')
+      const contact = await self.get(entry.id, 'contact')
 
       if (!contact) {
         return this._add(entry, shouldPin)

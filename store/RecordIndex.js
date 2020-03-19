@@ -1,7 +1,6 @@
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
 const { CID } = require('ipfs')
-const { isLocal } = require('../utils')
 
 const debounce = (func, wait) => {
   let timeout = null
@@ -93,7 +92,7 @@ class RecordIndex {
       }
 
       if (CID.isCID(entry.payload.value.content)) {
-        const haveLocally = await isLocal(this._oplog._storage, entry.payload.value.content)
+        const haveLocally = await this._oplog._storage.repo.has(entry.payload.value.content)
         if (!haveLocally) {
           this.process(entry)
           continue
@@ -120,7 +119,7 @@ class RecordIndex {
   }
 
   _exportIndex () {
-    let tmp = {
+    const tmp = {
       track: Array.from(this._index.track.entries()),
       contact: Array.from(this._index.contact.entries()),
       tags: this._index.tags,
@@ -181,7 +180,7 @@ class RecordIndex {
   }
 
   hasTag (tag) {
-    return this._index.tags.hasOwnProperty(tag)
+    return {}.hasOwnProperty.call(this._index.tags, tag)
   }
 
   has (id, type) {
@@ -216,7 +215,7 @@ class RecordIndex {
         return
       }
 
-      let cache = {
+      const cache = {
         hash: item.hash,
         clock: item.clock
       }
@@ -267,7 +266,7 @@ class RecordIndex {
     await this.build()
   }
 
-  async updateIndex (entry) {
+  async updateIndex (oplog, entry) {
     // Get all Hashes in Index + Queue
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
