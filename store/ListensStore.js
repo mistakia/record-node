@@ -14,7 +14,7 @@ class ListensStore extends RecordStore {
     const end = opts.end || start + 20
 
     const entryHashes = this._index._index.slice(start, end)
-    let entries = []
+    const entries = []
     for (const entryHash of entryHashes) {
       const entry = await this._oplog.get(entryHash)
       entries.push(entry)

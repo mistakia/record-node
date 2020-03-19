@@ -2,9 +2,8 @@ const express = require('express')
 const fileType = require('file-type')
 const mime = require('mime-types')
 const peek = require('buffer-peek-stream')
+const toStream = require('it-to-stream')
 const { CID } = require('ipfs')
-
-const { isLocal } = require('../../../utils')
 
 const router = express.Router()
 
@@ -25,7 +24,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     const { record } = req.app.locals
 
     if (localOnly) {
-      const haveLocally = await isLocal(record._ipfs, new CID(cid))
+      const haveLocally = await record._ipfs.repo.has(new CID(cid))
       if (!haveLocally) {
         return res.status(204).send(null)
       }
@@ -36,7 +35,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
 
     let offset
     let length
-    let head = {}
+    const head = {}
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-')
@@ -53,8 +52,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
       head['Content-Length'] = size
     }
 
-    const rawStream = record._ipfs.catReadableStream(cid, { offset, length })
-
+    const rawStream = toStream.readable(record._ipfs.cat(cid, { offset, length }))
     const { peekedStream, contentType } = await new Promise((resolve, reject) => {
       const peekBytes = fileType.minimumBytes
       peek(rawStream, peekBytes, (err, streamHead, peekedStream) => {

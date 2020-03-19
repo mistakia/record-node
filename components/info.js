@@ -1,7 +1,7 @@
 module.exports = function info (self) {
   const getSubs = async () => {
     const subInfos = await self._ipfs.pubsub.ls()
-    let subs = {}
+    const subs = {}
 
     for (const subInfo of subInfos) {
       const peerIds = await self._ipfs.pubsub.peers(subInfo)

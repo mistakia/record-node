@@ -5,7 +5,7 @@ module.exports = function peers (self) {
     _topic: 'RECORD',
     _index: {},
     _init: () => {
-      self._room = Room(self._ipfs, self.peers._topic, self._options.pubsubRoom)
+      self._room = new Room(self._ipfs, self.peers._topic, self._options.pubsubRoom)
       self._room.on('peer joined', self.peers._onJoin)
       self._room.on('peer left', self.peers._onLeave)
       self._room.on('message', self.peers._onMessage)
@@ -21,7 +21,7 @@ module.exports = function peers (self) {
     },
     list: async () => {
       const peerIds = Object.keys(self.peers._index)
-      let peers = []
+      const peers = []
       for (const peerId of peerIds) {
         const about = self.peers._index[peerId]
         const contact = await self.contacts.get({

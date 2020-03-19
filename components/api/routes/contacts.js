@@ -29,7 +29,7 @@ router.post('/?', (req, res, next) => {
   const { address, alias } = req.body
   const { record } = req.app.locals
 
-  let errors = []
+  const errors = []
 
   if (!address) {
     errors.push('Missing address field')

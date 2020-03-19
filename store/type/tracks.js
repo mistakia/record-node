@@ -21,11 +21,13 @@ module.exports = function (self) {
       if (query) {
         let results = []
         if (tags.length) {
-          results = await self._index._searchIndex.search(query, { where: (doc) => {
-            return tags.every((tag) => {
-              return doc.tags.indexOf(tag) !== -1
-            })
-          }})
+          results = await self._index._searchIndex.search(query, {
+            where: (doc) => {
+              return tags.every((tag) => {
+                return doc.tags.indexOf(tag) !== -1
+              })
+            }
+          })
         } else {
           results = await self._index._searchIndex.search(query, {
             field: ['title', 'artist', 'resolver']
@@ -52,7 +54,7 @@ module.exports = function (self) {
         }
       }
 
-      let promises = entryHashes.map(e => self.tracks.getFromHash(e))
+      const promises = entryHashes.map(e => self.tracks.getFromHash(e))
       return Promise.all(promises)
     },
 
@@ -62,7 +64,7 @@ module.exports = function (self) {
 
     findOrCreate: async function (content, shouldPin) {
       const entry = await new TrackEntry().create(self._ipfs, content, shouldPin)
-      let track = await self.get(entry.id, 'track')
+      const track = await self.get(entry.id, 'track')
 
       if (!track) {
         return this._add(entry, shouldPin)
@@ -78,11 +80,9 @@ module.exports = function (self) {
     },
 
     _add: async (entry, shouldPin) => {
-      const hash = await self.put(entry)
-      console.log(`track entry hash: ${hash}`)
-      if (shouldPin) await self._ipfs.pin.add(hash)
-      const pins = await self._ipfs.pin.ls(hash)
-      console.log(pins)
+      await self.put(entry)
+      // TODO
+      // if (shouldPin) await self._ipfs.pin.add(hash)
       return self.tracks.getFromId(entry.id)
     },
 

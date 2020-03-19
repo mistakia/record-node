@@ -11,8 +11,8 @@ module.exports = function about (self) {
     get: async (logId) => {
       self.logger(`Get about for: ${logId}`)
       const log = await self.log.get(logId, { replicate: false })
-      let entry = await log.about.get()
-      let entryValue = entry ? entry.payload.value : { content: {} }
+      const entry = await log.about.get()
+      const entryValue = entry ? entry.payload.value : { content: {} }
 
       if (!entryValue.id) {
         entryValue.id = await sha256(log.address.toString())

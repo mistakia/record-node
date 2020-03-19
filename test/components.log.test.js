@@ -10,10 +10,38 @@ describe('record.log', function () {
   this.timeout(config.timeout)
   let record
 
-  before(async () => { record = await startRecord() })
+  before(async () => { record = await startRecord(config.node1) })
   after(async () => record && record.stop())
 
-  describe('record.log.get', function () {
+  describe('record.log', function () {
+    it('mine', function () {
+      const log = record.log.mine()
+      assert.strictEqual(log.address.toString(), record.address)
+    })
+
+    it('isMine', async function () {
+      const log = await record.log.get(record.address)
+      const isMine = record.log.isMine(log)
+      assert.strictEqual(isMine, true)
+    })
+
+    it('isOpen', function () {
+      const isOpen = record.log.isOpen(record.address)
+      assert.strictEqual(isOpen, true)
+    })
+
+    describe('get', function () {
+      it('no address given', async function () {
+        const log = await record.log.get()
+        assert.strictEqual(log.address.toString(), record.address)
+      })
+
+      it('address given', async function () {
+        const log = await record.log.get(record.address)
+        assert.strictEqual(log.address.toString(), record.address)
+      })
+    })
+
     describe('errors', function () {
       it('throws an error if given invalid OrbitDB address', async function () {
         let error
@@ -24,16 +52,8 @@ describe('record.log', function () {
           error = e.toString()
         }
 
-        assert.equal(error, `Error: ${address} is not a valid log name`)
+        assert.strictEqual(error, `Error: ${address} is not a valid log name`)
       })
     })
-
-    // mine
-
-    // isMine
-
-    // isOpen
-
-    // get
   })
 })
