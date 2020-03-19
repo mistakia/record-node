@@ -50,13 +50,17 @@ module.exports = function contacts (self) {
       self.logger(`Connected contact: ${address}`)
 
       if (!log.options.replicate) {
-        log.options.replicate = true
-        self._orbitdb._pubsub.subscribe(
-          address,
-          self._orbitdb._onMessage.bind(self._orbitdb),
-          self._orbitdb._onPeerConnected.bind(self._orbitdb)
-        )
-        log._replicator.resume()
+        try {
+          log.options.replicate = true
+          await self._orbitdb._pubsub.subscribe(
+            address,
+            self._orbitdb._onMessage.bind(self._orbitdb),
+            self._orbitdb._onPeerConnected.bind(self._orbitdb)
+          )
+          log._replicator.resume()
+        } catch (e) {
+          console.log(e)
+        }
       }
 
       log.events.on('replicated', (logId) => {
@@ -116,6 +120,14 @@ module.exports = function contacts (self) {
     },
 
     add: async ({ address, alias, logId }) => {
+      if (self.isMe(address)) {
+        throw new Error(`unable to add self: ${address}`)
+      }
+
+      if (!self.isValidAddress(address)) {
+        throw new Error(`invalid address: ${address}`)
+      }
+
       const log = await self.log.get(logId)
       const contactEntry = await log.contacts.findOrCreate({ address, alias })
       if (self.isReplicating) {
@@ -161,7 +173,7 @@ module.exports = function contacts (self) {
         peerEntry = self.peers.get(contactId)
       }
 
-      const [ entry, about, peers ] = await Promise.all([
+      const [entry, about, peers] = await Promise.all([
         self.contacts._getEntry(logId, contactId),
         self.about.get(contactAddress),
         self._ipfs.pubsub.peers(contactAddress)
@@ -217,7 +229,7 @@ module.exports = function contacts (self) {
       const contactEntry = await log.contacts.getFromId(contactId)
       await log.contacts.del(contactId)
 
-      const contactLog = self.log.get(contactEntry.payload.value.content.address)
+      const contactLog = await self.log.get(contactEntry.payload.value.content.address)
       for (const hash of contactLog._oplog._hashIndex.keys()) {
         const entry = await log._oplog.get(hash)
         const { content, type } = entry.payload.value

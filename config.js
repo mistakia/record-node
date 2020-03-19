@@ -1,4 +1,25 @@
+const Libp2p = require('libp2p')
+const Bootstrap = require('libp2p-bootstrap')
+
 const { RecordStore } = require('./store')
+
+const libp2p = ({ libp2pOptions }) => {
+  libp2pOptions.modules.peerDiscovery.push(Bootstrap)
+  libp2pOptions.config.peerDiscovery = {
+    bootstrap: {
+      list: [
+        '/ip4/206.189.77.125/tcp/4001/p2p/QmaczBJVeEn9sVmkNMD7aqXg8TYeVW57JbybhacazgsfgF'
+      ]
+    }
+  }
+  libp2pOptions.config.Addresses = {
+    Swarm: [
+      '/ip4/0.0.0.0/tcp/4002/',
+      '/ip4/0.0.0.0/tcp/4003/ws/'
+    ]
+  }
+  return new Libp2p(libp2pOptions)
+}
 
 module.exports = {
   id: undefined,
@@ -33,36 +54,6 @@ module.exports = {
     preload: {
       enabled: false
     },
-    // repo: path.resolve(recorddir, './ipfs'),
-    EXPERIMENTAL: {
-      dht: false, // TODO: BRICKS COMPUTER
-      pubsub: true
-    },
-    config: {
-      Bootstrap: [],
-      Addresses: {
-        Swarm: [
-          // '/ip4/0.0.0.0/tcp/4002/',
-          '/ip4/0.0.0.0/tcp/4003/ws/',
-          '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
-        ]
-      }
-    },
-    libp2p: {
-      config: {
-        relay: {
-          enabled: true,
-          hop: {
-            enabled: true,
-            active: true
-          }
-        }
-      }
-    },
-    connectionManager: {
-      maxPeers: 100,
-      minPeers: 10,
-      pollInterval: 60000 // ms
-    }
+    libp2p
   }
 }

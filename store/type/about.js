@@ -1,3 +1,4 @@
+const { CID } = require('ipfs')
 const { AboutEntry } = require('../RecordEntry')
 
 module.exports = function (self) {
@@ -20,7 +21,8 @@ module.exports = function (self) {
       }
 
       // save if new entry is different
-      if (!entry.content.equals(currentEntry.payload.value.contentCID)) {
+      const contentCID = currentEntry.payload.value.cid || new CID(currentEntry.payload.value.contentCID)
+      if (!entry.content.equals(contentCID)) {
         return save()
       }
 

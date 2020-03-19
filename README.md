@@ -49,6 +49,7 @@ const node = new RecordNode()
 node.on('ready', async () => {
     const log = await node.log.get() // or node.log.get(record.address)
 })
+await node.init()
 ```
 
 ## API

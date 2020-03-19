@@ -23,7 +23,7 @@ console.log(`Node Id: ${id}`)
 const recorddir = path.resolve(os.homedir(), `./.${name}`)
 if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
 
-let opts = {
+const opts = {
   keystore: path.resolve(recorddir, './keystore'),
   cache: path.resolve(recorddir, './cache'),
   orbitdb: {
@@ -43,17 +43,10 @@ if (argv.api) {
   opts.api = { port }
 }
 
-try {
+const main = async () => {
   const record = new RecordNode(opts)
   record.on('ready', async (data) => {
     console.log(data)
-
-    try {
-      const pins = await record._ipfs.pin.ls()
-      console.log(pins)
-    } catch (e) {
-      console.log(e)
-    }
 
     try {
       const aboutData = {
@@ -66,23 +59,12 @@ try {
     } catch (e) {
       console.log(e)
     }
-
-    // try {
-    //   const track = await record.tracks.addTrackFromUrl('https://soundcloud.com/asa-moto101/kifesh?in=deewee-2/sets/asa-moto-playtime-deewee030')
-    //   console.log(track)
-
-    //   const hash = await record.tracks.remove(track.payload.key)
-    //   console.log(hash)
-    // } catch (e) {
-    //   console.log(e)
-    // }
-
-    // try {
-    //   await record.contacts.add({ address: '/orbitdb/zdpuB13FxzpXQjHggqHsLkPWeXDabcPucNs7vesGRaBHgaqxU/record' })
-    // } catch (e) {
-    //   console.log(e)
-    // }
   })
+  await record.init()
+}
+
+try {
+  main()
 } catch (e) {
   console.log(e)
 }
