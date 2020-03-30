@@ -16,28 +16,39 @@ module.exports = function peers (self) {
     },
     get: (contactId) => {
       const peerIds = Object.keys(self.peers._index)
-      const peers = peerIds.map(peerId => self.peers._index[peerId])
-      return peers.find(p => p.id === contactId)
+      const peerLogs = peerIds.map(peerId => self.peers._index[peerId].logs).flat()
+      return peerLogs.find(p => p.id === contactId)
     },
     list: async () => {
       const peerIds = Object.keys(self.peers._index)
       const peers = []
       for (const peerId of peerIds) {
-        const about = self.peers._index[peerId]
-        const contact = await self.contacts.get({
-          logId: self.address,
-          contactId: about.id,
-          contactAddress: about.content.address,
-          peerId
-        })
-        peers.push(contact)
+        for (const about of self.peers._index[peerId].logs) {
+          const contact = await self.contacts.get({
+            logId: self.address,
+            contactId: about.id,
+            contactAddress: about.content.address,
+            peerId
+          })
+          peers.push(contact)
+        }
       }
 
       return peers
     },
     _onJoin: async (peer) => {
-      const about = await self.about.get(self.address)
-      const message = Buffer.from(JSON.stringify(about))
+      const logIds = Object.keys(self._logs)
+      const data = {
+        logs: []
+      }
+
+      data.about = await self.about.get(self.address)
+
+      for (const logId of logIds) {
+        const about = await self.about.get(logId)
+        data.logs.push(about)
+      }
+      const message = Buffer.from(JSON.stringify(data))
       self._room.sendTo(peer, message)
     },
     _onLeave: (peerId) => {
@@ -45,35 +56,46 @@ module.exports = function peers (self) {
         return
       }
 
-      const { address } = self.peers._index[peerId].content
+      const logs = self.peers._index[peerId].logs
       delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
+
+      for (const about of logs) {
+        self.emit('redux', {
+          type: 'RECORD_PEER_LEFT',
+          payload: { logId: about.content.address, peerCount, peerId }
+        })
+      }
+    },
+    _add: async (about, peerId) => {
+      const { address } = about.content
+      if (!address) {
+        throw new Error('peer message missing address')
+      }
+
+      if (!self.isValidAddress(address)) {
+        return
+      }
+
+      await self.log.get(address, { replicate: false })
+      const peerCount = Object.keys(self.peers._index).length
       self.emit('redux', {
-        type: 'RECORD_PEER_LEFT',
-        payload: { logId: address, peerCount, peerId }
+        type: 'RECORD_PEER_JOINED',
+        payload: { logId: about.content.address, peerCount, peerId }
       })
     },
     _onMessage: async (message) => {
       try {
-        const about = JSON.parse(message.data)
-        const { address } = about.content
-        if (!address) {
-          throw new Error('peer message missing address')
-        }
+        const data = JSON.parse(message.data)
+        self.peers._index[message.from] = data
 
-        if (!self.isValidAddress(address)) {
-          return
-        }
-
-        await self.log.get(address, { replicate: false })
-        self.peers._index[message.from] = about
         const peerCount = Object.keys(self.peers._index).length
+        for (const about of data.logs) {
+          await self.peers._add(about, message.from)
+        }
+
         self.logger.log(`Record peer added, current count: ${peerCount}`)
-        self.emit('redux', {
-          type: 'RECORD_PEER_JOINED',
-          payload: { logId: address, peerCount, peerId: message.from }
-        })
       } catch (e) {
         self.logger.err(e)
       }
