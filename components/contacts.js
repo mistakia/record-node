@@ -63,27 +63,6 @@ module.exports = function contacts (self) {
         }
       }
 
-      log.events.on('replicated', (logId) => {
-        self.emit('redux', {
-          type: 'CONTACT_REPLICATED',
-          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
-        })
-      })
-
-      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
-        self.logger(`new entry ${address}/${entry.hash}`)
-        self.emit('redux', {
-          type: 'CONTACT_REPLICATE_PROGRESS',
-          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
-        })
-
-        const shouldPin = await log.contacts.hasLogId(logId)
-        if (shouldPin) {
-          await self._ipfs.pin.add(hash, { recursive: false })
-          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
-        }
-      })
-
       self.emit('redux', { type: 'CONTACT_CONNECTED', payload: { logId: address, contactId } })
     },
 
