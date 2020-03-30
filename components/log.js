@@ -1,4 +1,5 @@
 const extend = require('deep-extend')
+const { sha256 } = require('crypto-hash')
 
 const { RecordStore } = require('../store')
 
@@ -31,35 +32,9 @@ module.exports = function log (self) {
       return !!self._orbitdb.stores[logId]
     },
 
-    get: async function (logId = self.address, options = {}) {
-      if (self.isMe(logId)) {
-        return self._log
-      }
-
-      if (self.listens.isMe(logId)) {
-        return self._listensLog
-      }
-
-      if (!self.isValidAddress(logId)) {
-        if (!options.create) {
-          const addr = await self._orbitdb.determineAddress(logId, RecordStore.type)
-          logId = addr.toString()
-          options.localOnly = true
-        } else if (!logNameRe.test(logId)) {
-          throw new Error(`${logId} is not a valid log name`)
-        }
-      }
-
-      if (this.isOpen(logId)) {
-        return self._orbitdb.stores[logId]
-      }
-
-      const opts = extend({ replicate: false }, self._options.store, options)
-      self.logger(`Loading log: ${logId}`, opts)
-      const log = await self._orbitdb.open(logId, opts)
-      await self._ipfs.pin.add(log.address.root)
-      const { accessControllerAddress } = log.options
-      await self.pinAC(accessControllerAddress)
+    _registerEvents: async (log) => {
+      const logId = log.id
+      const contactId = await sha256(logId)
 
       log.events.on('peer', (peerId) => {
         self.emit('redux', {
@@ -94,6 +69,61 @@ module.exports = function log (self) {
           }
         })
       })
+
+      log.events.on('replicated', (logId) => {
+        self.emit('redux', {
+          type: 'CONTACT_REPLICATED',
+          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+        })
+      })
+
+      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
+        self.logger(`new entry ${logId}/${entry.hash}`)
+        self.emit('redux', {
+          type: 'CONTACT_REPLICATE_PROGRESS',
+          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+        })
+
+        const shouldPin = await log.contacts.hasLogId(logId)
+        if (shouldPin) {
+          await self._ipfs.pin.add(hash, { recursive: false })
+          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
+        }
+      })
+    },
+
+    get: async function (logId = self.address, options = {}) {
+      if (self.isMe(logId)) {
+        return self._log
+      }
+
+      if (self.listens.isMe(logId)) {
+        return self._listensLog
+      }
+
+      if (!self.isValidAddress(logId)) {
+        if (!options.create) {
+          const addr = await self._orbitdb.determineAddress(logId, RecordStore.type)
+          logId = addr.toString()
+          options.localOnly = true
+        } else if (!logNameRe.test(logId)) {
+          throw new Error(`${logId} is not a valid log name`)
+        }
+      }
+
+      if (this.isOpen(logId)) {
+        return self._orbitdb.stores[logId]
+      }
+
+      const opts = extend({ replicate: false }, self._options.store, options)
+      self.logger(`Loading log: ${logId}`, opts)
+      const log = await self._orbitdb.open(logId, opts)
+
+      // TODO await self._ipfs.pin.add(log.address.root)
+      const { accessControllerAddress } = log.options
+      await self.pinAC(accessControllerAddress)
+
+      await this._registerEvents(log)
 
       self.emit('redux', {
         type: 'CONTACT_LOADING',
