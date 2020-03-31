@@ -2,7 +2,7 @@ const path = require('path')
 const rimraf = require('rimraf')
 const Record = require('../../index')
 
-const startRecord = (opts) => new Promise((resolve, reject) => {
+const startRecord = (opts, node2) => new Promise((resolve, reject) => {
   const recordOpts = {
     api: false,
     orbitdb: {
@@ -20,9 +20,18 @@ const startRecord = (opts) => new Promise((resolve, reject) => {
     reject(err)
   })
 
-  record.on('ready', () => {
-    resolve(record)
+  setTimeout(() => reject(new Error('peer timed out')), 25000)
+
+  record.on('redux', ({ type, payload }) => {
+    if (type === 'RECORD_PEER_JOINED' && payload.logId === node2.address) {
+      resolve(record)
+    }
   })
+
+  record.on('ready', () => {
+    if (!node2) resolve(record)
+  })
+
   record.init()
 })
 

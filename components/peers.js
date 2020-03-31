@@ -16,7 +16,11 @@ module.exports = function peers (self) {
     },
     get: (contactId) => {
       const peerIds = Object.keys(self.peers._index)
-      const peerLogs = peerIds.map(peerId => self.peers._index[peerId].logs).flat()
+      let peerLogs = []
+      for (const peerId of peerIds) {
+        peerLogs.push(self.peers._index[peerId].about)
+        self.peers._index[peerId].logs.forEach(l => peerLogs.push(l))
+      }
       return peerLogs.find(p => p.id === contactId)
     },
     list: async () => {
@@ -89,6 +93,8 @@ module.exports = function peers (self) {
       try {
         const data = JSON.parse(message.data)
         self.peers._index[message.from] = data
+
+        await self.peers._add(data.about, message.from)
 
         const peerCount = Object.keys(self.peers._index).length
         for (const about of data.logs) {

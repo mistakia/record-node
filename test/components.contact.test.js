@@ -3,8 +3,7 @@
 const assert = require('assert')
 const {
   config,
-  startRecord,
-  waitForPeer
+  startRecord
 } = require('./utils')
 
 describe('record.contact', function () {
@@ -12,16 +11,15 @@ describe('record.contact', function () {
   let record1, record2, contact2, contact2Id
 
   before(async () => {
-    record1 = await startRecord(config.node1)
     record2 = await startRecord(config.node2)
+    record1 = await startRecord(config.node1, record2)
 
     contact2 = {
       address: record2.address,
       alias: 'test node2'
     }
-
-    await waitForPeer(record1, record2)
   })
+
   after(async () => {
     try {
       record1 && await record1.stop()
