@@ -4,8 +4,7 @@ const assert = require('assert')
 const path = require('path')
 const {
   config,
-  startRecord,
-  waitForPeer
+  startRecord
 } = require('./utils')
 
 describe('record.track', function () {
@@ -13,9 +12,8 @@ describe('record.track', function () {
   let record1, record2
 
   before(async () => {
-    record1 = await startRecord(config.node1)
     record2 = await startRecord(config.node2)
-    await waitForPeer(record1, record2)
+    record1 = await startRecord(config.node1, record2)
   })
 
   after(async () => {

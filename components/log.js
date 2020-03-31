@@ -92,6 +92,20 @@ module.exports = function log (self) {
       })
     },
 
+    drop: async function (logId) {
+      if (self.isMe(logId)) {
+        throw new Error('Cannot drop default log')
+      }
+
+      const log = await this.get(logId)
+      log._cache.del(log._index._cacheIndexKey)
+      log._cache.del(log._index._cacheSearchIndexKey)
+      if (log._type === RecordStore.type) {
+        delete self._logs[logId]
+      }
+      await log.drop(logId)
+    },
+
     get: async function (logId = self.address, options = {}) {
       if (self.isMe(logId)) {
         return self._log

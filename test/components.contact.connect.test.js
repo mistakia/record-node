@@ -4,8 +4,7 @@ const assert = require('assert')
 const { sha256 } = require('crypto-hash')
 const {
   config,
-  startRecord,
-  waitForPeer
+  startRecord
 } = require('./utils')
 
 describe('record.contact.connect', function () {
@@ -13,11 +12,10 @@ describe('record.contact.connect', function () {
   let record1, record2
 
   beforeEach(async () => {
-    record1 = await startRecord(config.node1)
     record2 = await startRecord(config.node2)
-
-    await waitForPeer(record1, record2)
+    record1 = await startRecord(config.node1, record2)
   })
+
   afterEach(async () => {
     try {
       record1 && await record1.stop()

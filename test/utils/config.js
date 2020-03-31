@@ -8,7 +8,6 @@ module.exports = {
       enabled: false
     },
     ipfs: {
-      repo: path.join(__dirname, '../fixtures/node1/ipfs'),
       config: {
         Addresses: {
           API: '/ip4/127.0.0.1/tcp/0',
@@ -34,7 +33,6 @@ module.exports = {
       enabled: false
     },
     ipfs: {
-      repo: path.join(__dirname, '../fixtures/node2/ipfs'),
       config: {
         Addresses: {
           API: '/ip4/127.0.0.1/tcp/0',

@@ -1,4 +1,5 @@
 const EventEmitter = require('events')
+const path = require('path')
 const fs = require('fs')
 
 const { sha256 } = require('crypto-hash')
@@ -93,6 +94,9 @@ class RecordNode extends EventEmitter {
   }
 
   async init () {
+    if (!fs.existsSync(this._options.directory))
+      fs.mkdirSync(this._options.directory, { recursive: true })
+    this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
     this._ipfs = await IPFS.create(this._options.ipfs)
     await this._ready()
     // TODO this._ipfs.on('error', this.emit.bind(this))
@@ -126,8 +130,11 @@ class RecordNode extends EventEmitter {
 
   async _init (key, address) {
     this._options.orbitdb.storage = Storage(leveldown)
-    if (!fs.existsSync(this._options.keystore)) fs.mkdirSync(this._options.keystore, { recursive: true })
-    this._keyStorage = await this._options.orbitdb.storage.createStore(this._options.keystore)
+
+    const keystorePath = path.resolve(this._options.directory, './keystore')
+    if (!fs.existsSync(keystorePath))
+      fs.mkdirSync(keystorePath, { recursive: true })
+    this._keyStorage = await this._options.orbitdb.storage.createStore(keystorePath)
     this._options.orbitdb.keystore = new Keystore(this._keyStorage)
 
     if (!key) {
@@ -146,8 +153,10 @@ class RecordNode extends EventEmitter {
       keystore: this._options.orbitdb.keystore
     })
 
-    if (!fs.existsSync(this._options.cache)) fs.mkdirSync(this._options.cache, { recursive: true })
-    this._cacheStorage = await this._options.orbitdb.storage.createStore(this._options.cache)
+    const cachePath = path.resolve(this._options.directory, './cache')
+    if (!fs.existsSync(cachePath))
+      fs.mkdirSync(cachePath, { recursive: true })
+    this._cacheStorage = await this._options.orbitdb.storage.createStore(cachePath)
     this._options.orbitdb.cache = new Cache(this._cacheStorage)
 
     this._cacheStorage.createKeyStream().on('data', async (data) => {
@@ -163,6 +172,7 @@ class RecordNode extends EventEmitter {
       }
     })
 
+    this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
     await this.log._init(address)
