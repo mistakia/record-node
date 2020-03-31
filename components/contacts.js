@@ -84,7 +84,7 @@ module.exports = function contacts (self) {
 
       await self._orbitdb._pubsub.unsubscribe(address)
       log.options.replicate = false
-      log._replicator.stop()
+      log._replicator.pause()
 
       self.emit('redux', { type: 'CONTACT_DISCONNECTED', payload: { logId: address, contactId } })
     },

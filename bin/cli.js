@@ -24,14 +24,7 @@ const recorddir = path.resolve(os.homedir(), `./.${name}`)
 if (!fs.existsSync(recorddir)) { fs.mkdirSync(recorddir) }
 
 const opts = {
-  keystore: path.resolve(recorddir, './keystore'),
-  cache: path.resolve(recorddir, './cache'),
-  orbitdb: {
-    directory: path.resolve(recorddir, './orbitdb')
-  },
-  ipfs: {
-    repo: path.resolve(recorddir, './ipfs')
-  }
+  directory: path.resolve(os.homedir(), `./.${name}`)
 }
 
 if (id) {

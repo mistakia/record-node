@@ -1,4 +1,6 @@
 const Libp2p = require('libp2p')
+const path = require('path')
+const os = require('os')
 const Bootstrap = require('libp2p-bootstrap')
 
 const { RecordStore } = require('./store')
@@ -25,8 +27,7 @@ module.exports = {
   id: undefined,
   api: false,
   address: 'record',
-  keystore: './keystore',
-  cache: './cache',
+  directory: path.resolve(os.homedir(), './.record'),
   gcInterval: 10000000, // 10mb
   pubsubRoom: {
     pollInterval: 5000
