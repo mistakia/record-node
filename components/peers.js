@@ -16,7 +16,7 @@ module.exports = function peers (self) {
     },
     get: (contactId) => {
       const peerIds = Object.keys(self.peers._index)
-      let peerLogs = []
+      const peerLogs = []
       for (const peerId of peerIds) {
         peerLogs.push(self.peers._index[peerId].about)
         self.peers._index[peerId].logs.forEach(l => peerLogs.push(l))

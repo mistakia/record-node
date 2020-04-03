@@ -1,24 +1,17 @@
 const Libp2p = require('libp2p')
 const path = require('path')
 const os = require('os')
-const Bootstrap = require('libp2p-bootstrap')
+const Stardust = require('libp2p-stardust')
 
 const { RecordStore } = require('./store')
 
 const libp2p = ({ libp2pOptions }) => {
-  libp2pOptions.modules.peerDiscovery.push(Bootstrap)
-  libp2pOptions.config.peerDiscovery = {
-    bootstrap: {
-      list: [
-        '/ip4/206.189.77.125/tcp/4001/p2p/QmaczBJVeEn9sVmkNMD7aqXg8TYeVW57JbybhacazgsfgF'
-      ]
-    }
-  }
-  libp2pOptions.config.Addresses = {
-    Swarm: [
-      '/ip4/0.0.0.0/tcp/4002/',
-      '/ip4/0.0.0.0/tcp/4003/ws/'
-    ]
+  libp2pOptions.modules.transport.push(Stardust)
+  libp2pOptions.config.pubsub = {
+    enabled: true,
+    emitSelf: true,
+    signMessages: true,
+    strictSigning: true
   }
   return new Libp2p(libp2pOptions)
 }
@@ -51,6 +44,16 @@ module.exports = {
     init: {
       bits: 2048,
       emptyRepo: true
+    },
+    config: {
+      Addresses: {
+        Swarm: [
+          '/ip4/0.0.0.0/tcp/4002',
+          '/ip4/127.0.0.1/tcp/4003/ws',
+          '/ip4/206.189.77.125/tcp/5892/ws/p2p-stardust/p2p/QmT8Z2iiZChw7YMm98TpatHFqNAAXYo24TUDeSxR4CqkUw'
+        ]
+      },
+      Bootstrap: []
     },
     preload: {
       enabled: false
