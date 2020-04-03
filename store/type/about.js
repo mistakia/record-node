@@ -30,7 +30,7 @@ module.exports = function (self) {
       return this.get()
     },
 
-    get: async () => {
+    get: () => {
       return self._index._index.about
     }
   }

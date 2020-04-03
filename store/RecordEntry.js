@@ -19,7 +19,8 @@ class Entry {
     const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
     this._entry.content = cid
 
-    if (shouldPin) await ipfs.pin.add(cid)
+    // TODO
+    // if (shouldPin) await ipfs.pin.add(cid)
 
     return this._entry
   }

@@ -10,10 +10,12 @@ module.exports = function log (self) {
     _init: async (address = 'record') => {
       const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
-      await self._ipfs.pin.add(self._log.address.root)
+      // TODO
+      // await self._ipfs.pin.add(self._log.address.root)
 
       const { accessControllerAddress } = self._log.options
-      await self.pinAC(accessControllerAddress)
+      // TODO
+      // await self.pinAC(accessControllerAddress)
 
       await self._log.load()
 
@@ -84,11 +86,12 @@ module.exports = function log (self) {
           payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
 
-        const shouldPin = await log.contacts.hasLogId(logId)
-        if (shouldPin) {
-          await self._ipfs.pin.add(hash, { recursive: false })
-          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
-        }
+        // TODO
+        /* const shouldPin = await log.contacts.hasLogId(logId)
+         * if (shouldPin) {
+         *   await self._ipfs.pin.add(hash, { recursive: false })
+         *   await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
+         * } */
       })
     },
 
@@ -133,10 +136,11 @@ module.exports = function log (self) {
       self.logger(`Loading log: ${logId}`, opts)
       const log = await self._orbitdb.open(logId, opts)
 
-      // TODO await self._ipfs.pin.add(log.address.root)
-      const { accessControllerAddress } = log.options
-      await self.pinAC(accessControllerAddress)
-
+      // TODO
+      /* await self._ipfs.pin.add(log.address.root)
+       * const { accessControllerAddress } = log.options
+       * await self.pinAC(accessControllerAddress)
+       */
       await this._registerEvents(log)
 
       self.emit('redux', {

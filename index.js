@@ -94,8 +94,9 @@ class RecordNode extends EventEmitter {
   }
 
   async init () {
-    if (!fs.existsSync(this._options.directory))
+    if (!fs.existsSync(this._options.directory)) {
       fs.mkdirSync(this._options.directory, { recursive: true })
+    }
     this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
     this._ipfs = await IPFS.create(this._options.ipfs)
     await this._ready()
@@ -132,8 +133,9 @@ class RecordNode extends EventEmitter {
     this._options.orbitdb.storage = Storage(leveldown)
 
     const keystorePath = path.resolve(this._options.directory, './keystore')
-    if (!fs.existsSync(keystorePath))
+    if (!fs.existsSync(keystorePath)) {
       fs.mkdirSync(keystorePath, { recursive: true })
+    }
     this._keyStorage = await this._options.orbitdb.storage.createStore(keystorePath)
     this._options.orbitdb.keystore = new Keystore(this._keyStorage)
 
@@ -154,8 +156,9 @@ class RecordNode extends EventEmitter {
     })
 
     const cachePath = path.resolve(this._options.directory, './cache')
-    if (!fs.existsSync(cachePath))
+    if (!fs.existsSync(cachePath)) {
       fs.mkdirSync(cachePath, { recursive: true })
+    }
     this._cacheStorage = await this._options.orbitdb.storage.createStore(cachePath)
     this._options.orbitdb.cache = new Cache(this._cacheStorage)
 

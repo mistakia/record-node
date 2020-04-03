@@ -142,6 +142,7 @@ module.exports = function tracks (self) {
 
       const trackData = {
         hash: audioFile.cid,
+        size: audioFile.size,
         tags: {
           ...metadata.common,
           acoustid_fingerprint: acoustid.fingerprint
@@ -151,13 +152,14 @@ module.exports = function tracks (self) {
         resolver: []
       }
 
-      await self._ipfs.pin.add(trackData.hash)
-      self.logger('Pinned audio')
-      for (let i = 0; i < trackData.artwork.length; i++) {
-        await self._ipfs.pin.add(trackData.artwork[i])
-      }
-      self.logger('Pinned artwork')
-
+      // TODO
+      /* await self._ipfs.pin.add(trackData.hash)
+       * self.logger('Pinned audio')
+       * for (let i = 0; i < trackData.artwork.length; i++) {
+       *   await self._ipfs.pin.add(trackData.artwork[i])
+       * }
+       * self.logger('Pinned artwork')
+       */
       if (resolverData) {
         delete resolverData.url
         trackData.resolver = [resolverData]
@@ -253,7 +255,8 @@ module.exports = function tracks (self) {
       const { content, contentCID } = entry.payload.value
       if (contentCID) {
         try {
-          await self._ipfs.pin.rm(contentCID)
+          // TODO
+          // await self._ipfs.pin.rm(contentCID)
         } catch (error) {
           self.logger.err(error)
         }
@@ -262,7 +265,8 @@ module.exports = function tracks (self) {
 
       if (CID.isCID(content)) {
         try {
-          await self._ipfs.pin.rm(content)
+          // TODO
+          // await self._ipfs.pin.rm(content)
         } catch (error) {
           self.logger.err(error)
         }
