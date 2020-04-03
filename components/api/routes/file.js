@@ -31,7 +31,10 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     }
 
     const range = req.headers.range
-    const { size } = await record._ipfs.files.stat(`/ipfs/${cid}`)
+
+    const { size } = req.query.size
+      ? req.query
+      : await record._ipfs.files.stat(`/ipfs/${cid}`, { size: true })
 
     let offset
     let length
@@ -67,12 +70,13 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     res.writeHead(range ? 206 : 200, head)
     peekedStream.pipe(res)
 
-    if (logId) {
-      const shouldPin = await record.contacts.hasLogId(logId)
-      if (shouldPin) await record._ipfs.pin.add(cid)
-    }
+    // TODO
+    /* if (logId) {
+     *   const shouldPin = await record.contacts.hasLogId(logId)
+     *   if (shouldPin) await record._ipfs.pin.add(cid)
+     * }
 
-    record.gc()
+     * record.gc() */
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })

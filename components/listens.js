@@ -9,10 +9,12 @@ module.exports = function listens (self) {
         type: ListensStore.type
       }
       self._listens = await self._orbitdb.open('listens', opts)
-      await self._ipfs.pin.add(self._listens.address.root)
+      // TODO
+      // await self._ipfs.pin.add(self._listens.address.root)
 
       const { accessControllerAddress } = self._listens.options
-      self.pinAC(accessControllerAddress)
+      // TODO
+      // self.pinAC(accessControllerAddress)
 
       await self._listens.load()
     },

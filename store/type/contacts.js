@@ -39,7 +39,8 @@ module.exports = function (self) {
 
     _add: async (entry, shouldPin) => {
       const hash = await self.put(entry)
-      if (shouldPin) await self._ipfs.pin.add(hash)
+      // TODO
+      // if (shouldPin) await self._ipfs.pin.add(hash)
       return self.contacts.getFromId(entry.id)
     },
 

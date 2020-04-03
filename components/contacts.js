@@ -120,8 +120,9 @@ module.exports = function contacts (self) {
         const { content } = entry.payload.value
         const { key } = entry.payload
 
-        await self._ipfs.pin.add(content, { recursive: false }) // add content pin
-        await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins
+        // TODO
+        /* await self._ipfs.pin.add(content, { recursive: false }) // add content pin
+         * await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins */
       }
 
       return self.contacts.get({
@@ -214,8 +215,9 @@ module.exports = function contacts (self) {
         const { content, type } = entry.payload.value
         const { key } = entry.payload
 
-        await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
-        await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins
+        // TODO
+        /* await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
+         * await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins */
       }
 
       return { id: contactId }
