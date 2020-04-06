@@ -1,15 +1,9 @@
+const path = require('path')
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
+const extend = require('deep-extend')
+const { default: PQueue } = require('p-queue')
 const { CID } = require('ipfs')
-
-const debounce = (func, wait) => {
-  let timeout = null
-  return (...args) => {
-    const next = () => func(...args)
-    clearTimeout(timeout)
-    timeout = setTimeout(next, wait)
-  }
-}
 
 const defaultIndex = () => ({
   tags: {},
@@ -19,16 +13,18 @@ const defaultIndex = () => ({
 })
 
 const CACHE_VERSION = 1
+const indexManager = new PQueue({ concurrency: 100 })
 
 class RecordIndex {
-  constructor (oplog, cache, events) {
-    this._cacheIndexKey = oplog._id + `/_recordStoreIndex:${CACHE_VERSION}`
-    this._cacheSearchIndexKey = oplog._id + `/_recordStoreSearchIndex:${CACHE_VERSION}`
+  constructor ({ oplog, cache, events }) {
+    this._cacheIndexKey = path.join(oplog._id, `_recordStoreIndex:${CACHE_VERSION}`)
+    this._cacheSearchIndexKey = path.join(oplog._id, `_recordStoreSearchIndex:${CACHE_VERSION}`)
+
+    this._indexManager = indexManager
+    this._indexQueue = {}
     this._oplog = oplog
     this._cache = cache
     this._events = events
-    this._queue = new Map()
-    this._throttledProcess = debounce(this._processOne.bind(this), 1)
     this._index = defaultIndex()
     this._isBuilding = false
     this._searchIndex = new FlexSearch('balance', {
@@ -51,8 +47,12 @@ class RecordIndex {
     return this._isBuilding
   }
 
+  get indexQueueSize () {
+    return this._indexManager.sizeBy({ id: this._oplog._id })
+  }
+
   get isProcessing () {
-    return !!this._queue.size
+    return !!this._indexManager.sizeBy({ id: this._oplog._id })
   }
 
   get trackCount () {
@@ -75,7 +75,7 @@ class RecordIndex {
     // Get all Hashes in Index
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
-    const queueHashes = Array.from(this._queue.keys())
+    const queueHashes = Object.keys(this._indexQueue)
     const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
     for (const entryHash of Array.from(this._oplog._hashIndex.keys()).reverse()) {
@@ -138,45 +138,44 @@ class RecordIndex {
     }
   }
 
-  async _processOne () {
-    this._events.emit('processing', this._queue.size)
-    const hash = this._queue.keys().next().value
-    let entry = this._queue.get(hash)
+  async _process (e) {
+    this._events.emit('processing', this.indexQueueSize)
 
     // load entry if necessary
-    if (!entry.payload) {
-      entry = await this._oplog.get(entry)
-    }
+    const entry = e.payload ? e : await this._oplog.get(e)
 
-    if (typeof entry.payload.value.content === 'string') {
-      entry.payload.value.content = new CID(entry.payload.value.content)
-    }
+    const cid = typeof entry.payload.value.content === 'string'
+      ? new CID(entry.payload.value.content)
+      : entry.payload.value.content
 
     // load content from ipfs
-    if (CID.isCID(entry.payload.value.content)) {
-      entry.payload.value.cid = entry.payload.value.content
-      entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-      const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
-      entry.payload.value.content = dagNode.value
+    if (CID.isCID(cid)) {
+      const dag = await this._oplog._storage.dag.get(cid)
+      const value = {
+        cid,
+        contentCID: entry.payload.value.content.toBaseEncodedString('base58btc'),
+        content: dag.value
+      }
+      this.add(extend(entry, { payload: { value } }))
+    } else {
+      this.add(entry)
     }
-
-    this.add(entry)
 
     this.updateTags()
     this.sort()
 
-    this._queue.delete(hash)
-    if (this._queue.size) {
-      this._throttledProcess()
-    } else {
+    if (!this.isProcessing) {
       await this.save()
       this._events.emit('processed')
     }
+    delete this._indexQueue[entry.hash]
   }
 
   process (entry) {
-    this._queue.set(entry.hash || entry, entry)
-    this._throttledProcess()
+    this._indexQueue[entry.hash] = true
+    this._indexManager.add(async () => {
+      await this._process(entry)
+    }, { id: this._oplog._id })
   }
 
   hasTag (tag) {
@@ -240,7 +239,7 @@ class RecordIndex {
       this._index[type].delete(key)
     }
 
-    this._events.emit('indexUpdated', this._queue.size)
+    this._events.emit('indexUpdated', this.indexQueueSize)
   }
 
   updateTags () {
@@ -270,7 +269,7 @@ class RecordIndex {
     // Get all Hashes in Index + Queue
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
-    const queueHashes = Array.from(this._queue.keys())
+    const queueHashes = Object.keys(this._indexQueue)
     const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
     if (!entryHashes.includes(entry.hash)) {
