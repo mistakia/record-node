@@ -5,6 +5,8 @@ const extend = require('deep-extend')
 const { default: PQueue } = require('p-queue')
 const { CID } = require('ipfs')
 
+const { throttle } = require('../utils')
+
 const defaultIndex = () => ({
   tags: {},
   about: null,
@@ -20,7 +22,6 @@ class RecordIndex {
     this._cacheIndexKey = path.join(oplog._id, `_recordStoreIndex:${CACHE_VERSION}`)
     this._cacheSearchIndexKey = path.join(oplog._id, `_recordStoreSearchIndex:${CACHE_VERSION}`)
 
-    this._indexManager = indexManager
     this._indexQueue = {}
     this._oplog = oplog
     this._cache = cache
@@ -29,7 +30,7 @@ class RecordIndex {
     this._isBuilding = false
     this._searchIndex = new FlexSearch('balance', {
       async: true,
-      cache: 1000,
+      cache: 100,
       doc: {
         id: 'key',
         field: [
@@ -41,6 +42,14 @@ class RecordIndex {
         tag: ['tags']
       }
     })
+
+    this._emitProcessedThrottled = throttle(async () => {
+      await this.save()
+      this._events.emit('processed')
+    }, 5000)
+    this._emitProcessingThrottled = throttle(() => {
+      this._events.emit('processing', this.indexQueueSize)
+    }, 2500)
   }
 
   get isBuilding () {
@@ -48,11 +57,11 @@ class RecordIndex {
   }
 
   get indexQueueSize () {
-    return this._indexManager.sizeBy({ id: this._oplog._id })
+    return Object.keys(this._indexQueue).length
   }
 
   get isProcessing () {
-    return !!this._indexManager.sizeBy({ id: this._oplog._id })
+    return !!this.indexQueueSize
   }
 
   get trackCount () {
@@ -139,7 +148,7 @@ class RecordIndex {
   }
 
   async _process (e) {
-    this._events.emit('processing', this.indexQueueSize)
+    this._emitProcessingThrottled()
 
     // load entry if necessary
     const entry = e.payload ? e : await this._oplog.get(e)
@@ -156,7 +165,7 @@ class RecordIndex {
         contentCID: entry.payload.value.content.toBaseEncodedString('base58btc'),
         content: dag.value
       }
-      this.add(extend(entry, { payload: { value } }))
+      this.add(extend({}, entry, { payload: { value } }))
     } else {
       this.add(entry)
     }
@@ -165,15 +174,14 @@ class RecordIndex {
     this.sort()
 
     if (!this.isProcessing) {
-      await this.save()
-      this._events.emit('processed')
+      this._emitProcessedThrottled()
     }
     delete this._indexQueue[entry.hash]
   }
 
   process (entry) {
     this._indexQueue[entry.hash] = true
-    this._indexManager.add(async () => {
+    indexManager.add(async () => {
       await this._process(entry)
     }, { id: this._oplog._id })
   }
@@ -239,7 +247,7 @@ class RecordIndex {
       this._index[type].delete(key)
     }
 
-    this._events.emit('indexUpdated', this.indexQueueSize)
+    this._events.emit('indexUpdated', this.indexQueueSize, item)
   }
 
   updateTags () {

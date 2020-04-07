@@ -65,8 +65,8 @@ class RecordStore extends Store {
   }
 
   async close () {
+    if (this._index.save) await this._index.save() // TODO Listens store missing save
     await super.close()
-    await this._index.save()
 
     this.events.removeAllListeners('contact')
     return Promise.resolve()
