@@ -32,9 +32,19 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
 
     const range = req.headers.range
 
-    const { size } = req.query.size
-      ? req.query
-      : await record._ipfs.files.stat(`/ipfs/${cid}`, { size: true })
+    // FIX for strange delay in getting file stats
+    const getSize = () => new Promise(async (resolve, reject) => {
+      const timeout = setTimeout(async () => {
+        const size = await getSize()
+        resolve(size)
+      }, 1000)
+
+      const { size } = await record._ipfs.files.stat(`/ipfs/${cid}`, { size: true })
+      clearTimeout(timeout)
+      resolve(size)
+    })
+
+    const size = await getSize()
 
     let offset
     let length
