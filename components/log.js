@@ -1,6 +1,7 @@
 const extend = require('deep-extend')
 const { sha256 } = require('crypto-hash')
 
+const { throttle } = require('../utils')
 const { RecordStore } = require('../store')
 
 const logNameRe = /^[0-9a-zA-Z-]*$/
@@ -59,11 +60,12 @@ module.exports = function log (self) {
         })
       })
 
-      log.events.on('indexUpdated', (processingCount) => {
+      log.events.on('indexUpdated', (processingCount, entry) => {
         self.emit('redux', {
           type: 'CONTACT_INDEX_UPDATED',
           payload: {
             logId,
+            entry,
             isProcessingIndex: log._index.isProcessing,
             processingCount,
             trackCount: log._index.trackCount,
@@ -79,12 +81,17 @@ module.exports = function log (self) {
         })
       })
 
-      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
-        self.logger(`new entry ${logId}/${entry.hash}`)
+      const onReplicateProgress = (logId, hash, entry) => {
         self.emit('redux', {
           type: 'CONTACT_REPLICATE_PROGRESS',
           payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
+      }
+
+      const throttledReplicateProgress = throttle(onReplicateProgress, 1500)
+      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
+        self.logger(`new entry ${logId}/${entry.hash}`)
+        throttledReplicateProgress(logId, hash, entry)
 
         // TODO
         /* const shouldPin = await log.contacts.hasLogId(logId)
