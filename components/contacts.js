@@ -110,21 +110,20 @@ module.exports = function contacts (self) {
       const log = await self.log.get(logId)
       const contactEntry = await log.contacts.findOrCreate({ address, alias })
       if (self.isReplicating) {
-        await self.contacts._connect(address, contactEntry.payload.key, true)
+        self.contacts._connect(address, contactEntry.payload.key, true)
       }
 
       // TODO go through log and pin any local hashes
-      const contactLog = await self.log.get(contactEntry.payload.value.content.address)
-      for (const hash of contactLog._oplog._hashIndex.keys()) {
-        const entry = await log._oplog.get(hash)
-        const { content } = entry.payload.value
-        const { key } = entry.payload
+      /* const contactLog = await self.log.get(contactEntry.payload.value.content.address)
+       * for (const hash of contactLog._oplog._hashIndex.keys()) {
+       *   const entry = await log._oplog.get(hash)
+       *   const { content } = entry.payload.value
+       *   const { key } = entry.payload
 
-        // TODO
-        /* await self._ipfs.pin.add(content, { recursive: false }) // add content pin
-         * await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins */
-      }
-
+       *   await self._ipfs.pin.add(content, { recursive: false }) // add content pin
+       *   await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins
+       * }
+       */
       return self.contacts.get({
         logId: self.address,
         contactId: contactEntry.payload.key,
