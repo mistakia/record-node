@@ -9,7 +9,8 @@ module.exports = function tags (self) {
     add: async (cid, tag) => {
       const log = self.log.mine()
       const entry = await self.tracks.addTrackFromCID(cid)
-      return log.tags.addTrack(entry, tag)
+      await log.tags.addTrack(entry, tag)
+      return self.tracks.get(log.address, entry.payload.value.id)
     },
 
     remove: async (trackId, tag) => {
