@@ -66,6 +66,15 @@ module.exports = function peers (self) {
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
 
+      self.emit('redux', {
+        type: 'RECORD_PEER_LEFT',
+        payload: {
+          logId: self.peers._index[peerId].about.content.address,
+          peerCount,
+          peerId
+        }
+      })
+
       for (const about of logs) {
         self.emit('redux', {
           type: 'RECORD_PEER_LEFT',
