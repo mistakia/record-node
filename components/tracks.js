@@ -140,7 +140,7 @@ module.exports = function tracks (self) {
       }
       self.logger('Added artwork to ipfs')
 
-      const { size } = await self._ipfs.files.stat(`/ipfs/${cid.toString()}`, { size: true })
+      const { size } = await self._ipfs.files.stat(`/ipfs/${audioFile.cid.toString()}`, { size: true })
 
       const trackData = {
         size,
