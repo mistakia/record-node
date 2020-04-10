@@ -7,6 +7,14 @@ module.exports = function tags (self) {
     },
 
     add: async (cid, tag) => {
+      if (!cid) {
+        throw new Error('missing cid')
+      }
+
+      if (!tag) {
+        throw new Error('missing tag')
+      }
+
       const log = self.log.mine()
       const entry = await self.tracks.addTrackFromCID(cid)
       await log.tags.addTrack(entry, tag)
@@ -14,6 +22,14 @@ module.exports = function tags (self) {
     },
 
     remove: async (trackId, tag) => {
+      if (!trackId) {
+        throw new Error('missing trackId')
+      }
+
+      if (!tag) {
+        throw new Error('missing tag')
+      }
+
       const log = self.log.mine()
       return log.tags.removeTrack(trackId, tag)
     }
