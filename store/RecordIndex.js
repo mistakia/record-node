@@ -15,7 +15,7 @@ const defaultIndex = () => ({
 })
 
 const CACHE_VERSION = 1
-const indexManager = new PQueue({ concurrency: 100 })
+const indexManager = new PQueue({ concurrency: 100, timeout: 30000 })
 
 class RecordIndex {
   constructor ({ oplog, cache, events }) {
@@ -102,17 +102,17 @@ class RecordIndex {
         continue
       }
 
+      // Check to see if entry contents are local, add to indexManager if not
       if (CID.isCID(entry.payload.value.content)) {
-        // Check to see if entry contents are local, fetch otherwise
         const haveLocally = await this._oplog._storage.repo.has(entry.payload.value.content)
         if (!haveLocally) {
           this.process(entry)
           continue
         }
-
-        await loadEntryContent(this._oplog._storage, entry)
       }
-      this.add(entry)
+
+      const loadedEntry = await loadEntryContent(this._oplog._storage, entry)
+      this.add(loadedEntry)
     }
 
     this.updateTags()
@@ -147,24 +147,27 @@ class RecordIndex {
     }
   }
 
-  process (e) {
-    this._indexQueue[e.hash] = true
+  async process (entry) {
+    this._indexQueue[entry.hash] = true
 
-    indexManager.add(async () => {
-      this._emitProcessingThrottled()
+    await indexManager.add(async () => {
+      try {
+        this._emitProcessingThrottled()
 
-      const entry = await this._oplog.get(e.hash)
-      await loadEntryContent(this._oplog._storage, entry)
+        const loadedEntry = await loadEntryContent(this._oplog._storage, entry)
 
-      this.add(entry)
-      this.updateTags()
-      this.sort()
+        this.add(loadedEntry)
+        this.updateTags()
+        this.sort()
 
-      if (!this.isProcessing) {
-        this._emitProcessedThrottled()
+        if (!this.isProcessing) {
+          this._emitProcessedThrottled()
+        }
+      } catch (error) {
+        console.log(error)
       }
-      delete this._indexQueue[entry.hash]
     })
+    delete this._indexQueue[entry.hash]
   }
 
   hasTag (tag) {
@@ -261,11 +264,11 @@ class RecordIndex {
     const queueHashes = Object.keys(this._indexQueue)
     const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
+    // make sure entry is not in index before adding
     if (!entryHashes.includes(entry.hash)) {
-      if (entry.payload.op === 'PUT' && CID.isCID(entry.payload.value.content)) {
-        await loadEntryContent(this._oplog._storage, entry)
-      }
-      this.add(entry)
+
+      const loadedEntry = await loadEntryContent(this._oplog._storage, entry)
+      this.add(loadedEntry)
 
       // Build tags Index
       this.updateTags()
