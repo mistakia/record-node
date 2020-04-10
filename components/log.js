@@ -149,19 +149,15 @@ module.exports = function log (self) {
        * await self.pinAC(accessControllerAddress)
        */
       await this._registerEvents(log)
-
-      self.emit('redux', {
-        type: 'CONTACT_LOADING',
-        payload: { logId }
-      })
       await log.load()
-      self.emit('redux', {
-        type: 'CONTACT_READY',
-        payload: { logId }
-      })
 
       if (log._type === RecordStore.type) {
         self._logs[logId] = log.options.accessControllerAddress
+        const contact = await self.contacts.get({ logId, contactAddress: logId })
+        self.emit('redux', {
+          type: 'CONTACT_LOADED',
+          payload: { contact }
+        })
       }
 
       return log
