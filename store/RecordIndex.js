@@ -147,27 +147,24 @@ class RecordIndex {
     }
   }
 
-  async _process (e) {
-    this._emitProcessingThrottled()
+  process (e) {
+    this._indexQueue[e.hash] = true
 
-    const entry = await this._oplog.get(e.hash || e)
-    await loadEntryContent(this._oplog._storage, entry)
-
-    this.add(entry)
-    this.updateTags()
-    this.sort()
-
-    if (!this.isProcessing) {
-      this._emitProcessedThrottled()
-    }
-    delete this._indexQueue[entry.hash]
-  }
-
-  process (entry) {
-    this._indexQueue[entry.hash] = true
     indexManager.add(async () => {
-      await this._process(entry)
-    }, { id: this._oplog._id })
+      this._emitProcessingThrottled()
+
+      const entry = await this._oplog.get(e.hash)
+      await loadEntryContent(this._oplog._storage, entry)
+
+      this.add(entry)
+      this.updateTags()
+      this.sort()
+
+      if (!this.isProcessing) {
+        this._emitProcessedThrottled()
+      }
+      delete this._indexQueue[entry.hash]
+    })
   }
 
   hasTag (tag) {
