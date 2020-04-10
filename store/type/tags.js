@@ -5,10 +5,10 @@ module.exports = function (self) {
       return Object.keys(tags).map(tag => ({ tag, count: tags[tag] }))
     },
 
-    addTrack: async (entry, tag) => {
+    addTrack: async (track, tag) => {
       tag = tag.toLowerCase()
 
-      const { tags, content } = entry.payload.value
+      const { tags, content } = track
 
       if (tags.includes(tag)) {
         throw new Error('tag already exists')

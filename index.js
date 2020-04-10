@@ -67,6 +67,10 @@ class RecordNode extends EventEmitter {
     this._options = extend(defaultConfig, options)
     this.logger(this._options)
 
+    this._options.orbitdb.storage = Storage(leveldown)
+    this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
+    this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
+
     this.resolve = resolver
     this.isValidAddress = OrbitDB.isValidAddress
     this.parseAddress = OrbitDB.parseAddress
@@ -91,18 +95,15 @@ class RecordNode extends EventEmitter {
     if (this._options.api) {
       this._api = components.api(this)
     }
-  }
 
-  async init () {
     if (!fs.existsSync(this._options.directory)) {
       fs.mkdirSync(this._options.directory, { recursive: true })
     }
-    this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
-    this._ipfs = await IPFS.create(this._options.ipfs)
-    await this._ready()
-    // TODO this._ipfs.on('error', this.emit.bind(this))
-    // TODO this._ipfs.on('ready', this._ready.bind(this))
-    // TODO this._ipfs.state.on('done', () => this.emit('ipfs:state', this._ipfs.state._state))
+  }
+
+  static async createFromKey (pk, opts = {}) {
+    opts.key = await createKeyFromPk(pk)
+    return new RecordNode(opts)
   }
 
   get address () {
@@ -113,9 +114,9 @@ class RecordNode extends EventEmitter {
     return this.address === logId
   }
 
-  async _ready () {
+  async init () {
+    await this._startIPFS()
     await this._init(this._options.key, this._options.address)
-
     const ipfs = await this._ipfs.id()
     this.emit('ready', {
       id: this._id,
@@ -125,19 +126,15 @@ class RecordNode extends EventEmitter {
       },
       ipfs
     })
+  }
 
-    this._repoStats = await this._ipfs.repo.stat()
+  async _startIPFS () {
+    this._ipfs = await IPFS.create(this._options.ipfs)
+    this._ipfs.repo.stat().then(repoStats => { this._repoStats = repoStats })
   }
 
   async _init (key, address) {
-    this._options.orbitdb.storage = Storage(leveldown)
-
-    const keystorePath = path.resolve(this._options.directory, './keystore')
-    if (!fs.existsSync(keystorePath)) {
-      fs.mkdirSync(keystorePath, { recursive: true })
-    }
-    this._keyStorage = await this._options.orbitdb.storage.createStore(keystorePath)
-    this._options.orbitdb.keystore = new Keystore(this._keyStorage)
+    await this._createKeystore()
 
     if (!key) {
       if (this._options.id) {
@@ -155,27 +152,9 @@ class RecordNode extends EventEmitter {
       keystore: this._options.orbitdb.keystore
     })
 
-    const cachePath = path.resolve(this._options.directory, './cache')
-    if (!fs.existsSync(cachePath)) {
-      fs.mkdirSync(cachePath, { recursive: true })
-    }
-    this._cacheStorage = await this._options.orbitdb.storage.createStore(cachePath)
-    this._options.orbitdb.cache = new Cache(this._cacheStorage)
+    await this._createCache()
+    await this._loadCache()
 
-    this._cacheStorage.createKeyStream().on('data', async (data) => {
-      const key = data.toString()
-      if (key.match(manifestRe)) {
-        const dataValue = await this._cacheStorage.get(key)
-        const manifestAddress = JSON.parse(dataValue.toString())
-        const dagNode = await this._ipfs.dag.get(new CID(manifestAddress))
-        const logId = `/orbitdb/${manifestAddress}/${dagNode.value.name}`
-        if (dagNode.value.type === 'recordstore') {
-          this._logs[logId] = dagNode.value.accessController
-        }
-      }
-    })
-
-    this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
     await this.log._init(address)
@@ -302,9 +281,37 @@ class RecordNode extends EventEmitter {
     return data
   }
 
-  static async createFromKey (pk, opts = defaultConfig) {
-    opts.key = await createKeyFromPk(pk)
-    return new RecordNode(opts)
+  async _createKeystore () {
+    const keystorePath = path.resolve(this._options.directory, './keystore')
+    if (!fs.existsSync(keystorePath)) {
+      fs.mkdirSync(keystorePath, { recursive: true })
+    }
+    this._keyStorage = await this._options.orbitdb.storage.createStore(keystorePath)
+    this._options.orbitdb.keystore = new Keystore(this._keyStorage)
+  }
+
+  async _createCache () {
+    const cachePath = path.resolve(this._options.directory, './cache')
+    if (!fs.existsSync(cachePath)) {
+      fs.mkdirSync(cachePath, { recursive: true })
+    }
+    this._cacheStorage = await this._options.orbitdb.storage.createStore(cachePath)
+    this._options.orbitdb.cache = new Cache(this._cacheStorage)
+  }
+
+  async _loadCache () {
+    this._cacheStorage.createKeyStream().on('data', async (data) => {
+      const key = data.toString()
+      if (key.match(manifestRe)) {
+        const dataValue = await this._cacheStorage.get(key)
+        const manifestAddress = JSON.parse(dataValue.toString())
+        const dagNode = await this._ipfs.dag.get(new CID(manifestAddress))
+        const logId = `/orbitdb/${manifestAddress}/${dagNode.value.name}`
+        if (dagNode.value.type === 'recordstore') {
+          this._logs[logId] = dagNode.value.accessController
+        }
+      }
+    })
   }
 }
 

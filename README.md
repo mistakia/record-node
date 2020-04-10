@@ -8,7 +8,7 @@
 
 A proof of concept distributed social & music application (library, sharing, discovery & curation) network built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored via a [scuttlebot](http://scuttlebot.io/)-like immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot)
 
-## Install
+## Install Dependencies
 ```
 npm install
 ```
@@ -59,63 +59,15 @@ await node.init()
 ```js
 const record = new RecordNode(options)
 ```
-Use the `options` argument to specify configuration. It is an object with any of these properties:
+View default options at [`config.js`](https://github.com/mistakia/record-node/blob/master/config.js). Use the `options` argument to specify configuration. It is an object with any of these properties:
 
 ##### `options.ipfs`
 
 | Type | Default |
 |------|---------|
-| object | `see below` |
+| object | [`config.js`](https://github.com/mistakia/record-node/blob/master/config.js) |
 
 options passed to [IPFS constructor](https://github.com/ipfs/js-ipfs#ipfs-constructor).
-
-```
-{
-  init: {
-    bits: 2048
-  },
-  preload: {
-    enabled: false
-  },
-  EXPERIMENTAL: {
-    dht: false,
-    pubsub: true
-  },
-  config: {
-    Bootstrap: [],
-    Addresses: {
-	  Swarm: [
-        '/ip4/0.0.0.0/tcp/4003/ws/',
-        '/ip4/206.189.77.125/tcp/9090/ws/p2p-websocket-star/'
-	  ]
-    }
-  },
-  libp2p: {
-    config: {
-      relay: {
-        enabled: true,
-        hop: {
-          enabled: true,
-          active: true
-        }
-      }
-    }
-  },
-  connectionManager: {
-    maxPeers: 100,
-    minPeers: 10,
-    pollInterval: 60000 // ms
-  }
-}
-```
-
-##### `options.orbitdb`
-
-| Type | Default |
-|------|---------|
-| object | `{ directory: undefined }` |
-
-options passed to [OrbitDB constructor](https://github.com/orbitdb/orbit-db/blob/master/API.md#createinstanceipfs-options). (Default: `undefined`)
 
 ##### `options.api`
 

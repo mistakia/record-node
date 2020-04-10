@@ -7,7 +7,7 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.contact.connect', function () {
+describe('record.components.contact.connect', function () {
   this.timeout(config.timeout)
   let record1, record2
 
@@ -77,9 +77,10 @@ describe('record.contact.connect', function () {
     // TODO: check log OrbitDB replicator
   })
 
-  describe('errors', function () {
-    it('invalid address', async function () {
+  // TODO
+  /* describe('errors', function () {
+   *   it('invalid address', async function () {
 
-    })
-  })
+   *   })
+   * }) */
 })

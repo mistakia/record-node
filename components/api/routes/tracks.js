@@ -19,18 +19,18 @@ router.post('/?', async (req, res) => {
     const { record } = req.app.locals
 
     if (cid) {
-      const entry = await record.tracks.addTrackFromCID(cid)
-      return res.send(entry)
+      const track = await record.tracks.addTrackFromCID(cid)
+      return res.send(track)
     }
 
     if (file) {
-      const entry = await record.tracks.addTracksFromFS(file)
-      return res.send(entry)
+      const track = await record.tracks.addTracksFromFS(file)
+      return res.send(track)
     }
 
     if (url) {
-      const entry = await record.tracks.addTrackFromUrl(url)
-      return res.send(entry)
+      const track = await record.tracks.addTrackFromUrl(url)
+      return res.send(track)
     }
 
     res.status(400).send({ error: 'Body missing one of \'cid\', \'url\', or \'file\'' })

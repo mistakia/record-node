@@ -59,7 +59,7 @@ module.exports = function contacts (self) {
           )
           log._replicator.resume()
         } catch (e) {
-          console.log(e)
+          self.logger.err(e)
         }
       }
 

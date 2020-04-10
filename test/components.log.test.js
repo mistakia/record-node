@@ -6,14 +6,14 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.log', function () {
+describe('record.components', function () {
   this.timeout(config.timeout)
   let record
 
   before(async () => { record = await startRecord(config.node1) })
   after(async () => record && record.stop())
 
-  describe('record.log', function () {
+  describe('record.components.log', function () {
     it('mine', function () {
       const log = record.log.mine()
       assert.strictEqual(log.address.toString(), record.address)

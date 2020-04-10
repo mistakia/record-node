@@ -7,7 +7,7 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.track', function () {
+describe('record.components', function () {
   this.timeout(config.timeout)
   let record1, record2
 
@@ -21,7 +21,7 @@ describe('record.track', function () {
     record2 && record2.stop()
   })
 
-  describe('record.tag', function () {
+  describe('record.components.tags', function () {
     let track1
     const tagName1 = 'hello world'
     const tagName2 = 'hello dance'
@@ -31,11 +31,11 @@ describe('record.track', function () {
 
     it('add + list', async function () {
       track1 = await record1.tracks.addTrackFromFile(filepath1)
-      const tag = await record2.tags.add(track1.payload.value.contentCID, tagName1)
+      const track = await record2.tags.add(track1.contentCID, tagName1)
       const tracks = await record2.tracks.list()
       const tags = await record2.tags.list(record2.address)
-      assert.strictEqual(tag.payload.value.tags.length, 1)
-      assert.strictEqual(tag.payload.value.tags[0], tagName1)
+      assert.strictEqual(track.tags.length, 1)
+      assert.strictEqual(track.tags[0], tagName1)
       assert.strictEqual(tags.length, 1)
       assert.strictEqual(tracks.length, 1)
       assert.strictEqual(tracks[0].tags.length, 1)
@@ -44,10 +44,10 @@ describe('record.track', function () {
     })
 
     it('delete', async function () {
-      const tag = await record2.tags.remove(track1.payload.value.id, tagName1)
+      const track = await record2.tags.remove(track1.id, tagName1)
       const tracks = await record2.tracks.list()
       const tags = await record2.tags.list(record2.address)
-      assert.strictEqual(tag.payload.value.tags.length, 0)
+      assert.strictEqual(track.tags.length, 0)
       assert.strictEqual(tags.length, 0)
       assert.strictEqual(tracks.length, 1)
       assert.strictEqual(tracks[0].tags.length, 0)
@@ -55,11 +55,11 @@ describe('record.track', function () {
     })
 
     it('re-add', async function () {
-      const tag = await record2.tags.add(track1.payload.value.contentCID, tagName1)
+      const track = await record2.tags.add(track1.contentCID, tagName1)
       const tracks = await record2.tracks.list()
       const tags = await record2.tags.list(record2.address)
-      assert.strictEqual(tag.payload.value.tags.length, 1)
-      assert.strictEqual(tag.payload.value.tags[0], tagName1)
+      assert.strictEqual(track.tags.length, 1)
+      assert.strictEqual(track.tags[0], tagName1)
       assert.strictEqual(tags.length, 1)
       assert.strictEqual(tracks.length, 1)
       assert.strictEqual(tracks[0].tags.length, 1)
@@ -67,12 +67,12 @@ describe('record.track', function () {
     })
 
     it('multiple', async function () {
-      await record2.tags.add(track1.payload.value.contentCID, tagName2)
-      await record2.tags.add(track1.payload.value.contentCID, tagName3)
-      const tag4 = await record2.tags.add(track1.payload.value.contentCID, tagName4)
+      await record2.tags.add(track1.contentCID, tagName2)
+      await record2.tags.add(track1.contentCID, tagName3)
+      const tag4 = await record2.tags.add(track1.contentCID, tagName4)
       const tracks = await record2.tracks.list()
       const tags = await record2.tags.list(record2.address)
-      assert.strictEqual(tag4.payload.value.tags.length, 4)
+      assert.strictEqual(tag4.tags.length, 4)
       assert.strictEqual(tracks[0].tags.includes(tagName2), true)
       assert.strictEqual(tracks[0].tags.includes(tagName3), true)
       assert.strictEqual(tracks[0].tags.includes(tagName4), true)
@@ -81,10 +81,10 @@ describe('record.track', function () {
     })
 
     it('remove one', async function () {
-      const tag = await record2.tags.remove(track1.payload.value.id, tagName2)
+      const track = await record2.tags.remove(track1.id, tagName2)
       const tracks = await record2.tracks.list()
       const tags = await record2.tags.list(record2.address)
-      assert.strictEqual(tag.payload.value.tags.length, 3)
+      assert.strictEqual(track.tags.length, 3)
       assert.strictEqual(tags.length, 3)
       assert.strictEqual(tracks.length, 1)
       assert.strictEqual(tracks[0].tags.length, 3)
