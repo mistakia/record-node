@@ -17,6 +17,15 @@ router.post('/?', async (req, res) => {
   try {
     const { cid, tag } = req.body
     const { record } = req.app.locals
+
+    if (!tag) {
+      return res.status(400).send({ error: 'missing tag' })
+    }
+
+    if (!cid) {
+      return res.status(400).send({ error: 'missing cid' })
+    }
+
     const entry = await record.tags.add(cid, tag)
     res.send(entry)
   } catch (err) {
@@ -29,6 +38,15 @@ router.delete('/?', async (req, res) => {
   try {
     const { trackId, tag } = req.query
     const { record } = req.app.locals
+
+    if (!trackId) {
+      return res.status(400).send({ error: 'missing trackId' })
+    }
+
+    if (!tag) {
+      return res.status(400).send({ error: 'missing tag' })
+    }
+
     const entry = await record.tags.remove(trackId, tag)
     res.send(entry.payload.value)
   } catch (err) {
