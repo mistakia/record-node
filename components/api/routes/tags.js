@@ -26,8 +26,8 @@ router.post('/?', async (req, res) => {
       return res.status(400).send({ error: 'missing cid' })
     }
 
-    const entry = await record.tags.add(cid, tag)
-    res.send(entry)
+    const track = await record.tags.add(cid, tag)
+    res.send(track)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
@@ -47,8 +47,8 @@ router.delete('/?', async (req, res) => {
       return res.status(400).send({ error: 'missing tag' })
     }
 
-    const entry = await record.tags.remove(trackId, tag)
-    res.send(entry.payload.value)
+    const track = await record.tags.remove(trackId, tag)
+    res.send(track)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })

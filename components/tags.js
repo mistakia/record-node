@@ -16,9 +16,9 @@ module.exports = function tags (self) {
       }
 
       const log = self.log.mine()
-      const entry = await self.tracks.addTrackFromCID(cid)
-      await log.tags.addTrack(entry, tag)
-      return self.tracks.get(log.address, entry.payload.value.id)
+      const track = await self.tracks.addTrackFromCID(cid)
+      await log.tags.addTrack(track, tag)
+      return self.tracks.get(log.address, track.id)
     },
 
     remove: async (trackId, tag) => {
@@ -31,7 +31,8 @@ module.exports = function tags (self) {
       }
 
       const log = self.log.mine()
-      return log.tags.removeTrack(trackId, tag)
+      await log.tags.removeTrack(trackId, tag)
+      return self.tracks.get(log.address, trackId)
     }
   }
 }

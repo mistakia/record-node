@@ -6,14 +6,14 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.track', function () {
+describe('record.components', function () {
   this.timeout(config.timeout)
   let record
 
   before(async () => { record = await startRecord(config.node1) })
   after(async () => record && record.stop())
 
-  describe('record.about', function () {
+  describe('record.components.about', function () {
     let aboutEntry
     const about = {
       name: 'Test Node',

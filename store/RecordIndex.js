@@ -1,11 +1,11 @@
 const path = require('path')
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
-const extend = require('deep-extend')
 const { default: PQueue } = require('p-queue')
 const { CID } = require('ipfs')
 
 const { throttle } = require('../utils')
+const { loadEntryContent } = require('./utils')
 
 const defaultIndex = () => ({
   tags: {},
@@ -81,12 +81,14 @@ class RecordIndex {
 
   async build () {
     this._isBuilding = true
+
     // Get all Hashes in Index
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
     const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
     const queueHashes = Object.keys(this._indexQueue)
     const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
+    // Find hashes not in Index
     for (const entryHash of Array.from(this._oplog._hashIndex.keys()).reverse()) {
       if (entryHashes.includes(entryHash)) {
         continue
@@ -101,16 +103,14 @@ class RecordIndex {
       }
 
       if (CID.isCID(entry.payload.value.content)) {
+        // Check to see if entry contents are local, fetch otherwise
         const haveLocally = await this._oplog._storage.repo.has(entry.payload.value.content)
         if (!haveLocally) {
           this.process(entry)
           continue
         }
 
-        entry.payload.value.cid = entry.payload.value.content
-        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-        const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
-        entry.payload.value.content = dagNode.value
+        await loadEntryContent(this._oplog._storage, entry)
       }
       this.add(entry)
     }
@@ -150,26 +150,10 @@ class RecordIndex {
   async _process (e) {
     this._emitProcessingThrottled()
 
-    // load entry if necessary
-    const entry = e.payload ? e : await this._oplog.get(e)
+    const entry = await this._oplog.get(e.hash || e)
+    await loadEntryContent(this._oplog._storage, entry)
 
-    const cid = typeof entry.payload.value.content === 'string'
-      ? new CID(entry.payload.value.content)
-      : entry.payload.value.content
-
-    // load content from ipfs
-    if (CID.isCID(cid)) {
-      const dag = await this._oplog._storage.dag.get(cid)
-      const value = {
-        cid,
-        contentCID: entry.payload.value.content.toBaseEncodedString('base58btc'),
-        content: dag.value
-      }
-      this.add(extend({}, entry, { payload: { value } }))
-    } else {
-      this.add(entry)
-    }
-
+    this.add(entry)
     this.updateTags()
     this.sort()
 
@@ -264,11 +248,11 @@ class RecordIndex {
 
   async loadIndex (oplog) {
     this._oplog = oplog
-    const idx = await this._cache.get(this._cacheIndexKey)
-    if (idx) this._importIndex(idx)
+    const indexCache = await this._cache.get(this._cacheIndexKey)
+    if (indexCache) this._importIndex(indexCache)
 
-    const searchIdx = await this._cache.get(this._cacheSearchIndexKey)
-    if (searchIdx) this._searchIndex.import(searchIdx)
+    const searchIndexCache = await this._cache.get(this._cacheSearchIndexKey)
+    if (searchIndexCache) this._searchIndex.import(searchIndexCache)
 
     await this.build()
   }
@@ -282,10 +266,7 @@ class RecordIndex {
 
     if (!entryHashes.includes(entry.hash)) {
       if (entry.payload.op === 'PUT' && CID.isCID(entry.payload.value.content)) {
-        entry.payload.value.cid = entry.payload.value.content
-        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-        const dagNode = await this._oplog._storage.dag.get(entry.payload.value.content)
-        entry.payload.value.content = dagNode.value
+        await loadEntryContent(this._oplog._storage, entry)
       }
       this.add(entry)
 

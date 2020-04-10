@@ -61,7 +61,7 @@ module.exports = function peers (self) {
         return
       }
 
-      const logs = self.peers._index[peerId].logs
+      const peer = self.peers._index[peerId]
       delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
       self.logger.log(`Record peer left, remaining: ${peerCount}`)
@@ -69,13 +69,13 @@ module.exports = function peers (self) {
       self.emit('redux', {
         type: 'RECORD_PEER_LEFT',
         payload: {
-          logId: self.peers._index[peerId].about.content.address,
+          logId: peer.about.content.address,
           peerCount,
           peerId
         }
       })
 
-      for (const about of logs) {
+      for (const about of peer.logs) {
         self.emit('redux', {
           type: 'RECORD_PEER_LEFT',
           payload: { logId: about.content.address, peerCount, peerId }

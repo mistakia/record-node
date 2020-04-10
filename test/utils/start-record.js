@@ -10,6 +10,21 @@ const startRecord = (opts, node2) => new Promise((resolve, reject) => {
     },
     keystore: path.join(opts.directory, './keystore'),
     cache: path.join(opts.directory, './cache'),
+    ipfs: {
+      config: {
+        Addresses: {
+          Swarm: [
+            '/ip4/127.0.0.1/tcp/0'
+          ]
+        },
+        Discovery: {
+          MDNS: {
+            Enabled: true,
+            Interval: 1
+          }
+        }
+      }
+    },
     ...opts
   }
 

@@ -1,7 +1,7 @@
-const { CID } = require('ipfs')
 const { sha256 } = require('crypto-hash')
 
 const { ContactEntry } = require('../RecordEntry')
+const { loadEntryContent } = require('../utils')
 
 module.exports = function (self) {
   return {
@@ -34,7 +34,7 @@ module.exports = function (self) {
         return this._add(entry, shouldPin)
       }
 
-      return this._loadContent(contact)
+      return loadEntryContent(self._ipfs, contact)
     },
 
     _add: async (entry, shouldPin) => {
@@ -49,28 +49,14 @@ module.exports = function (self) {
       return this._add(entry, shouldPin)
     },
 
-    _loadContent: async (entry) => {
-      if (!entry) {
-        return null
-      }
-
-      if (CID.isCID(entry.payload.value.content)) {
-        entry.payload.value.cid = entry.payload.value.content
-        entry.payload.value.contentCID = entry.payload.value.content.toBaseEncodedString('base58btc')
-        const dagNode = await self._ipfs.dag.get(entry.payload.value.content)
-        entry.payload.value.content = dagNode.value
-      }
-      return entry
-    },
-
     getFromId: async (id) => {
       const entry = await self.get(id, 'contact')
-      return self.contacts._loadContent(entry)
+      return loadEntryContent(self._ipfs, entry)
     },
 
     getFromHash: async (hash) => {
       const entry = await self._oplog.get(hash)
-      return self.contacts._loadContent(entry)
+      return loadEntryContent(self._ipfs, entry)
     },
 
     has: (id) => {

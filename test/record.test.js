@@ -13,7 +13,7 @@ describe('record', function () {
   before(async () => { record = await startRecord(config.node1) })
   after(async () => record && record.stop())
 
-  describe('constructor', function () {
+  describe('record.constructor', function () {
     it('returns an instance', function () {
       // components
       assert.strictEqual(typeof record.about, 'object')

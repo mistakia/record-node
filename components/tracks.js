@@ -72,6 +72,32 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
+    _entryToTrack: async (entry, logId = self.address) => {
+      if (!self.isMe(logId)) {
+        const myLog = self.log.mine()
+        const externalTags = entry.payload.value.tags
+        const haveTrack = myLog.tracks.has(entry.payload.key)
+        if (haveTrack) {
+          const track = await myLog.tracks.getFromId(entry.payload.value.id)
+          track.payload.value.externalTags = externalTags
+          entry = track
+        } else {
+          entry.payload.value.externalTags = externalTags
+          entry.payload.value.tags = []
+        }
+
+        entry.payload.value.haveTrack = haveTrack
+      } else {
+        entry.payload.value.haveTrack = true
+        entry.payload.value.externalTags = []
+      }
+
+      const cid = new CID(entry.payload.value.content.hash)
+      entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
+
+      return entry.payload.value
+    },
+
     addTracksFromFS: async (filepath, { logId } = {}) => {
       self.logger(`Searching ${filepath} for tracks`)
 
@@ -109,9 +135,9 @@ module.exports = function tracks (self) {
 
       const log = self.log.mine()
       const id = await sha256(acoustid.fingerprint)
-      const exists = await log.tracks.getFromId(id)
-      if (exists) {
-        return exists
+      const entry = await log.tracks.getFromId(id)
+      if (entry) {
+        return self.tracks._entryToTrack(entry)
       }
 
       const metadata = await musicMetadata.parseFile(filepath)
@@ -184,7 +210,7 @@ module.exports = function tracks (self) {
       const entry = await log.tracks.getFromResolverId(resolverData.extractor, resolverData.id)
 
       if (entry) {
-        return entry
+        return self.tracks._entryToTrack(entry)
       }
 
       const filepath = await downloadFile(resolverData)
@@ -200,13 +226,12 @@ module.exports = function tracks (self) {
     add: async (trackData, { logId } = {}) => {
       const log = await self.log.get(logId)
       const shouldPin = true
-      const track = await log.tracks.findOrCreate(trackData, shouldPin)
-      track.payload.value.haveTrack = true
-      track.payload.value.externalTags = []
-      const cid = new CID(track.payload.value.content.hash)
-      track.payload.value.isLocal = await self._ipfs.repo.has(cid)
-
-      self.emit('redux', { type: 'TRACK_ADDED', payload: { track } })
+      const entry = await log.tracks.findOrCreate(trackData, shouldPin)
+      const track = await self.tracks._entryToTrack(entry, log.address.toString())
+      self.emit('redux', {
+        type: 'TRACK_ADDED',
+        payload: { track, logId: log.address.toString() }
+      })
       return track
     },
 
@@ -218,30 +243,7 @@ module.exports = function tracks (self) {
         return null
       }
 
-      if (!self.log.isMine(log)) {
-        const myLog = self.log.mine()
-
-        const externalTags = entry.payload.value.tags
-        const haveTrack = myLog.tracks.has(entry.payload.key)
-        if (haveTrack) {
-          const track = await myLog.tracks.getFromId(trackId)
-          track.payload.value.externalTags = externalTags
-          entry = track
-        } else {
-          entry.payload.value.externalTags = externalTags
-          entry.payload.value.tags = []
-        }
-
-        entry.payload.value.haveTrack = haveTrack
-      } else {
-        entry.payload.value.haveTrack = true
-        entry.payload.value.externalTags = []
-      }
-
-      const cid = new CID(entry.payload.value.content.hash)
-      entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
-
-      return entry.payload.value
+      return self.tracks._entryToTrack(entry, logId)
     },
 
     _contactsHaveTrack: async (trackId) => {
@@ -301,38 +303,12 @@ module.exports = function tracks (self) {
       const log = await self.log.get(logId, { replicate: false })
       const entries = await log.tracks.all(opts)
 
-      if (!self.log.isMine(log)) {
-        const myLog = self.log.mine()
-        for (const index in entries) {
-          const entry = entries[index]
-          const trackId = entry.payload.key
-
-          const externalTags = entries[index].payload.value.tags
-          const haveTrack = myLog.tracks.has(trackId)
-          if (haveTrack) {
-            const track = await myLog.tracks.getFromId(trackId)
-            track.payload.value.externalTags = externalTags
-            entries[index] = track
-          } else {
-            entries[index].payload.value.externalTags = externalTags
-            entries[index].payload.value.tags = []
-          }
-
-          entries[index].payload.value.haveTrack = haveTrack
-        }
-      } else {
-        entries.forEach(e => {
-          e.payload.value.haveTrack = true
-          e.payload.value.externalTags = []
-        })
+      const tracks = []
+      for (const entry of entries) {
+        const track = await self.tracks._entryToTrack(entry, logId)
+        tracks.push(track)
       }
 
-      for (const track of entries) {
-        const cid = new CID(track.payload.value.content.hash)
-        track.payload.value.isLocal = await self._ipfs.repo.has(cid)
-      }
-
-      const tracks = entries.map(e => e.payload.value)
       return tracks
     }
   }

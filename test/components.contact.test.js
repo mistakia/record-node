@@ -6,7 +6,7 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.contact', function () {
+describe('record.components.contact', function () {
   this.timeout(config.timeout)
   let record1, record2, contact2, contact2Id
 
