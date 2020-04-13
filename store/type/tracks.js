@@ -1,19 +1,20 @@
 const { TrackEntry } = require('../RecordEntry')
 const { loadEntryContent } = require('../utils')
 
+// fully random by @BetonMAN
+const shuffleArray = arr => arr
+  .map(a => [Math.random(), a])
+  .sort((a, b) => a[0] - b[0])
+  .map(a => a[1])
+
 module.exports = function (self) {
   return {
     all: async (opts = {}) => {
-      let { start, end, random, query } = opts
+      let { start, end, shuffle, query, limit } = opts
       const tags = opts.tags && !Array.isArray(opts.tags) ? [opts.tags] : (opts.tags || [])
 
       if (tags.length && !tags.some(t => self._index.hasTag(t))) {
         return []
-      }
-
-      if (random) {
-        start = Math.floor(Math.random() * self._index._index.track.size)
-        end = start + 1
       }
 
       let entryHashes = []
@@ -51,6 +52,13 @@ module.exports = function (self) {
           }
         } else {
           entryHashes = indexEntries.map(e => e.hash)
+        }
+      }
+
+      if (shuffle) {
+        entryHashes = shuffleArray(entryHashes)
+        if (limit) {
+          entryHashes = entryHashes.slice(0, limit)
         }
       }
 
