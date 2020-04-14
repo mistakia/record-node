@@ -230,7 +230,7 @@ module.exports = function tracks (self) {
       const track = await self.tracks._entryToTrack(entry, log.address.toString())
       self.emit('redux', {
         type: 'TRACK_ADDED',
-        payload: { track, logId: log.address.toString() }
+        payload: { data: track, logId: log.address.toString() }
       })
       return track
     },
