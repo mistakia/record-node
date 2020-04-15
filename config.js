@@ -49,7 +49,7 @@ module.exports = {
       Addresses: {
         Swarm: [
           '/ip4/0.0.0.0/tcp/4003/ws',
-          '/ip4/206.189.77.125/tcp/5892/ws/p2p-stardust/p2p/QmT8Z2iiZChw7YMm98TpatHFqNAAXYo24TUDeSxR4CqkUw'
+          '/ip4/206.189.77.125/tcp/5892/ws/p2p-stardust/p2p/QmPb9StGzfenPYnkyjpc5taLXwoC5hxdUgQub5LSi4AewA'
         ]
       },
       Bootstrap: []
