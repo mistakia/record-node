@@ -72,6 +72,8 @@ class RecordNode extends EventEmitter {
     this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
 
     this.resolve = resolver
+    if (this._options.youtubedlPath) resolver.setYtdlBinary(this._options.youtubedlPath)
+
     this.isValidAddress = OrbitDB.isValidAddress
     this.parseAddress = OrbitDB.parseAddress
 
