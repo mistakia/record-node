@@ -12,9 +12,9 @@ const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
 const { CID, globSource } = require('ipfs')
 
-const getAcoustID = (filepath) => {
+const getAcoustID = (filepath, options) => {
   return new Promise((resolve, reject) => {
-    fpcalc(filepath, (err, result) => {
+    fpcalc(filepath, options, (err, result) => {
       if (err) return reject(err)
       resolve(result)
     })
@@ -130,7 +130,9 @@ module.exports = function tracks (self) {
     },
     addTrackFromFile: async (filepath, { resolverData, logId } = {}) => {
       self.logger(`Adding track from ${filepath}`)
-      const acoustid = await getAcoustID(filepath)
+      const acoustid = await getAcoustID(filepath, {
+        command: self._options.chromaprintPath
+      })
       self.logger('Generated AcoustID Fingerprint')
 
       const log = self.log.mine()
