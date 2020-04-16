@@ -23,6 +23,7 @@ module.exports = {
   directory: path.resolve(os.homedir(), './.record'),
   gcInterval: 10000000, // 10mb
   chromaprintPath: null,
+  youtubedlPath: null,
   pubsubRoom: {
     pollInterval: 5000
   },
