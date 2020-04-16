@@ -22,6 +22,7 @@ module.exports = {
   address: 'record',
   directory: path.resolve(os.homedir(), './.record'),
   gcInterval: 10000000, // 10mb
+  chromaprintPath: null,
   pubsubRoom: {
     pollInterval: 5000
   },
