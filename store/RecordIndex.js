@@ -89,7 +89,7 @@ class RecordIndex {
     const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
 
     // Find hashes not in Index
-    for (const entryHash of Array.from(this._oplog._hashIndex.keys()).reverse()) {
+    for (const entryHash of Array.from(this._oplog._hashIndex.keys())) {
       if (entryHashes.includes(entryHash)) {
         continue
       }
