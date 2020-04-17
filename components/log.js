@@ -103,17 +103,26 @@ module.exports = function log (self) {
     },
 
     drop: async function (logId) {
+      if (!logId) {
+        throw new Error('missing logId')
+      }
+
       if (self.isMe(logId)) {
         throw new Error('Cannot drop default log')
       }
 
+      // TODO: remove all exclusive pins
+
       const log = await this.get(logId)
-      log._cache.del(log._index._cacheIndexKey)
-      log._cache.del(log._index._cacheSearchIndexKey)
       if (log._type === RecordStore.type) {
+        log._cache.del(log._index._cacheIndexKey)
+        log._cache.del(log._index._cacheSearchIndexKey)
+
         delete self._logs[logId]
       }
       await log.drop(logId)
+
+      return { logId }
     },
 
     get: async function (logId = self.address, options = {}) {

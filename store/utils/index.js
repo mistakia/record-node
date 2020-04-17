@@ -21,9 +21,9 @@ const loadEntryContent = async (ipfs, e) => {
 
   // missing needed cid info
   if (
-    !entry.payload.value.content.codec
-      || !entry.payload.value.content.version
-      || !entry.payload.value.content.hash
+    !entry.payload.value.content.codec ||
+      !entry.payload.value.content.version ||
+      !entry.payload.value.content.hash
   ) {
     throw new Error('missing cid information')
   }
