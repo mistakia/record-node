@@ -266,7 +266,6 @@ class RecordIndex {
 
     // make sure entry is not in index before adding
     if (!entryHashes.includes(entry.hash)) {
-
       const loadedEntry = await loadEntryContent(this._oplog._storage, entry)
       this.add(loadedEntry)
 
