@@ -6,19 +6,21 @@
 
 > Library, CLI and REST API for Record.
 
-A proof of concept distributed social & music application (library, sharing, discovery & curation) network built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored via a [scuttlebot](http://scuttlebot.io/)-like immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot)
+A proof of concept distributed music application (library management, sharing, discovery & curation) built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored on IPFS via a [scuttlebot](http://scuttlebot.io/)-esque immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot).
+
+*Note: View the [UI/UX repo](https://github.com/mistakia/record-app) for more information.*
 
 ## Install Dependencies
 ```
-npm install
+yarn install
 ```
 
-### Install Chromaprint
+### Install Chromaprint & FFmpeg
 
 Note: fpcalc ([chromaprint](https://github.com/acoustid/chromaprint)) must be installed to be able to import audio files.
 ##### OSX using Homebrew
 ```
-brew install chromaprint
+brew install chromaprint ffmpeg
 ```
 
 ##### Ubuntu
@@ -30,7 +32,7 @@ sudo apt-get install libchromaprint-tools
 
 ### Running
 ```
-npm run start
+yarn start
 ```
 
 ### CLI
