@@ -31,7 +31,8 @@ const createKey = async () => {
   const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
   return {
     publicKey: decompressedKey.toString('hex'),
-    privateKey: keys.marshal().toString('hex')
+    privateKey: keys.marshal().toString('hex'),
+    privateKeyBytes: keys.bytes.toString('hex')
   }
 }
 
@@ -40,7 +41,8 @@ const getKey = async (id, storage) => {
   const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
   return {
     publicKey: decompressedKey.toString('hex'),
-    privateKey: keys.marshal().toString('hex')
+    privateKey: keys.marshal().toString('hex'),
+    privateKeyBytes: keys.bytes.toString('hex')
   }
 }
 
@@ -49,7 +51,8 @@ const createKeyFromPk = async (pk) => {
   const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
   return {
     publicKey: decompressedKey.toString('hex'),
-    privateKey: keys.marshal().toString('hex')
+    privateKey: keys.marshal().toString('hex'),
+    privateKeyBytes: keys.bytes.toString('hex')
   }
 }
 
@@ -259,7 +262,7 @@ class RecordNode extends EventEmitter {
 
   async createIdentity () {
     const keys = await createKey()
-    return this.setIdentity(keys.privateKey)
+    return this.setIdentity(keys.privateKeyBytes)
   }
 
   async setIdentity (pk) {
