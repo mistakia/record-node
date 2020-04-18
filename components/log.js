@@ -1,5 +1,6 @@
 const extend = require('deep-extend')
 const { sha256 } = require('crypto-hash')
+const { CID } = require('ipfs')
 
 const { throttle } = require('../utils')
 const { RecordStore } = require('../store')
@@ -123,6 +124,22 @@ module.exports = function log (self) {
       await log.drop(logId)
 
       return { logId }
+    },
+
+    haveAccessController: async function (accessControllerAddress) {
+      const hash = accessControllerAddress.split('/')[2]
+      const hasAC = await self._ipfs.repo.has(new CID(hash))
+      if (!hasAC) {
+        return false
+      }
+
+      const ipfsAC = await self._ipfs.dag.get(new CID(hash))
+      const hasIPFSAC = await self._ipfs.repo.has(new CID(ipfsAC.value.params.address))
+      if (!hasIPFSAC) {
+        return false
+      }
+
+      return true
     },
 
     get: async function (logId = self.address, options = {}) {
