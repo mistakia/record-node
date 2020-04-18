@@ -305,15 +305,39 @@ class RecordNode extends EventEmitter {
   }
 
   async _loadCache () {
-    this._cacheStorage.createKeyStream().on('data', async (data) => {
+    const keys = []
+    this._cacheStorage.createKeyStream().on('data', (data) => {
       const key = data.toString()
-      if (key.match(manifestRe)) {
-        const dataValue = await this._cacheStorage.get(key)
-        const manifestAddress = JSON.parse(dataValue.toString())
-        const dagNode = await this._ipfs.dag.get(new CID(manifestAddress))
-        const logId = `/orbitdb/${manifestAddress}/${dagNode.value.name}`
-        if (dagNode.value.type === 'recordstore') {
-          this._logs[logId] = dagNode.value.accessController
+      keys.push(key)
+    }).on('close', async () => {
+      const deleteLogIds = []
+
+      // Find log manifests to either load or delete from cache
+      for (const key of keys) {
+        if (key.match(manifestRe)) {
+          const value = await this._cacheStorage.get(key)
+          const manifestAddress = JSON.parse(value.toString())
+          const manifest = await this._ipfs.dag.get(new CID(manifestAddress))
+          const logId = `/orbitdb/${manifestAddress}/${manifest.value.name}`
+          if (manifest.value.type === 'recordstore') {
+            const { accessController } = manifest.value
+            const haveAccessController = await this.log.haveAccessController(accessController)
+            if (haveAccessController) {
+              this._logs[logId] = accessController
+            } else {
+              deleteLogIds.push(logId)
+            }
+          }
+        }
+      }
+
+      for (const key of keys) {
+        for (const logId of deleteLogIds) {
+          const shouldDelete = key.includes(logId)
+          if (shouldDelete) {
+            this.logger(`Deleting cache for stale log: ${key}`)
+            this._cacheStorage.del(key)
+          }
         }
       }
     })
