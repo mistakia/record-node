@@ -61,18 +61,26 @@ module.exports = function log (self) {
         })
       })
 
-      log.events.on('indexUpdated', (processingCount, entry) => {
+      let updatedEntries = []
+      const onIndexUpdated = (processingCount) => {
         self.emit('redux', {
           type: 'CONTACT_INDEX_UPDATED',
           payload: {
             logId,
-            entry,
+            data: updatedEntries,
             isProcessingIndex: log._index.isProcessing,
             processingCount,
             trackCount: log._index.trackCount,
             contactCount: log._index.contactCount
           }
         })
+        updatedEntries = []
+      }
+
+      const throttledIndexUpdated = throttle(onIndexUpdated, 2500)
+      log.events.on('indexUpdated', (processingCount, entry) => {
+        updatedEntries.push(entry)
+        throttledIndexUpdated(processingCount)
       })
 
       log.events.on('replicated', (logId) => {
@@ -89,7 +97,7 @@ module.exports = function log (self) {
         })
       }
 
-      const throttledReplicateProgress = throttle(onReplicateProgress, 1500)
+      const throttledReplicateProgress = throttle(onReplicateProgress, 2000)
       log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
         self.logger(`new entry ${logId}/${entry.hash}`)
         throttledReplicateProgress(logId, hash, entry)
