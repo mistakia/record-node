@@ -219,6 +219,11 @@ module.exports = function contacts (self) {
          * await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins */
       }
 
+      self.contacts._disconnect(
+        contactEntry.payload.value.content.address,
+        contactId
+      )
+
       return { id: contactId }
     },
 
