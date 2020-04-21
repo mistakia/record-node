@@ -36,7 +36,7 @@ module.exports = function log (self) {
     },
 
     isEmpty: async (logAddress) => {
-      const log = await self.log.get(logAddress)
+      const log = await self.log.get(logAddress, { replicate: false })
       return !(log._oplog._hashIndex.size || log._oplog._length)
     },
 
