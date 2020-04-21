@@ -26,13 +26,19 @@ module.exports = function peers (self) {
     list: async () => {
       const peerIds = Object.keys(self.peers._index)
       const peers = []
+      const addPeer = async (about) => {
+        const peerLog = await self.logs.get({
+          sourceAddress: self.address,
+          targetAddress: about.content.address
+        })
+        peers.push(peerLog)
+      }
+
       for (const peerId of peerIds) {
-        for (const about of self.peers._index[peerId].logs) {
-          const log = await self.logs.get({
-            sourceAddress: self.address,
-            targetAddress: about.content.address
-          })
-          peers.push(log)
+        const peer = self.peers._index[peerId]
+        await addPeer(peer.about)
+        for (const about of peer.logs) {
+          await addPeer(about)
         }
       }
 
