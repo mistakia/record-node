@@ -2,7 +2,7 @@ const Store = require('orbit-db-store')
 
 const RecordIndex = require('./RecordIndex')
 const tracks = require('./type/tracks')
-const contacts = require('./type/contacts')
+const logs = require('./type/logs')
 const tags = require('./type/tags')
 const about = require('./type/about')
 
@@ -14,7 +14,7 @@ class RecordStore extends Store {
     this._type = RecordStore.type
 
     this.tracks = tracks(this)
-    this.contacts = contacts(this)
+    this.logs = logs(this)
     this.tags = tags(this)
     this.about = about(this)
 
@@ -24,7 +24,7 @@ class RecordStore extends Store {
   }
 
   get (id, type) {
-    if (type !== 'track' && type !== 'contact') {
+    if (type !== 'track' && type !== 'log') {
       throw new Error(`Invalid type: ${type}`)
     }
 
@@ -49,7 +49,7 @@ class RecordStore extends Store {
   }
 
   del (id, type) {
-    if (type !== 'track' && type !== 'contact') {
+    if (type !== 'track' && type !== 'log') {
       throw new Error(`Invalid type: ${type}`)
     }
 
@@ -68,7 +68,6 @@ class RecordStore extends Store {
     if (this._index.save) await this._index.save() // TODO Listens store missing save
     await super.close()
 
-    this.events.removeAllListeners('contact')
     return Promise.resolve()
   }
 

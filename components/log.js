@@ -1,5 +1,4 @@
 const extend = require('deep-extend')
-const { sha256 } = require('crypto-hash')
 const { CID } = require('ipfs')
 
 const { throttle } = require('../utils')
@@ -12,11 +11,11 @@ module.exports = function log (self) {
     _init: async (address = 'record') => {
       const opts = extend({}, self._options.store, { create: true, replicate: true })
       self._log = await self._orbitdb.open(address, opts)
-      // TODO
+      // TODO - re-enable pinning
       // await self._ipfs.pin.add(self._log.address.root)
 
       const { accessControllerAddress } = self._log.options
-      // TODO
+      // TODO - re-enable pinning
       // await self.pinAC(accessControllerAddress)
 
       await self._log.load()
@@ -32,46 +31,45 @@ module.exports = function log (self) {
       return self._log.address === log.address
     },
 
-    isOpen: (logId) => {
-      return !!self._orbitdb.stores[logId]
+    isOpen: (logAddress) => {
+      return !!self._orbitdb.stores[logAddress]
     },
 
     _registerEvents: async (log) => {
-      const logId = log.id
-      const contactId = await sha256(logId)
+      const logAddress = log.id
 
       log.events.on('peer', (peerId) => {
         self.emit('redux', {
-          type: 'CONTACT_PEER_JOINED',
-          payload: { logId, peerId }
+          type: 'LOG_PEER_JOINED',
+          payload: { logAddress, peerId }
         })
       })
 
       log.events.on('processed', () => {
         self.emit('redux', {
-          type: 'CONTACT_INDEX_UPDATED',
-          payload: { logId, isProcessingIndex: log._index.isProcessing }
+          type: 'LOG_INDEX_UPDATED',
+          payload: { logAddress, isProcessingIndex: log._index.isProcessing }
         })
       })
 
       log.events.on('processing', (processingCount) => {
         self.emit('redux', {
-          type: 'CONTACT_INDEX_UPDATED',
-          payload: { logId, isProcessingIndex: log._index.isProcessing, processingCount }
+          type: 'LOG_INDEX_UPDATED',
+          payload: { logAddress, isProcessingIndex: log._index.isProcessing, processingCount }
         })
       })
 
       let updatedEntries = []
       const onIndexUpdated = (processingCount) => {
         self.emit('redux', {
-          type: 'CONTACT_INDEX_UPDATED',
+          type: 'LOG_INDEX_UPDATED',
           payload: {
-            logId,
+            logAddress,
             data: updatedEntries,
             isProcessingIndex: log._index.isProcessing,
             processingCount,
             trackCount: log._index.trackCount,
-            contactCount: log._index.contactCount
+            logCount: log._index.logCount
           }
         })
         updatedEntries = []
@@ -83,27 +81,27 @@ module.exports = function log (self) {
         throttledIndexUpdated(processingCount)
       })
 
-      log.events.on('replicated', (logId) => {
+      log.events.on('replicated', (logAddress) => {
         self.emit('redux', {
-          type: 'CONTACT_REPLICATED',
-          payload: { contactId, logId, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+          type: 'LOG_REPLICATED',
+          payload: { logAddress, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
       })
 
-      const onReplicateProgress = (logId, hash, entry) => {
+      const onReplicateProgress = (logAddress, hash, entry) => {
         self.emit('redux', {
-          type: 'CONTACT_REPLICATE_PROGRESS',
-          payload: { contactId, logId, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+          type: 'LOG_REPLICATE_PROGRESS',
+          payload: { logAddress, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
       }
 
       const throttledReplicateProgress = throttle(onReplicateProgress, 2000)
-      log.events.on('replicate.progress', async (logId, hash, entry, progress, total) => {
-        self.logger(`new entry ${logId}/${entry.hash}`)
-        throttledReplicateProgress(logId, hash, entry)
+      log.events.on('replicate.progress', async (logAddress, hash, entry, progress, total) => {
+        self.logger(`new entry ${logAddress}/${entry.hash}`)
+        throttledReplicateProgress(logAddress, hash, entry)
 
-        // TODO
-        /* const shouldPin = await log.contacts.hasLogId(logId)
+        // TODO re-enable pinning
+        /* const shouldPin = await log.logs.hasAddress(logAddress)
          * if (shouldPin) {
          *   await self._ipfs.pin.add(hash, { recursive: false })
          *   await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
@@ -111,27 +109,27 @@ module.exports = function log (self) {
       })
     },
 
-    drop: async function (logId) {
-      if (!logId) {
-        throw new Error('missing logId')
+    drop: async function (logAddress) {
+      if (!logAddress) {
+        throw new Error('missing logAddress')
       }
 
-      if (self.isMe(logId)) {
+      if (self.isMe(logAddress)) {
         throw new Error('Cannot drop default log')
       }
 
       // TODO: remove all exclusive pins
 
-      const log = await this.get(logId)
+      const log = await this.get(logAddress)
       if (log._type === RecordStore.type) {
         log._cache.del(log._index._cacheIndexKey)
         log._cache.del(log._index._cacheSearchIndexKey)
 
-        delete self._logs[logId]
+        delete self._logAddresses[logAddress]
       }
-      await log.drop(logId)
+      await log.drop(logAddress)
 
-      return { logId }
+      return { logAddress }
     },
 
     haveAccessController: async function (accessControllerAddress) {
@@ -150,34 +148,34 @@ module.exports = function log (self) {
       return true
     },
 
-    get: async function (logId = self.address, options = {}) {
-      if (self.isMe(logId)) {
+    get: async function (logAddress = self.address, options = {}) {
+      if (self.isMe(logAddress)) {
         return self._log
       }
 
-      if (self.listens.isMe(logId)) {
+      if (self.listens.isMe(logAddress)) {
         return self._listensLog
       }
 
-      if (!self.isValidAddress(logId)) {
+      if (!self.isValidAddress(logAddress)) {
         if (!options.create) {
-          const addr = await self._orbitdb.determineAddress(logId, RecordStore.type)
-          logId = addr.toString()
+          const addr = await self._orbitdb.determineAddress(logAddress, RecordStore.type)
+          logAddress = addr.toString()
           options.localOnly = true
-        } else if (!logNameRe.test(logId)) {
-          throw new Error(`${logId} is not a valid log name`)
+        } else if (!logNameRe.test(logAddress)) {
+          throw new Error(`${logAddress} is not a valid log name`)
         }
       }
 
-      if (this.isOpen(logId)) {
-        return self._orbitdb.stores[logId]
+      if (this.isOpen(logAddress)) {
+        return self._orbitdb.stores[logAddress]
       }
 
       const opts = extend({ replicate: false }, self._options.store, options)
-      self.logger(`Loading log: ${logId}`, opts)
-      const log = await self._orbitdb.open(logId, opts)
+      self.logger(`Loading log: ${logAddress}`, opts)
+      const log = await self._orbitdb.open(logAddress, opts)
 
-      // TODO
+      // TODO re-enable pinning
       /* await self._ipfs.pin.add(log.address.root)
        * const { accessControllerAddress } = log.options
        * await self.pinAC(accessControllerAddress)
@@ -186,11 +184,13 @@ module.exports = function log (self) {
       await log.load()
 
       if (log._type === RecordStore.type) {
-        self._logs[logId] = log.options.accessControllerAddress
-        const contact = await self.contacts.get({ logId, contactAddress: logId })
+        self._logAddresses[logAddress] = log.options.accessControllerAddress
+        const data = await self.logs.get({ targetAddress: logAddress })
         self.emit('redux', {
-          type: 'CONTACT_LOADED',
-          payload: { contact }
+          type: 'LOG_LOADED',
+          payload: {
+            data
+          }
         })
       }
 

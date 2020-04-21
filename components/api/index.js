@@ -27,8 +27,8 @@ module.exports = (self) => {
 
   app.use('/about', routes.about)
   app.use('/connect', routes.connect)
-  app.use('/contact', routes.contact)
-  app.use('/contacts', routes.contacts)
+  app.use('/log', routes.log)
+  app.use('/logs', routes.logs)
   app.use('/disconnect', routes.disconnect)
   app.use('/export', routes.export)
   app.use('/import', routes.import)

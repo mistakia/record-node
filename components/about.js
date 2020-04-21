@@ -3,17 +3,17 @@ const { generateAvatar } = require('../utils')
 
 module.exports = function about (self) {
   return {
-    set: async function (data, { logId } = {}) {
-      const log = await self.log.get(logId)
+    set: async function (data, { logAddress } = {}) {
+      const log = await self.log.get(logAddress)
       const entry = await log.about.set(data)
       self.peers._announceLogs()
       return self.about.get(entry.payload.value.content.address)
     },
-    get: async (logId, { localOnly = false } = {}) => {
-      self.logger(`Get about for: ${logId}`)
+    get: async (logAddress) => {
+      self.logger(`Get about for: ${logAddress}`)
       let entry, log
       try {
-        log = await self.log.get(logId, { replicate: false, localOnly })
+        log = await self.log.get(logAddress, { replicate: false })
         entry = log.about.get()
       } catch (error) {
         self.logger.err(error)
@@ -25,7 +25,7 @@ module.exports = function about (self) {
       }
 
       if (!entryValue.content.avatar) {
-        entryValue.content.avatar = generateAvatar(logId)
+        entryValue.content.avatar = generateAvatar(logAddress)
       }
 
       if (!entryValue.content.address) {

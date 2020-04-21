@@ -52,11 +52,11 @@ class TrackEntry extends Entry {
   }
 }
 
-class ContactEntry extends Entry {
+class LogEntry extends Entry {
   constructor () {
     super()
 
-    this._type = 'contact'
+    this._type = 'log'
   }
 
   async create (ipfs, content, shouldPin) {
@@ -85,5 +85,5 @@ module.exports = {
   Entry,
   AboutEntry,
   TrackEntry,
-  ContactEntry
+  LogEntry
 }

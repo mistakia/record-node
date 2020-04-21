@@ -1,7 +1,7 @@
 module.exports = function tags (self) {
   return {
-    list: async (logId) => {
-      const log = await self.log.get(logId, { replicate: false })
+    list: async (logAddress) => {
+      const log = await self.log.get(logAddress, { replicate: false })
       const tags = await log.tags.all()
       return tags
     },

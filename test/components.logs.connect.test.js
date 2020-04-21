@@ -1,13 +1,12 @@
 /* global describe it beforeEach afterEach */
 
 const assert = require('assert')
-const { sha256 } = require('crypto-hash')
 const {
   config,
   startRecord
 } = require('./utils')
 
-describe('record.components.contact.connect', function () {
+describe('record.components.logs.connect', function () {
   this.timeout(config.timeout)
   let record1, record2
 
@@ -26,28 +25,28 @@ describe('record.components.contact.connect', function () {
   })
 
   it('connect + isReplicating', async function () {
-    await record1.contacts.add({ address: record2.address })
-    await record1.contacts.connect(record2.address)
-    const isReplicating = await record1.contacts.isReplicating(record2.address)
+    await record1.logs.add({ linkAddress: record2.address })
+    await record1.logs.connect(record2.address)
+    const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, true)
   })
 
   it('connect + add + has + isReplicating', async function () {
-    await record1.contacts.connect(record2.address)
-    const contact = await record1.contacts.add({ address: record2.address })
-    const has = await record1.contacts.has(record1.address, contact.id)
-    const isReplicating = await record1.contacts.isReplicating(record2.address)
+    await record1.logs.connect(record2.address)
+    const linkedLog = await record1.logs.add({ linkAddress: record2.address })
+    const has = await record1.logs.has(record1.address, linkedLog.content.address)
+    const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, true)
     assert.strictEqual(has, true)
   })
 
   it('connect + add + remove + disconnect + has + isReplicating', async function () {
-    await record1.contacts.connect(record2.address)
-    const contact = await record1.contacts.add({ address: record2.address })
-    await record1.contacts.remove(contact.id)
-    await record1.contacts.disconnect(record2.address)
-    const has = await record1.contacts.has(record1.address, contact.id)
-    const isReplicating = await record1.contacts.isReplicating(record2.address)
+    await record1.logs.connect(record2.address)
+    const linkedLog = await record1.logs.add({ linkAddress: record2.address })
+    await record1.logs.remove(linkedLog.content.address)
+    await record1.logs.disconnect(record2.address)
+    const has = await record1.logs.has(record1.address, linkedLog.content.address)
+    const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, false)
     // TODO: check pubsub subscriptions
@@ -55,11 +54,11 @@ describe('record.components.contact.connect', function () {
   })
 
   it('connect + disconnect + add + has + isReplicating', async function () {
-    await record1.contacts.connect(record2.address)
-    await record1.contacts.disconnect(record2.address)
-    const contact = await record1.contacts.add({ address: record2.address })
-    const has = await record1.contacts.has(record1.address, contact.id)
-    const isReplicating = await record1.contacts.isReplicating(record2.address)
+    await record1.logs.connect(record2.address)
+    await record1.logs.disconnect(record2.address)
+    const linkedLog = await record1.logs.add({ linkAddress: record2.address })
+    const has = await record1.logs.has(record1.address, linkedLog.content.address)
+    const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, true)
     // TODO: check pubsub subscriptions
@@ -67,10 +66,9 @@ describe('record.components.contact.connect', function () {
   })
 
   it('disconnect + has + isReplicating', async function () {
-    await record1.contacts.disconnect(record2.address)
-    const contactId = await sha256(record2.address)
-    const has = await record1.contacts.has(record1.address, contactId)
-    const isReplicating = await record1.contacts.isReplicating(record2.address)
+    await record1.logs.disconnect(record2.address)
+    const has = await record1.logs.has(record1.address, record2.address)
+    const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, false)
     // TODO: check pubsub subscriptions

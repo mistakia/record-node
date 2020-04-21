@@ -11,10 +11,10 @@ const defaultIndex = () => ({
   tags: {},
   about: null,
   track: new Map(),
-  contact: new Map()
+  log: new Map()
 })
 
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 const indexManager = new PQueue({ concurrency: 100, timeout: 30000 })
 
 class RecordIndex {
@@ -68,8 +68,8 @@ class RecordIndex {
     return this._index.track.size
   }
 
-  get contactCount () {
-    return this._index.contact.size
+  get logCount () {
+    return this._index.log.size
   }
 
   async rebuild () {
@@ -84,9 +84,9 @@ class RecordIndex {
 
     // Get all Hashes in Index
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
-    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
+    const logHashes = Array.from(this._index.log.values()).map(e => e.hash)
     const queueHashes = Object.keys(this._indexQueue)
-    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
+    const entryHashes = [].concat(trackHashes, logHashes, queueHashes)
 
     // Find hashes not in Index
     for (const entryHash of Array.from(this._oplog._hashIndex.keys())) {
@@ -130,7 +130,7 @@ class RecordIndex {
   _exportIndex () {
     const tmp = {
       track: Array.from(this._index.track.entries()),
-      contact: Array.from(this._index.contact.entries()),
+      log: Array.from(this._index.log.entries()),
       tags: this._index.tags,
       about: this._index.about
     }
@@ -143,7 +143,7 @@ class RecordIndex {
       tags: idx.tags,
       about: idx.about,
       track: new Map(idx.track),
-      contact: new Map(idx.contact)
+      log: new Map(idx.log)
     }
   }
 
@@ -175,12 +175,22 @@ class RecordIndex {
   }
 
   has (id, type) {
+    // TODO deprecate
+    if (type === 'contact') {
+      type = 'log'
+    }
+
     return !!this.getEntry(id, type)
   }
 
   getEntry (id, type) {
     if (type === 'about') {
       return this._index.about
+    }
+
+    // TODO deprecate
+    if (type === 'contact') {
+      type = 'log'
     }
 
     return this._index[type].get(id)
@@ -193,8 +203,13 @@ class RecordIndex {
 
   add (item) {
     const { key } = item.payload
-    const { type } = item.payload.value
+    let { type } = item.payload.value
     const entry = this.getEntry(key, type)
+
+    // TODO: deprecate
+    if (type === 'contact') {
+      type = 'log'
+    }
 
     if (entry && entry.clock.time > item.clock.time) {
       return
@@ -243,7 +258,7 @@ class RecordIndex {
 
   sort () {
     this._index.track = new Map([...this._index.track.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
-    this._index.contact = new Map([...this._index.contact.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
+    this._index.log = new Map([...this._index.log.entries()].sort((a, b) => Log.Entry.compare(a[1], b[1])))
   }
 
   async loadIndex (oplog) {
@@ -260,9 +275,9 @@ class RecordIndex {
   async updateIndex (oplog, entry) {
     // Get all Hashes in Index + Queue
     const trackHashes = Array.from(this._index.track.values()).map(e => e.hash)
-    const contactHashes = Array.from(this._index.contact.values()).map(e => e.hash)
+    const logHashes = Array.from(this._index.log.values()).map(e => e.hash)
     const queueHashes = Object.keys(this._indexQueue)
-    const entryHashes = [].concat(trackHashes, contactHashes, queueHashes)
+    const entryHashes = [].concat(trackHashes, logHashes, queueHashes)
 
     // make sure entry is not in index before adding
     if (!entryHashes.includes(entry.hash)) {

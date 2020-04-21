@@ -9,11 +9,11 @@ module.exports = function listens (self) {
         type: ListensStore.type
       }
       self._listens = await self._orbitdb.open('listens', opts)
-      // TODO
+      // TODO re-enable pinning
       // await self._ipfs.pin.add(self._listens.address.root)
 
       const { accessControllerAddress } = self._listens.options
-      // TODO
+      // TODO re-enable pinning
       // self.pinAC(accessControllerAddress)
 
       await self._listens.load()
@@ -23,8 +23,8 @@ module.exports = function listens (self) {
       return self._listens.address.toString()
     },
 
-    isMe: (logId) => {
-      return self._listens.address.toString() === logId
+    isMe: (logAddress) => {
+      return self._listens.address.toString() === logAddress
     },
 
     add: async (data) => {

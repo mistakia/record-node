@@ -20,7 +20,7 @@ const detectContentType = (chunk) => {
 router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
   try {
     const { cid } = req.params
-    const { localOnly, logId } = req.query
+    const { localOnly, logAddress } = req.query
     const { record } = req.app.locals
 
     if (localOnly) {
@@ -79,9 +79,9 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     res.writeHead(range ? 206 : 200, head)
     peekedStream.pipe(res)
 
-    // TODO
-    /* if (logId) {
-     *   const shouldPin = await record.contacts.hasLogId(logId)
+    // TODO re-enable pinning
+    /* if (logAddress) {
+     *   const shouldPin = await record.logs.has(record.address, logAddress)
      *   if (shouldPin) await record._ipfs.pin.add(cid)
      * }
 

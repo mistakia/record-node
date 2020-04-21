@@ -4,8 +4,8 @@ const router = express.Router()
 router.get('/all', async (req, res) => {
   try {
     const { record } = req.app.locals
-    const contacts = await record.contacts.all()
-    res.send(contacts)
+    const data = await record.logs.all()
+    res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.send({ error: err.toString() })
@@ -17,8 +17,8 @@ router.get(':logAddress(*)', async (req, res) => {
     const { logAddress } = req.params
     const { record } = req.app.locals
 
-    const contacts = await record.contacts.list(logAddress)
-    res.send(contacts)
+    const data = await record.logs.list(logAddress)
+    res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
@@ -47,10 +47,10 @@ router.post('/?', (req, res, next) => {
   })
 }, async (req, res) => {
   try {
-    const { address, alias } = res.locals.data
+    const { linkAddress, alias } = res.locals.data
     const { record } = req.app.locals
-    const contact = await record.contacts.add({ address, alias })
-    res.send(contact)
+    const data = await record.logs.link({ linkAddress, alias })
+    res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
@@ -59,10 +59,10 @@ router.post('/?', (req, res, next) => {
 
 router.delete('/?', async (req, res) => {
   try {
-    const { contactId } = req.query
+    const { linkAddress } = req.query
     const { record } = req.app.locals
-    const contact = await record.contacts.remove(contactId)
-    res.send(contact)
+    const data = await record.logs.unlink(linkAddress)
+    res.send(data)
   } catch (err) {
     req.app.locals.record.logger.err(err)
     res.status(500).send({ error: err.toString() })
