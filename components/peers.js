@@ -67,7 +67,8 @@ module.exports = function peers (self) {
         data.logs.push(about)
       }
       const message = Buffer.from(JSON.stringify(data))
-      self._room.sendTo(peer, message)
+      if (peer) self._room.sendTo(peer, message)
+      else self._room.broadcast(message)
     },
     _onLeave: (peerId) => {
       if (!self.peers._index[peerId]) {
