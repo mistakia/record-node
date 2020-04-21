@@ -30,6 +30,7 @@ class RecordIndex {
     this._isBuilding = false
     this._searchIndex = new FlexSearch('balance', {
       async: true,
+      threshold: false,
       cache: 100,
       doc: {
         id: 'key',
