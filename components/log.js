@@ -200,6 +200,16 @@ module.exports = function log (self) {
       self.logger(`Loading log: ${logAddress}`, opts)
       const log = await self._orbitdb.open(logAddress, opts)
 
+      if (log._type === RecordStore.type) {
+        const data = await self.logs.get({ targetAddress: logAddress })
+        self.emit('redux', {
+          type: 'LOG_LOADING',
+          payload: {
+            data
+          }
+        })
+      }
+
       // TODO re-enable pinning
       /* await self._ipfs.pin.add(log.address.root)
        * const { accessControllerAddress } = log.options
