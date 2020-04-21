@@ -35,6 +35,47 @@ module.exports = function log (self) {
       return !!self._orbitdb.stores[logAddress]
     },
 
+    isEmpty: async (logAddress) => {
+      const log = await self.log.get(logAddress)
+      return !(log._oplog._hashIndex.size || log._oplog._length)
+    },
+
+    isLocal: async (logAddress) => {
+      const address = self.parseAddress(logAddress)
+      const haveManifest = self.log.haveManifest(address.root)
+      if (!haveManifest) {
+        return false
+      }
+
+      const { accessController } = await self.log.getManifest(address.root)
+      return self.log.haveAccessController(accessController)
+    },
+
+    getManifest: async (manifestAddress) => {
+      const manifest = await self._ipfs.dag.get(new CID(manifestAddress))
+      return manifest.value
+    },
+
+    haveManifest: async (manifestAddress) => {
+      return self._ipfs.repo.has(new CID(manifestAddress))
+    },
+
+    haveAccessController: async (accessControllerAddress) => {
+      const hash = accessControllerAddress.split('/')[2]
+      const hasAC = await self._ipfs.repo.has(new CID(hash))
+      if (!hasAC) {
+        return false
+      }
+
+      const ipfsAC = await self._ipfs.dag.get(new CID(hash))
+      const hasIPFSAC = await self._ipfs.repo.has(new CID(ipfsAC.value.params.address))
+      if (!hasIPFSAC) {
+        return false
+      }
+
+      return true
+    },
+
     _registerEvents: async (log) => {
       const logAddress = log.id
 
@@ -130,22 +171,6 @@ module.exports = function log (self) {
       await log.drop(logAddress)
 
       return { logAddress }
-    },
-
-    haveAccessController: async function (accessControllerAddress) {
-      const hash = accessControllerAddress.split('/')[2]
-      const hasAC = await self._ipfs.repo.has(new CID(hash))
-      if (!hasAC) {
-        return false
-      }
-
-      const ipfsAC = await self._ipfs.dag.get(new CID(hash))
-      const hasIPFSAC = await self._ipfs.repo.has(new CID(ipfsAC.value.params.address))
-      if (!hasIPFSAC) {
-        return false
-      }
-
-      return true
     },
 
     get: async function (logAddress = self.address, options = {}) {
