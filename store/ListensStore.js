@@ -22,10 +22,10 @@ class ListensStore extends RecordStore {
     return entries
   }
 
-  add ({ trackId, logId }) {
+  add ({ trackId, logAddress }) {
     return this._addOperation({
       trackId,
-      logId,
+      logAddress,
       timestamp: new Date()
     })
   }

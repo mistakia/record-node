@@ -18,7 +18,7 @@ describe('record', function () {
       // components
       assert.strictEqual(typeof record.about, 'object')
       assert.strictEqual(typeof record.bootstrap, 'object')
-      assert.strictEqual(typeof record.contacts, 'object')
+      assert.strictEqual(typeof record.logs, 'object')
       assert.strictEqual(typeof record.info, 'object')
       assert.strictEqual(typeof record.listens, 'object')
       assert.strictEqual(typeof record.log, 'object')

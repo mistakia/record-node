@@ -4,9 +4,8 @@ const router = express.Router()
 router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
-    const { contactId } = req.query
     const { record } = req.app.locals
-    await record.contacts.connect(logAddress, contactId)
+    await record.logs.connect(logAddress)
     res.send({ success: true })
   } catch (err) {
     req.app.locals.record.logger.err(err)

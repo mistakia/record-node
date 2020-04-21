@@ -1,6 +1,9 @@
 const path = require('path')
 const rimraf = require('rimraf')
 const Record = require('../../index')
+const debug = require('debug')
+
+debug.enable('record:node:*')
 
 const startRecord = (opts, node2) => new Promise((resolve, reject) => {
   const recordOpts = {
@@ -38,7 +41,11 @@ const startRecord = (opts, node2) => new Promise((resolve, reject) => {
   setTimeout(() => reject(new Error('peer timed out')), 25000)
 
   record.on('redux', ({ type, payload }) => {
-    if (type === 'RECORD_PEER_JOINED' && payload.logId === node2.address) {
+    if (!node2) {
+      return
+    }
+
+    if (type === 'RECORD_PEER_JOINED' && payload.logAddress === node2.address) {
       resolve(record)
     }
   })

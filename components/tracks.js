@@ -72,8 +72,8 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
-    _entryToTrack: async (entry, logId = self.address) => {
-      if (!self.isMe(logId)) {
+    _entryToTrack: async (entry, logAddress = self.address) => {
+      if (!self.isMe(logAddress)) {
         const myLog = self.log.mine()
         const externalTags = entry.payload.value.tags
         const haveTrack = myLog.tracks.has(entry.payload.key)
@@ -98,7 +98,7 @@ module.exports = function tracks (self) {
       return entry.payload.value
     },
 
-    addTracksFromFS: async (filepath, { logId } = {}) => {
+    addTracksFromFS: async (filepath, { logAddress } = {}) => {
       self.logger(`Searching ${filepath} for tracks`)
 
       let result = []
@@ -106,7 +106,7 @@ module.exports = function tracks (self) {
 
       if (stat.isFile()) {
         try {
-          const track = await self.tracks.addTrackFromFile(filepath, { logId })
+          const track = await self.tracks.addTrackFromFile(filepath, { logAddress })
           result.push(track)
         } catch (e) {
           self.logger.err(e)
@@ -120,7 +120,7 @@ module.exports = function tracks (self) {
         for (let i = 0; i < pathsInDir.length; i++) {
           const tracks = await self.tracks.addTracksFromFS(
             path.resolve(filepath, pathsInDir[i]),
-            { logId }
+            { logAddress }
           )
           result = tracks.concat(result)
         }
@@ -128,7 +128,7 @@ module.exports = function tracks (self) {
 
       return result
     },
-    addTrackFromFile: async (filepath, { resolverData, logId } = {}) => {
+    addTrackFromFile: async (filepath, { resolverData, logAddress } = {}) => {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath, {
         command: self._options.chromaprintPath
@@ -182,7 +182,7 @@ module.exports = function tracks (self) {
         resolver: []
       }
 
-      // TODO
+      // TODO re-enable pinning
       /* await self._ipfs.pin.add(trackData.hash)
        * self.logger('Pinned audio')
        * for (let i = 0; i < trackData.artwork.length; i++) {
@@ -195,10 +195,10 @@ module.exports = function tracks (self) {
         trackData.resolver = [resolverData]
       }
 
-      return self.tracks.add(trackData, { logId })
+      return self.tracks.add(trackData, { logAddress })
     },
 
-    addTrackFromUrl: async (resolverData, { logId } = {}) => {
+    addTrackFromUrl: async (resolverData, { logAddress } = {}) => {
       if (typeof resolverData === 'string') {
         const results = await self.resolve(resolverData)
         resolverData = results[0]
@@ -216,45 +216,45 @@ module.exports = function tracks (self) {
       }
 
       const filepath = await downloadFile(resolverData)
-      return self.tracks.addTrackFromFile(filepath, { resolverData, logId })
+      return self.tracks.addTrackFromFile(filepath, { resolverData, logAddress })
     },
 
-    addTrackFromCID: async (cid, { logId } = {}) => {
+    addTrackFromCID: async (cid, { logAddress } = {}) => {
       const dagNode = await self._ipfs.dag.get(cid, { localResolve: true })
       const content = dagNode.value
-      return self.tracks.add(content, { logId })
+      return self.tracks.add(content, { logAddress })
     },
 
-    add: async (trackData, { logId } = {}) => {
-      const log = await self.log.get(logId)
+    add: async (trackData, { logAddress } = {}) => {
+      const log = await self.log.get(logAddress)
       const shouldPin = true
       const entry = await log.tracks.findOrCreate(trackData, shouldPin)
       const track = await self.tracks._entryToTrack(entry, log.address.toString())
       self.emit('redux', {
         type: 'TRACK_ADDED',
-        payload: { data: track, logId: log.address.toString() }
+        payload: { data: track, logAddress: log.address.toString() }
       })
       return track
     },
 
-    get: async (logId, trackId) => {
-      const log = await self.log.get(logId, { replicate: false })
+    get: async (logAddress, trackId) => {
+      const log = await self.log.get(logAddress, { replicate: false })
       const entry = await log.tracks.getFromId(trackId)
 
       if (!entry) {
         return null
       }
 
-      return self.tracks._entryToTrack(entry, logId)
+      return self.tracks._entryToTrack(entry, logAddress)
     },
 
-    _contactsHaveTrack: async (trackId) => {
+    _isInLinkedLogs: async (trackId) => {
       let result = false
       const log = self.log.mine()
-      const entries = await log.contacts.all()
-      const contacts = entries.map(e => e.payload.value)
-      for (const contact of contacts) {
-        const { address } = contact.content
+      const entries = await log.logs.all()
+      const values = entries.map(e => e.payload.value)
+      for (const value of values) {
+        const { address } = value.content
         const l = await self.log.get(address)
         if (l.tracks.has(trackId)) {
           result = true
@@ -265,13 +265,13 @@ module.exports = function tracks (self) {
       return result
     },
 
-    remove: async (trackId, { logId } = {}) => {
-      const log = await self.log.get(logId)
+    remove: async (trackId, { logAddress } = {}) => {
+      const log = await self.log.get(logAddress)
       const entry = await log.tracks.getFromId(trackId)
       const hash = await log.tracks.del(trackId)
 
-      const contactsHaveTrack = await self.tracks._contactsHaveTrack(trackId)
-      if (contactsHaveTrack) {
+      const isInLinkedLogs = await self.tracks._isInLinkedLogs(trackId)
+      if (isInLinkedLogs) {
         return hash
       }
 
@@ -280,7 +280,7 @@ module.exports = function tracks (self) {
       const { content, contentCID } = entry.payload.value
       if (contentCID) {
         try {
-          // TODO
+          // TODO re-enable pin removal
           // await self._ipfs.pin.rm(contentCID)
         } catch (error) {
           self.logger.err(error)
@@ -290,7 +290,7 @@ module.exports = function tracks (self) {
 
       if (CID.isCID(content)) {
         try {
-          // TODO
+          // TODO re-enable pin removal
           // await self._ipfs.pin.rm(content)
         } catch (error) {
           self.logger.err(error)
@@ -301,13 +301,13 @@ module.exports = function tracks (self) {
       return hash
     },
 
-    list: async (logId, opts) => {
-      const log = await self.log.get(logId, { replicate: false })
+    list: async (logAddress, opts) => {
+      const log = await self.log.get(logAddress, { replicate: false })
       const entries = await log.tracks.all(opts)
 
       const tracks = []
       for (const entry of entries) {
-        const track = await self.tracks._entryToTrack(entry, logId)
+        const track = await self.tracks._entryToTrack(entry, logAddress)
         tracks.push(track)
       }
 

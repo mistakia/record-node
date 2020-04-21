@@ -14,9 +14,9 @@ router.get('/?', async (req, res) => {
 
 router.post('/?', async (req, res) => {
   try {
-    const { trackId, logId } = req.body
+    const { trackId, logAddress } = req.body
     const { record } = req.app.locals
-    const entry = await record.listens.add({ trackId, logId })
+    const entry = await record.listens.add({ trackId, logAddress })
     res.send(entry)
   } catch (err) {
     req.app.locals.record.logger.err(err)
