@@ -26,19 +26,19 @@ router.get(':logAddress(*)', async (req, res) => {
 })
 
 router.post('/?', (req, res, next) => {
-  const { address, alias } = req.body
+  const { linkAddress, alias } = req.body
   const { record } = req.app.locals
 
   const errors = []
 
-  if (!address) {
+  if (!linkAddress) {
     errors.push('Missing address field')
-  } else if (!record.isValidAddress(address)) {
+  } else if (!record.isValidAddress(linkAddress)) {
     errors.push('Invalid OrbitDB address')
   }
 
   if (!errors.length) {
-    res.locals.data = { address, alias }
+    res.locals.data = { linkAddress, alias }
     return next()
   }
 
