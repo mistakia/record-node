@@ -52,11 +52,20 @@ module.exports = function peers (self) {
 
       data.about = await self.about.get(self.address)
 
-      // TODO FIX
-      /* for (const logAddress of logAddresses) {
-       *   const about = await self.about.get(logAddress, { localOnly: true })
-       *   data.logs.push(about)
-       * } */
+      for (const logAddress of logAddresses) {
+        const isLocal = self.log.isLocal(logAddress)
+        if (!isLocal) {
+          continue
+        }
+
+        const isEmpty = await self.log.isEmpty(logAddress)
+        if (isEmpty) {
+          continue
+        }
+
+        const about = await self.about.get(logAddress)
+        data.logs.push(about)
+      }
       const message = Buffer.from(JSON.stringify(data))
       self._room.sendTo(peer, message)
     },
