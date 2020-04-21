@@ -198,7 +198,7 @@ module.exports = function logs (self) {
         replicationStats,
         length,
         heads,
-        isLinked: !!myEntry.id,
+        isLinked: !!myEntry.id || self.log.mine().contacts.has(entry.id),
         isMe: self.isMe(targetAddress)
       })
     },
