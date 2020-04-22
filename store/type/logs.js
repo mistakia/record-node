@@ -38,8 +38,8 @@ module.exports = function (self) {
     },
 
     _add: async (entry, shouldPin) => {
-      const hash = await self.put(entry)
-      // TODO
+      await self.put(entry)
+      // TODO - renable pinning
       // if (shouldPin) await self._ipfs.pin.add(hash)
       return self.logs.getFromId(entry.id)
     },

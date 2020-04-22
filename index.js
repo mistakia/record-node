@@ -116,6 +116,10 @@ class RecordNode extends EventEmitter {
     return this._log.address.toString()
   }
 
+  get identity () {
+    return this._log.identity.id
+  }
+
   isMe (logAddress) {
     return this.address === logAddress
   }

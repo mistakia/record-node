@@ -106,7 +106,7 @@ module.exports = function logs (self) {
       }
 
       const log = await self.log.get(logAddress)
-      const logEntry = await log.logs.findOrCreate({ address: linkAddress, alias })
+      await log.logs.findOrCreate({ address: linkAddress, alias })
       if (self.isReplicating) {
         self.logs._connect(linkAddress, { pin: true })
       }
@@ -213,17 +213,16 @@ module.exports = function logs (self) {
       const logEntry = await log.logs.getFromAddress(linkAddress)
       await log.logs.del(logEntry.payload.value.id)
 
-      const linkedLog = await self.log.get(logEntry.payload.value.content.address)
-      for (const hash of linkedLog._oplog._hashIndex.keys()) {
-        const entry = await log._oplog.get(hash)
-        const { content, type } = entry.payload.value
-        const { key } = entry.payload
-
-        // TODO re-enable pin removal
-        /* await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
-         * await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins */
-      }
-
+      // TODO re-enable pin removal
+      /* const linkedLog = await self.log.get(logEntry.payload.value.content.address)
+       * for (const hash of linkedLog._oplog._hashIndex.keys()) {
+       *   const entry = await log._oplog.get(hash)
+       *   const { content, type } = entry.payload.value
+       *   const { key } = entry.payload
+       *   await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
+       *   await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins
+       * }
+       */
       self.logs._disconnect(logEntry.payload.value.content.address)
 
       return { id: logEntry.id, linkAddress }

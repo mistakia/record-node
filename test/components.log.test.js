@@ -8,37 +8,54 @@ const {
 
 describe('record.components', function () {
   this.timeout(config.timeout)
-  let record
+  let record1, record2
 
-  before(async () => { record = await startRecord(config.node1) })
-  after(async () => record && record.stop())
+  before(async () => {
+    record2 = await startRecord(config.node2)
+    record1 = await startRecord(config.node1, record2)
+  })
+  after(async () => {
+    try {
+      record1 && await record1.stop()
+      record2 && await record2.stop()
+    } catch (e) {
+      console.log(e)
+    }
+  })
 
   describe('record.components.log', function () {
     it('mine', function () {
-      const log = record.log.mine()
-      assert.strictEqual(log.address.toString(), record.address)
+      const log = record1.log.mine()
+      assert.strictEqual(log.address.toString(), record1.address)
     })
 
     it('isMine', async function () {
-      const log = await record.log.get(record.address)
-      const isMine = record.log.isMine(log)
+      const log = await record1.log.get(record1.address)
+      const isMine = record1.log.isMine(log)
       assert.strictEqual(isMine, true)
     })
 
     it('isOpen', function () {
-      const isOpen = record.log.isOpen(record.address)
+      const isOpen = record1.log.isOpen(record1.address)
       assert.strictEqual(isOpen, true)
+    })
+
+    it('canAppend', async function () {
+      const canAppend1 = await record1.log.canAppend(record1.address)
+      assert.strictEqual(canAppend1, true)
+      const canAppend2 = await record1.log.canAppend(record2.address)
+      assert.strictEqual(canAppend2, false)
     })
 
     describe('get', function () {
       it('no address given', async function () {
-        const log = await record.log.get()
-        assert.strictEqual(log.address.toString(), record.address)
+        const log = await record1.log.get()
+        assert.strictEqual(log.address.toString(), record1.address)
       })
 
       it('address given', async function () {
-        const log = await record.log.get(record.address)
-        assert.strictEqual(log.address.toString(), record.address)
+        const log = await record1.log.get(record1.address)
+        assert.strictEqual(log.address.toString(), record1.address)
       })
     })
 
@@ -47,7 +64,7 @@ describe('record.components', function () {
         let error
         const address = 'invalid address'
         try {
-          await record.log.get(address, { create: true })
+          await record1.log.get(address, { create: true })
         } catch (e) {
           error = e.toString()
         }

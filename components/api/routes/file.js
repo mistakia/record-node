@@ -20,7 +20,7 @@ const detectContentType = (chunk) => {
 router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
   try {
     const { cid } = req.params
-    const { localOnly, logAddress } = req.query
+    const { localOnly } = req.query // TODO: use logAddress for pin
     const { record } = req.app.locals
 
     if (localOnly) {
