@@ -31,7 +31,7 @@ describe('record.components.logs', function () {
 
   describe('record.logs.add', function () {
     it('add + list', async function () {
-      const linkedLog = await record1.logs.add(link)
+      const linkedLog = await record1.logs.link(link)
       assert.strictEqual(linkedLog.content.address, record2.address)
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs[0].content.address, record2.address)
@@ -39,21 +39,21 @@ describe('record.components.logs', function () {
     })
 
     it('duplicate + list', async function () {
-      await record1.logs.add(link)
+      await record1.logs.link(link)
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 1)
       assert.strictEqual(record1._log._oplog.length, 1)
     })
 
     it('remove + list', async function () {
-      await record1.logs.remove(link.linkAddress)
+      await record1.logs.unlink(link.linkAddress)
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 0)
       assert.strictEqual(record1._log._oplog.length, 2)
     })
 
     it('re-add + list', async function () {
-      await record1.logs.add(link)
+      await record1.logs.link(link)
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 1)
       assert.strictEqual(record1._log._oplog.length, 3)
@@ -67,7 +67,7 @@ describe('record.components.logs', function () {
       it('add yourself', async function () {
         let error
         try {
-          await record1.logs.add({ linkAddress: record1.address })
+          await record1.logs.link({ linkAddress: record1.address })
         } catch (e) {
           error = e
         }
@@ -77,7 +77,7 @@ describe('record.components.logs', function () {
       it('invalid address', async function () {
         let error
         try {
-          await record1.logs.add({ linkAddress: 'invalid address' })
+          await record1.logs.link({ linkAddress: 'invalid address' })
         } catch (e) {
           error = e
         }

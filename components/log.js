@@ -14,8 +14,8 @@ module.exports = function log (self) {
       // TODO - re-enable pinning
       // await self._ipfs.pin.add(self._log.address.root)
 
-      const { accessControllerAddress } = self._log.options
       // TODO - re-enable pinning
+      // const { accessControllerAddress } = self._log.options
       // await self.pinAC(accessControllerAddress)
 
       await self._log.load()
@@ -25,6 +25,11 @@ module.exports = function log (self) {
 
     mine: () => {
       return self._log
+    },
+
+    canAppend: async (logAddress) => {
+      const log = await self.log.get(logAddress, { replicate: false })
+      return log.access.write.includes(self.identity)
     },
 
     isMine: (log) => {

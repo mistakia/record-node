@@ -12,8 +12,8 @@ module.exports = function listens (self) {
       // TODO re-enable pinning
       // await self._ipfs.pin.add(self._listens.address.root)
 
-      const { accessControllerAddress } = self._listens.options
       // TODO re-enable pinning
+      // const { accessControllerAddress } = self._listens.options
       // self.pinAC(accessControllerAddress)
 
       await self._listens.load()
