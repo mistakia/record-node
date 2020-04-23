@@ -12,6 +12,8 @@ const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
 const { CID, globSource } = require('ipfs')
 
+const { loadContentFromCID } = require('../utils')
+
 const getAcoustID = (filepath, options) => {
   return new Promise((resolve, reject) => {
     fpcalc(filepath, options, (err, result) => {
@@ -72,6 +74,29 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
+    _contentToTrack: async (content) => {
+      const track = {
+        tags: [],
+        isLocal: false,
+        haveTrack: false,
+        externalTags: [],
+        ...content
+      }
+
+      if (!content.id) {
+        return track
+      }
+
+      const log = self.log.mine()
+      track.haveTrack = log.tracks.has(content.id)
+      if (track.haveTrack) {
+        track.tags = await log.tracks.getFromId(content.id)
+      }
+
+      const cid = new CID(content.hash)
+      track.isLocal = await self._ipfs.repo.has(cid)
+      return track
+    },
     _entryToTrack: async (entry, logAddress = self.address) => {
       if (!self.isMe(logAddress)) {
         const myLog = self.log.mine()
@@ -235,6 +260,11 @@ module.exports = function tracks (self) {
         payload: { data: track, logAddress: log.address.toString() }
       })
       return track
+    },
+
+    getFromCID: async (cid, { localResolve = true } = {}) => {
+      const content = await loadContentFromCID(self._ipfs, cid, 'track', { localResolve })
+      return self.tracks._contentToTrack(content)
     },
 
     get: async (logAddress, trackId) => {

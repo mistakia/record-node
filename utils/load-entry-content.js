@@ -1,4 +1,5 @@
 const { CID } = require('ipfs')
+const loadContentFromCID = require('./load-content-from-cid')
 
 const loadEntryContent = async (ipfs, e) => {
   if (!e) {
@@ -29,30 +30,13 @@ const loadEntryContent = async (ipfs, e) => {
   }
 
   const { codec, version, hash } = entry.payload.value.content
-  const cid = new CID(version, codec, Buffer.from(hash.data))
-
-  // load content
-  const dagNode = await ipfs.dag.get(cid)
-  entry.payload.value.content = dagNode.value
-  entry.payload.value.cid = cid
-  entry.payload.value.contentCID = cid.toBaseEncodedString('base58btc')
-
-  // convert track hash & artwork cids to strings
   const { type } = entry.payload.value
-  if (type === 'track') {
-    const { content } = entry.payload.value
-    if (CID.isCID(content.hash)) {
-      entry.payload.value.content.hash = content.hash.toBaseEncodedString('base58btc')
-    }
+  const cid = new CID(version, codec, Buffer.from(hash.data))
+  const content = await loadContentFromCID(ipfs, cid, type)
 
-    entry.payload.value.content.artwork = content.artwork.map((a) => {
-      return CID.isCID(a) ? a.toBaseEncodedString('base58btc') : a
-    })
-  }
+  entry.payload.value = Object.assign(entry.payload.value, content)
 
   return entry
 }
 
-module.exports = {
-  loadEntryContent
-}
+module.exports = loadEntryContent

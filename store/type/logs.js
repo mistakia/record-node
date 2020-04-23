@@ -1,7 +1,7 @@
 const { sha256 } = require('crypto-hash')
 
 const { LogEntry } = require('../RecordEntry')
-const { loadEntryContent } = require('../utils')
+const { loadEntryContent } = require('../../utils')
 
 module.exports = function (self) {
   return {

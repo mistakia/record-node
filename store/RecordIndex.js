@@ -4,8 +4,7 @@ const FlexSearch = require('flexsearch')
 const { default: PQueue } = require('p-queue')
 const { CID } = require('ipfs')
 
-const { throttle } = require('../utils')
-const { loadEntryContent } = require('./utils')
+const { throttle, loadEntryContent } = require('../utils')
 
 const defaultIndex = () => ({
   tags: {},

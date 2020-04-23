@@ -23,10 +23,23 @@ class ListensStore extends RecordStore {
     return this._index.getCount(trackId)
   }
 
-  add ({ trackId, logAddress }) {
+  add ({ trackId, logAddress, cid }) {
+    if (!trackId) {
+      throw new Error('missing trackId')
+    }
+
+    if (!logAddress) {
+      throw new Error('missing logAddress')
+    }
+
+    if (!cid) {
+      throw new Error('missing cid')
+    }
+
     return this._addOperation({
       trackId,
       logAddress,
+      cid,
       timestamp: new Date()
     })
   }
