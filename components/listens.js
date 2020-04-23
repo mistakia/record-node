@@ -31,9 +31,13 @@ module.exports = function listens (self) {
       await self._listens.add(data)
     },
 
-    list: async (start = null, end = 20) => {
-      const entries = await self._listens.query({ start, end })
-      return entries
+    getCount: (trackId) => {
+      return self._listens.getCount(trackId)
+    },
+
+    list: async ({ start, limit } = {}) => {
+      const entries = await self._listens.list({ start, limit })
+      return entries.map(e => e.payload)
     }
   }
 }
