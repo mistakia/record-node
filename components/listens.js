@@ -36,8 +36,19 @@ module.exports = function listens (self) {
     },
 
     list: async ({ start, limit } = {}) => {
-      const entries = await self._listens.list({ start, limit })
-      return entries.map(e => e.payload)
+      const listens = await self._listens.list({ start, limit })
+      const entries = []
+      for (const listen of listens) {
+        const isLocal = await self._ipfs.repo.has(listen.cid)
+        if (!isLocal) {
+          continue
+        }
+
+        const track = await self.tracks.getFromCID(listen.cid)
+        entries.push(track)
+      }
+
+      return entries
     }
   }
 }

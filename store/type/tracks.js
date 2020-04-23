@@ -1,5 +1,5 @@
 const { TrackEntry } = require('../RecordEntry')
-const { loadEntryContent } = require('../utils')
+const { loadEntryContent } = require('../../utils')
 
 // fully random by @BetonMAN
 const shuffleArray = arr => arr
