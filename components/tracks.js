@@ -79,6 +79,7 @@ module.exports = function tracks (self) {
         tags: [],
         isLocal: false,
         haveTrack: false,
+        listens: [],
         externalTags: [],
         ...content
       }
@@ -92,6 +93,9 @@ module.exports = function tracks (self) {
       if (track.haveTrack) {
         track.tags = await log.tracks.getFromId(content.id)
       }
+
+      const count = await self.listens.getCount(content.id)
+      track.listens = count.timestamps
 
       const cid = new CID(content.hash)
       track.isLocal = await self._ipfs.repo.has(cid)
@@ -116,6 +120,9 @@ module.exports = function tracks (self) {
         entry.payload.value.haveTrack = true
         entry.payload.value.externalTags = []
       }
+
+      const count = await self.listens.getCount(entry.payload.value.id)
+      entry.payload.value.listens = count.timestamps
 
       const cid = new CID(entry.payload.value.content.hash)
       entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
