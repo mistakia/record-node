@@ -29,6 +29,7 @@ module.exports = function listens (self) {
 
     add: async (data) => {
       await self._listens.add(data)
+      return self.listens.getCount(data.trackId)
     },
 
     getCount: (trackId) => {
