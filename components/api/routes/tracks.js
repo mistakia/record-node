@@ -5,7 +5,7 @@ router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
     const { record } = req.app.locals
-    let { start, limit, tags, shuffle, query } = req.query
+    const { start, limit, tags, shuffle, query } = req.query
     const tracks = await record.tracks.list(logAddress, {
       start: parseInt(start, 10),
       limit: parseInt(limit, 10),
