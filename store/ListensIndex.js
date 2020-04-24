@@ -28,14 +28,18 @@ class ListensIndex {
   }
 
   getCount (trackId) {
-    const value = this._index.track.get(trackId)
-    const count = Object.keys(value).length
-    const timestamps = Object.values(value)
-    return {
+    const result = {
       trackId,
-      count,
-      timestamps
+      count: 0,
+      timestamps: []
     }
+
+    const value = this._index.track.get(trackId)
+    if (value) {
+      result.count = Object.keys(value).length
+      result.timestamps = Object.values(value)
+    }
+    return result
   }
 
   add (entry) {
