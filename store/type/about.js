@@ -9,7 +9,7 @@ module.exports = function (self) {
       const shouldPin = true
       const entry = await new AboutEntry().create(self._ipfs, data, shouldPin)
       const save = async () => {
-        const hash = await self.put(entry)
+        await self.put(entry)
         // TODO re-enable pinning
         // await self._ipfs.pin.add(hash)
         return this.get()
