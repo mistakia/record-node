@@ -5,7 +5,14 @@ router.get(':logAddress(*)', async (req, res) => {
   try {
     const { logAddress } = req.params
     const { record } = req.app.locals
-    const tracks = await record.tracks.list(logAddress, req.query)
+    let { start, limit, tags, shuffle, query } = req.query
+    const tracks = await record.tracks.list(logAddress, {
+      start: parseInt(start, 10),
+      limit: parseInt(limit, 10),
+      tags,
+      shuffle,
+      query
+    })
     res.send(tracks)
   } catch (err) {
     req.app.locals.record.logger.err(err)
