@@ -19,10 +19,9 @@ describe('record', function () {
     it('add + get listen', async () => {
       await record.listens.add({ trackId, logAddress: record.address, cid })
       const listens = await record._listens.list()
-      const values = listens.map(e => e.payload)
-      assert.strictEqual(values.length, 1)
-      assert.strictEqual(values[0].trackId, trackId)
-      assert.strictEqual(values[0].logAddress, record.address)
+      assert.strictEqual(listens.length, 1)
+      assert.strictEqual(listens[0].trackId, trackId)
+      assert.strictEqual(listens[0].logAddress, record.address)
 
       const count = record.listens.getCount(trackId)
       assert.strictEqual(count.trackId, trackId)
@@ -49,10 +48,9 @@ describe('record', function () {
       assert.strictEqual(result2.count, limit)
 
       const result3 = await record._listens.list()
-      const values3 = result3.map(e => e.payload)
-      assert.strictEqual(values3.length, limit * 2)
-      assert.strictEqual(values3[0].trackId, trackId2)
-      assert.strictEqual(values3[values3.length - 1].trackId, trackId)
+      assert.strictEqual(result3.length, limit * 2)
+      assert.strictEqual(result3[0].trackId, trackId2)
+      assert.strictEqual(result3[result3.length - 1].trackId, trackId)
     })
 
     it('add 100 listens', async () => {
@@ -63,14 +61,12 @@ describe('record', function () {
 
       const limit = 20
       let result = await record._listens.list({ limit })
-      let values = result.map(e => e.payload)
-      assert.strictEqual(values.length, 20)
-      assert.strictEqual(values[0].trackId, `trackId${listenLimit - 1}`)
+      assert.strictEqual(result.length, 20)
+      assert.strictEqual(result[0].trackId, `trackId${listenLimit - 1}`)
 
       result = await record._listens.list({ start: limit, limit })
-      values = result.map(e => e.payload)
-      assert.strictEqual(values.length, 20)
-      assert.strictEqual(values[0].trackId, `trackId${(listenLimit - limit) - 1}`)
+      assert.strictEqual(result.length, 20)
+      assert.strictEqual(result[0].trackId, `trackId${(listenLimit - limit) - 1}`)
     })
 
     // TODO - test list

@@ -10,7 +10,7 @@ const loadContentFromCID = async (ipfs, cid, type, { localResolve = false } = {}
 
   item.content = dagNode.value
   item.cid = new CID(cid)
-  item.contentCID = cid.toBaseEncodedString('base58btc')
+  item.contentCID = item.cid.toBaseEncodedString('base58btc')
 
   // convert track hash & artwork cids to strings
   if (type === 'track') {

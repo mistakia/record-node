@@ -74,8 +74,9 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
-    _contentToTrack: async (content) => {
-      const track = {
+    _contentToTrack: async (content, trackId) => {
+      let track = {
+        id: trackId,
         tags: [],
         isLocal: false,
         haveTrack: false,
@@ -84,20 +85,23 @@ module.exports = function tracks (self) {
         ...content
       }
 
-      if (!content.id) {
+      if (!trackId) {
         return track
       }
 
       const log = self.log.mine()
-      track.haveTrack = log.tracks.has(content.id)
+      track.haveTrack = log.tracks.has(trackId)
       if (track.haveTrack) {
-        track.tags = await log.tracks.getFromId(content.id)
+        const entry = await log.tracks.getFromId(trackId)
+        track = entry.payload.value
+        track.haveTrack = true
+        track.externalTags = []
       }
 
-      const count = await self.listens.getCount(content.id)
+      const count = await self.listens.getCount(trackId)
       track.listens = count.timestamps
 
-      const cid = new CID(content.hash)
+      const cid = new CID(content.content.hash)
       track.isLocal = await self._ipfs.repo.has(cid)
       return track
     },
@@ -269,9 +273,9 @@ module.exports = function tracks (self) {
       return track
     },
 
-    getFromCID: async (cid, { localResolve = true } = {}) => {
+    getFromCID: async (cid, trackId, { localResolve = true } = {}) => {
       const content = await loadContentFromCID(self._ipfs, cid, 'track', { localResolve })
-      return self.tracks._contentToTrack(content)
+      return self.tracks._contentToTrack(content, trackId)
     },
 
     get: async (logAddress, trackId) => {

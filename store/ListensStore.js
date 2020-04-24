@@ -16,7 +16,7 @@ class ListensStore extends RecordStore {
       const entry = await this._oplog.get(entryHash)
       entries.push(entry)
     }
-    return entries
+    return entries.map(e => e.payload)
   }
 
   getCount (trackId) {
