@@ -224,7 +224,7 @@ module.exports = function log (self) {
       await log.load()
 
       if (log._type === RecordStore.type) {
-        self._logAddresses[logAddress] = log.options.accessControllerAddress
+        self._logAddresses[log.address.toString()] = log.options.accessControllerAddress
         const data = await self.logs.get({ targetAddress: logAddress })
         self.emit('redux', {
           type: 'LOG_LOADED',
