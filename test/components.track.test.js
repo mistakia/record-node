@@ -16,8 +16,8 @@ describe('record.components.track', function () {
 
   describe('record.components.track.addTrackFromFile', function () {
     let track1
-    const filepath1 = path.join(__dirname, 'fixtures/Dj Falcon And Thomas Bangalter - So Much Love To Give(Original Mix).mp3')
-    const filepath2 = path.join(__dirname, 'fixtures/8000 (Clouds Remix).mp3')
+    const filepath1 = path.join(__dirname, 'fixtures/tracks/Dj Falcon And Thomas Bangalter - So Much Love To Give(Original Mix).mp3')
+    const filepath2 = path.join(__dirname, 'fixtures/tracks/8000 (Clouds Remix).mp3')
 
     describe('add', async function () {
       it('added with log length of 1', async function () {

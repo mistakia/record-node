@@ -83,6 +83,7 @@ class RecordNode extends EventEmitter {
     this.about = components.about(this)
     this.bootstrap = components.bootstrap(this)
     this.logs = components.logs(this)
+    this.importer = components.importer(this)
     this.info = components.info(this)
     this.listens = components.listens(this)
     this.log = components.log(this)
@@ -169,6 +170,7 @@ class RecordNode extends EventEmitter {
 
     await this.log._init(address)
     await this.listens._init()
+    await this.importer.init()
 
     this.bootstrap._init()
     this.peers._init()

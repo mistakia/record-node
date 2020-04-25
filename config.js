@@ -24,6 +24,10 @@ module.exports = {
   gcInterval: 10000000, // 10mb
   chromaprintPath: null,
   youtubedlPath: null,
+  importer: {
+    enabled: false,
+    directory: null
+  },
   pubsubRoom: {
     pollInterval: 5000
   },
