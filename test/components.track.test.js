@@ -40,7 +40,7 @@ describe('record.components.track', function () {
 
     describe('get', async function () {
       let track
-      before(async () => { track = await record.tracks.get(record.address, track1.id) })
+      before(async () => { track = await record.tracks.get({ logAddress: record.address, trackId: track1.id }) })
 
       it('contentCID', function () {
         assert.strictEqual(track.contentCID, track1.contentCID)
