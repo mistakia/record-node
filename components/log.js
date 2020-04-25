@@ -27,6 +27,26 @@ module.exports = function log (self) {
       return self._log
     },
 
+    getLocalAddresses: async () => {
+      const logAddresses = Object.keys(self._logAddresses)
+      const localAddresses = []
+      for (const logAddress of logAddresses) {
+        const isLocal = await self.log.isLocal(logAddress)
+        if (isLocal) localAddresses.push(logAddress)
+      }
+      return localAddresses
+    },
+
+    getLocalLogs: async () => {
+      const localAddresses = await self.log.getLocalAddresses()
+      const logs = []
+      for (const logAddress of localAddresses) {
+        const log = await self.log.get(logAddress)
+        logs.push(log)
+      }
+      return logs
+    },
+
     canAppend: async (logAddress) => {
       const log = await self.log.get(logAddress, { replicate: false })
       return log.access.write.includes(self.identity)

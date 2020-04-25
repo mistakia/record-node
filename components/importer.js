@@ -85,12 +85,14 @@ module.exports = function importer (self) {
       let track = {}
       let error
       const file = files[0]
-      const jobs = queue.files[file]
+      const jobIds = queue.files[file]
 
       try {
-        const firstJob = jobs.shift()
+        const firstJobId = jobIds.shift()
+        const firstJob = queue.jobs[firstJobId]
         track = await self.tracks.addTrackFromFile(file, firstJob.logAddress)
-        for (const job of jobs) {
+        for (const jobId of jobIds) {
+          const job = queue.jobs[jobId]
           await self.tracks.addTrackFromCID(track.cid, job.logAddress)
         }
       } catch (e) {

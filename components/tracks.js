@@ -171,13 +171,23 @@ module.exports = function tracks (self) {
       })
       self.logger('Generated AcoustID Fingerprint')
 
-      const log = self.log.mine()
       const id = await sha256(acoustid.fingerprint)
-      const entry = await log.tracks.getFromId(id)
+
+      // check if already in this log, give that entry priority for now
+      // TODO merge if content cid is different
+      let entry = await self.tracks.get({ logAddress, trackId: id })
       if (entry) {
-        return self.tracks._entryToTrack(entry)
+        return entry
       }
 
+      // check if in other logs
+      // TODO merge if content cid is different
+      entry = await self.tracks.get({ trackId: id })
+      if (entry) {
+        return entry
+      }
+
+      // TODO - move to worker thread
       const metadata = await musicMetadata.parseFile(filepath)
       const pictures = metadata.common.picture
       delete metadata.common.picture
@@ -278,7 +288,19 @@ module.exports = function tracks (self) {
       return self.tracks._contentToTrack(content, trackId)
     },
 
-    get: async (logAddress, trackId) => {
+    get: async ({ logAddress, trackId }) => {
+      if (!logAddress) {
+        const localAddresses = await self.log.getLocalAddresses()
+        for (const localAddress of localAddresses) {
+          const track = self.tracks.get({ logAddress: localAddress, trackId })
+          if (track) {
+            return track
+          }
+        }
+
+        return null
+      }
+
       const log = await self.log.get(logAddress, { replicate: false })
       const entry = await log.tracks.getFromId(trackId)
 
