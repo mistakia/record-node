@@ -55,23 +55,23 @@ module.exports = function importer (self) {
       }
 
       // cleanup jobs & emit events
-      const jobs = new Set(Object.values(queue.files).flat())
-      for (const job of Object.keys(queue.jobs)) {
-        // ignore if still queueing files
-        if (!queue.jobs[job]) {
+      const jobIds = new Set(Object.values(queue.files).flat())
+      for (const jobId of Object.keys(queue.jobs)) {
+        if (!queue.jobs[jobId].queued) {
           continue
         }
 
-        const tasksLeft = jobs.has(job)
+        const tasksLeft = jobIds.has(jobId)
+        const job = queue.jobs[jobId]
         if (!tasksLeft) {
-          delete queue.jobs[job]
-
           self.emit('redux', {
             type: 'IMPORTER_FINISHED',
             payload: {
-              file: job
+              ...job
             }
           })
+
+          delete queue.jobs[jobId]
         }
       }
     },
@@ -85,9 +85,14 @@ module.exports = function importer (self) {
       let track = {}
       let error
       const file = files[0]
+      const jobs = queue.files[file]
 
       try {
-        track = await self.tracks.addTrackFromFile(file)
+        const firstJob = jobs.shift()
+        track = await self.tracks.addTrackFromFile(file, firstJob.logAddress)
+        for (const job of jobs) {
+          await self.tracks.addTrackFromCID(track.cid, job.logAddress)
+        }
       } catch (e) {
         self.logger.err(e)
         error = e
@@ -117,14 +122,19 @@ module.exports = function importer (self) {
         self.importer._worker()
       }
     },
-    add: async (filepath) => {
-      queue.jobs[filepath] = false
+    add: async (filepath, logAddress = self.address) => {
+      const jobId = `${logAddress}${filepath}`
+      queue.jobs[jobId] = {
+        queued: false,
+        filepath,
+        logAddress
+      }
 
       const onFile = (file) => {
         if (queue.files[file]) {
-          queue.files[file] = queue.files[file].push(filepath)
+          queue.files[file] = queue.files[file].push(jobId)
         } else {
-          queue.files[file] = [filepath]
+          queue.files[file] = [jobId]
         }
 
         self.importer.start()
@@ -137,7 +147,8 @@ module.exports = function importer (self) {
         onFile(filepath)
       }
 
-      queue.jobs[filepath] = true
+      queue.jobs[jobId].queued = true
+      jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
     },
     setDirectory: (filepath) => {
       if (!path.isAbsolute(filepath)) {
