@@ -32,6 +32,7 @@
     "ipfs-log": "github:mistakia/ipfs-log#proto/record",
     "ipfs-pubsub-room": "^2.0.1",
     "it-to-stream": "^0.1.1",
+    "jsonfile": "^6.0.1",
     "leveldown": "^5.1.1",
     "libp2p": "github:mistakia/js-libp2p#fix/staleConnections",
     "libp2p-bootstrap": "^0.10.4",

@@ -9,7 +9,7 @@ const shuffleArray = arr => arr
 
 module.exports = function (self) {
   return {
-    all: async ({ start, shuffle, query, tags, limit = 20 } = {}) => {
+    all: async ({ start = 0, shuffle, query, tags, limit = 20 } = {}) => {
       const end = start + limit
       tags = tags && !Array.isArray(tags) ? [tags] : (tags || [])
 

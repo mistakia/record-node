@@ -27,7 +27,7 @@ describe('record.components', function () {
     const tagName2 = 'hello dance'
     const tagName3 = 'hello disco'
     const tagName4 = 'hello dark'
-    const filepath1 = path.join(__dirname, 'fixtures/Dj Falcon And Thomas Bangalter - So Much Love To Give(Original Mix).mp3')
+    const filepath1 = path.join(__dirname, 'fixtures/tracks/Dj Falcon And Thomas Bangalter - So Much Love To Give(Original Mix).mp3')
 
     it('add + list', async function () {
       track1 = await record1.tracks.addTrackFromFile(filepath1)
