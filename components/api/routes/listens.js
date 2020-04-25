@@ -6,8 +6,8 @@ router.get('/?', async (req, res) => {
     const { record } = req.app.locals
     const { start, limit } = req.query
     const listens = await record.listens.list({
-      start: parseInt(start, 10),
-      limit: parseInt(limit, 10)
+      start: parseInt(start, 10) || null,
+      limit: parseInt(limit, 10) || null
     })
     res.send(listens)
   } catch (err) {
