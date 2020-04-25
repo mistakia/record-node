@@ -131,8 +131,16 @@ module.exports = function importer (self) {
       }
 
       const onFile = (file) => {
+        // TODO - fix when different logs
+        if (queue.completed[file]) {
+          return
+        }
+
         if (queue.files[file]) {
-          queue.files[file] = queue.files[file].push(jobId)
+          const jobIds = queue.files[file]
+          if (!jobIds.includes(jobId)) {
+            queue.files[file] = queue.files[file].push(jobId)
+          }
         } else {
           queue.files[file] = [jobId]
         }
