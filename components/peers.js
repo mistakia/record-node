@@ -1,18 +1,18 @@
-const Room = require('ipfs-pubsub-room')
+const PeerMonitor = require('ipfs-pubsub-peer-monitor')
 
 module.exports = function peers (self) {
   return {
     _topic: 'RECORD',
     _index: {},
     _init: () => {
-      self._room = new Room(self._ipfs, self.peers._topic, self._options.pubsubRoom)
-      self._room.on('peer joined', self.peers._announceLogs)
-      self._room.on('peer left', self.peers._onLeave)
-      self._room.on('message', self.peers._onMessage)
-      self._room.on('error', (e) => self.logger.err(e))
+      self._monitor = new PeerMonitor(self._ipfs.pubsub, self.peers._topic, self._options.pubsubMonitor)
+      self._monitor.on('join', self.peers._announceLogs)
+      self._monitor.on('leave', self.peers._onLeave)
+      self._monitor.on('error', (e) => self.logger.err(e))
+      self._ipfs.pubsub.subscribe(self.peers._topic, self.peers._onMessage)
     },
     _stop: async () => {
-      self._room && await self._room.leave()
+      self._monitor && await self._monitor.stop()
     },
     get: (logAddress) => {
       const peerIds = Object.keys(self.peers._index)
@@ -67,8 +67,8 @@ module.exports = function peers (self) {
         data.logs.push(about)
       }
       const message = Buffer.from(JSON.stringify(data))
-      if (peer) self._room.sendTo(peer, message)
-      else self._room.broadcast(message)
+      // TODO send to specific peer when available
+      self._ipfs.pubsub.publish(self.peers._topic, message)
     },
     _onLeave: (peerId) => {
       if (!self.peers._index[peerId]) {

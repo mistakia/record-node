@@ -40,7 +40,7 @@ class ListensStore extends RecordStore {
       trackId,
       logAddress,
       cid,
-      timestamp: new Date()
+      timestamp: new Date().toString()
     })
   }
 

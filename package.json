@@ -30,7 +30,7 @@
     "hashicon": "^0.3.0",
     "ipfs": "github:mistakia/js-ipfs#ipfs",
     "ipfs-log": "github:mistakia/ipfs-log#proto/record",
-    "ipfs-pubsub-room": "^2.0.1",
+    "ipfs-pubsub-peer-monitor": "^0.0.9",
     "it-to-stream": "^0.1.1",
     "jsonfile": "^6.0.1",
     "leveldown": "^5.1.1",
@@ -53,6 +53,9 @@
     "secp256k1": "^3.8.0"
   },
   "devDependencies": {
+    "go-ipfs-dep": "0.4.23-3",
+    "ipfs-http-client": "44.0.0",
+    "ipfsd-ctl": "4.0.1",
     "logplease": "^1.2.14",
     "mocha": "7.1.2",
     "rimraf": "^3.0.2",

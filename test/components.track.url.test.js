@@ -29,7 +29,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track1.contentCID, 'zBwWX7ESbSvjcEa6Bzk2aN8octtRWAn5Fm7EUrD9PEit1QyHnEXvs3Bi64K2TdputmcKtCmo2bUMVLj7sQkjvz8sGhmHD')
+        assert.strictEqual(track1.contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
       })
 
       it('audio file hash', function () {
@@ -114,7 +114,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX7ESbSvjcEa6Bzk2aN8octtRWAn5Fm7EUrD9PEit1QyHnEXvs3Bi64K2TdputmcKtCmo2bUMVLj7sQkjvz8sGhmHD')
+        assert.strictEqual(track.contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
       })
 
       it('audio file hash', function () {
@@ -135,7 +135,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX9o3vH3G6xbwv8XaYxqtAYeCarBSy4fECpixWxTRKAsBQXG2Fv3x99rvN89M5XMK1tSpxFj8cSm6BX9sKuauaLN4w')
+        assert.strictEqual(track.contentCID, 'zBwWX8AnNVZ1oYarXR8WrsccY3rgsd4M9yH3eo71hSvCkCyw5CRnmkSafh3gqd7ejwA2T6vBLBo4jYQR7XtCP7QmKKE1X')
       })
 
       it('audio file hash', function () {

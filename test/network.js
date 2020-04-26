@@ -16,7 +16,7 @@ describe('record', function () {
   const nodes = []
 
   before(async () => {
-    const limit = 2
+    const limit = 4
     for (let i = 0; i < limit; i++) {
       const node = await startRecord(i)
       nodes.push(node)
@@ -43,7 +43,10 @@ describe('record', function () {
     })
 
     it('route ipfs content amoung un-connected peers', async () => {
+      const about = await nodes[1].about.get(nodes[1].address)
+      const dag = await nodes[3]._ipfs.dag.get(about.cid)
 
+      assert.deepStrictEqual(about.content, dag.value)
     })
 
     it('sync logs among connected peers', async () => {

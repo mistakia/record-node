@@ -88,7 +88,6 @@ module.exports = function importer (self) {
       const jobIds = queue.files[file]
 
       try {
-
         if (queue.completed[file]) {
           const { trackId, logAddresses } = queue.completed[file]
           if (trackId && logAddresses && logAddresses.length) {
