@@ -88,9 +88,22 @@ module.exports = function importer (self) {
       const jobIds = queue.files[file]
 
       try {
+
+        if (queue.completed[file]) {
+          const { trackId, logAddresses } = queue.completed[file]
+          if (trackId && logAddresses && logAddresses.length) {
+            track = self.tracks.get({ logAddress: logAddresses[0], trackId })
+          }
+        }
+
         const firstJobId = jobIds.shift()
         const firstJob = queue.jobs[firstJobId]
-        track = await self.tracks.addTrackFromFile(file, firstJob.logAddress)
+        if (!track.id) {
+          track = await self.tracks.addTrackFromFile(file, firstJob.logAddress)
+        } else {
+          await self.tracks.addTrackFromCID(track.cid, firstJob.logAddress)
+        }
+
         for (const jobId of jobIds) {
           const job = queue.jobs[jobId]
           await self.tracks.addTrackFromCID(track.cid, job.logAddress)
@@ -100,7 +113,21 @@ module.exports = function importer (self) {
         error = e
       } finally {
         const trackId = track.id
-        queue.completed[file] = { error, trackId }
+        const jobLogAddressesSet = new Set(Object.keys(queue.jobs).map(jobId => queue.jobs[jobId].logAddress))
+        const jobLogAddresses = Array.from(jobLogAddressesSet)
+        if (queue.completed[file]) {
+          if (error) {
+            queue.completed[file].error = error
+          }
+
+          if (Array.isArray(queue.completed[file].logAddresses)) {
+            queue.completed[file].logAddresses = queue.completed[file].logAddresses.concat(jobLogAddresses)
+          } else {
+            queue.completed[file].logAddresses = jobLogAddresses
+          }
+        } else {
+          queue.completed[file] = { error, trackId, logAddresses: jobLogAddresses }
+        }
         delete queue.files[file]
         jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
 
@@ -133,9 +160,16 @@ module.exports = function importer (self) {
       }
 
       const onFile = (file) => {
-        // TODO - fix when different logs
         if (queue.completed[file]) {
-          return
+          const { logAddresses, error } = queue.completed[file]
+
+          if (error) {
+            return
+          }
+
+          if (logAddresses && logAddresses.includes(logAddress)) {
+            return
+          }
         }
 
         if (queue.files[file]) {
