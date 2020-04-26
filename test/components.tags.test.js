@@ -4,7 +4,8 @@ const assert = require('assert')
 const path = require('path')
 const {
   config,
-  startRecord
+  startRecord,
+  connectNode
 } = require('./utils')
 
 describe('record.components', function () {
@@ -12,13 +13,14 @@ describe('record.components', function () {
   let record1, record2
 
   before(async () => {
-    record2 = await startRecord(config.node2)
-    record1 = await startRecord(config.node1, record2)
+    record1 = await startRecord('0')
+    record2 = await startRecord('1')
+    await connectNode(record1, record2)
   })
 
   after(async () => {
-    record1 && record1.stop()
-    record2 && record2.stop()
+    record1 && await record1.stop()
+    record2 && await record2.stop()
   })
 
   describe('record.components.tags', function () {

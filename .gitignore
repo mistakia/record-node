@@ -13,5 +13,4 @@ yarn-error.log
 orbitdb/
 keystore/
 cache/
-test/fixtures/node1/
-test/fixtures/node2/
+test/tmp/nodes
