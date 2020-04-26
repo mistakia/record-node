@@ -1,60 +1,58 @@
+const fs = require('fs')
 const path = require('path')
+const extend = require('deep-extend')
 const rimraf = require('rimraf')
 const Record = require('../../index')
 const debug = require('debug')
 
 debug.enable('record:node:*')
 
-const startRecord = (opts, node2) => new Promise((resolve, reject) => {
-  const recordOpts = {
+const startRecord = (id, opts = {}) => new Promise((resolve, reject) => {
+  const directory = path.join(__dirname, `../tmp/nodes/${id}`)
+  const defaultOpts = {
+    directory,
     api: false,
-    orbitdb: {
-      directory: path.join(opts.directory, './orbitdb/')
+    bitboot: {
+      enabled: false
     },
-    keystore: path.join(opts.directory, './keystore'),
-    cache: path.join(opts.directory, './cache'),
+    orbitdb: {
+      directory: path.join(directory, './orbitdb/')
+    },
+    keystore: path.join(directory, './keystore'),
+    cache: path.join(directory, './cache'),
     ipfs: {
       config: {
         Addresses: {
           Swarm: [
-            '/ip4/127.0.0.1/tcp/0'
+            '/ip4/127.0.0.1/tcp/0/ws'
           ]
         },
         Discovery: {
           MDNS: {
-            Enabled: true,
-            Interval: 1
+            Enabled: false
           }
         }
       }
-    },
-    ...opts
+    }
+  }
+  const recordOpts = extend(defaultOpts, opts)
+
+  try {
+    rimraf.sync(directory)
+    fs.mkdirSync(directory, { recursive: true })
+  } catch (error) {
+    console.log(error)
   }
 
-  rimraf.sync(opts.directory)
-
   const record = new Record(recordOpts)
-  record.on('error', (err) => {
-    reject(err)
-  })
+  record.on('error', err => reject(err))
+  record.on('ready', () => resolve(record))
 
-  setTimeout(() => reject(new Error('peer timed out')), 25000)
-
-  record.on('redux', ({ type, payload }) => {
-    if (!node2) {
-      return
-    }
-
-    if (type === 'RECORD_PEER_JOINED' && payload.logAddress === node2.address) {
-      resolve(record)
-    }
-  })
-
-  record.on('ready', () => {
-    if (!node2) resolve(record)
-  })
-
-  record.init()
+  try {
+    record.init()
+  } catch (error) {
+    reject(error)
+  }
 })
 
 module.exports = startRecord

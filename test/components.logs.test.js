@@ -3,7 +3,8 @@
 const assert = require('assert')
 const {
   config,
-  startRecord
+  startRecord,
+  connectNode
 } = require('./utils')
 
 describe('record.components.logs', function () {
@@ -11,8 +12,9 @@ describe('record.components.logs', function () {
   let record1, record2, link
 
   before(async () => {
-    record2 = await startRecord(config.node2)
-    record1 = await startRecord(config.node1, record2)
+    record1 = await startRecord('0')
+    record2 = await startRecord('1')
+    await connectNode(record1, record2)
 
     link = {
       linkAddress: record2.address,
