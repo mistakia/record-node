@@ -71,7 +71,6 @@ class RecordNode extends EventEmitter {
     this.logger(this._options)
 
     this._options.orbitdb.storage = Storage(leveldown)
-    this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
     this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
 
     this.resolve = resolver
@@ -125,8 +124,8 @@ class RecordNode extends EventEmitter {
     return this.address === logAddress
   }
 
-  async init () {
-    await this._startIPFS()
+  async init (ipfsAPI) {
+    await this._startIPFS(ipfsAPI)
     await this._init(this._options.key, this._options.address)
     const ipfs = await this._ipfs.id()
     this.emit('ready', {
@@ -139,8 +138,18 @@ class RecordNode extends EventEmitter {
     })
   }
 
-  async _startIPFS () {
-    this._ipfs = await IPFS.create(this._options.ipfs)
+  async _startIPFS (ipfsAPI) {
+    if (ipfsAPI) {
+      this._ipfs = ipfsAPI
+      // TODO remove this shenanigan
+      this._ipfs.repo.has = async (cid) => {
+        const stat = await this._ipfs.files.stat(cid, { withLocal: true })
+        return stat.local
+      }
+    } else {
+      this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
+      this._ipfs = await IPFS.create(this._options.ipfs)
+    }
     this._ipfs.repo.stat().then(repoStats => { this._repoStats = repoStats })
   }
 

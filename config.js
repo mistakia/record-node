@@ -48,7 +48,7 @@ module.exports = {
     enabled: false,
     directory: null
   },
-  pubsubRoom: {
+  pubsubMonitor: {
     pollInterval: 5000
   },
   store: {

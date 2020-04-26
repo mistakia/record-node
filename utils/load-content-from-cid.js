@@ -1,6 +1,6 @@
 const { CID } = require('ipfs')
 
-const loadContentFromCID = async (ipfs, cid, type, { localResolve = false } = {}) => {
+const loadContentFromCID = async (ipfs, cid, type) => {
   const item = {}
 
   const dagNode = await ipfs.dag.get(cid)

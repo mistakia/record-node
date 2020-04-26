@@ -267,7 +267,7 @@ module.exports = function tracks (self) {
     },
 
     addTrackFromCID: async (cid, { logAddress } = {}) => {
-      const dagNode = await self._ipfs.dag.get(cid, { localResolve: true })
+      const dagNode = await self._ipfs.dag.get(cid)
       const content = dagNode.value
       return self.tracks.add(content, { logAddress })
     },
@@ -284,8 +284,8 @@ module.exports = function tracks (self) {
       return track
     },
 
-    getFromCID: async (cid, trackId, { localResolve = true } = {}) => {
-      const content = await loadContentFromCID(self._ipfs, cid, 'track', { localResolve })
+    getFromCID: async (cid, trackId) => {
+      const content = await loadContentFromCID(self._ipfs, cid, 'track')
       return self.tracks._contentToTrack(content, trackId)
     },
 
