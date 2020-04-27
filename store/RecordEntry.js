@@ -1,5 +1,4 @@
 const { sha256 } = require('crypto-hash')
-const { generateAvatar } = require('../utils')
 const { CID } = require('ipfs')
 
 class Entry {
@@ -74,9 +73,6 @@ class AboutEntry extends Entry {
 
   async create (ipfs, content, shouldPin) {
     const id = await sha256(content.address)
-    if (!content.avatar) {
-      content.avatar = generateAvatar(content.address)
-    }
     return super.create(ipfs, id, content, shouldPin)
   }
 }

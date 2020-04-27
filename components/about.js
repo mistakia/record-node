@@ -1,5 +1,4 @@
 const { sha256 } = require('crypto-hash')
-const { generateAvatar } = require('../utils')
 
 module.exports = function about (self) {
   return {
@@ -22,10 +21,6 @@ module.exports = function about (self) {
 
       if (!entryValue.id) {
         entryValue.id = await sha256(log.address.toString())
-      }
-
-      if (!entryValue.content.avatar) {
-        entryValue.content.avatar = generateAvatar(logAddress)
       }
 
       if (!entryValue.content.address) {
