@@ -29,7 +29,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track1.contentCID, 'zBwWX7R8Kj9YFo6i6PaX9Ez15RtR2okKf85DXrAur9Bdsp2DWNLZJBVfi2X8hbAiDpuEYSZAYyi2JenC7buH89FRKGewk')
+        assert.strictEqual(track1.contentCID, 'zBwWX7ESbSvjcEa6Bzk2aN8octtRWAn5Fm7EUrD9PEit1QyHnEXvs3Bi64K2TdputmcKtCmo2bUMVLj7sQkjvz8sGhmHD')
       })
 
       it('audio file hash', function () {
@@ -114,7 +114,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX7R8Kj9YFo6i6PaX9Ez15RtR2okKf85DXrAur9Bdsp2DWNLZJBVfi2X8hbAiDpuEYSZAYyi2JenC7buH89FRKGewk')
+        assert.strictEqual(track.contentCID, 'zBwWX7ESbSvjcEa6Bzk2aN8octtRWAn5Fm7EUrD9PEit1QyHnEXvs3Bi64K2TdputmcKtCmo2bUMVLj7sQkjvz8sGhmHD')
       })
 
       it('audio file hash', function () {
