@@ -48,12 +48,13 @@ const downloadFile = (resolverData) => {
         return reject(new Error(`unexpected status code: ${res.status} - ${resolverData.url}`))
       }
 
-      peek(res.body, fileType.minimumBytes, (err, chunk, outputStream) => {
+      const peekBytes = 4100
+      peek(res.body, peekBytes, async (err, chunk, outputStream) => {
         if (err) {
           return reject(err)
         }
 
-        const type = fileType(chunk)
+        const type = await fileType.fromBuffer(chunk)
         const filename = `${resolverData.extractor}-${resolverData.id}.${type.ext}`
         filepath = path.resolve(os.tmpdir(), filename)
         const file = fs.createWriteStream(filepath)

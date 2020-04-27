@@ -7,8 +7,8 @@ const { CID } = require('ipfs')
 
 const router = express.Router()
 
-const detectContentType = (chunk) => {
-  const fileSignature = fileType(chunk)
+const detectContentType = async (chunk) => {
+  const fileSignature = await fileType.fromBuffer(chunk)
   if (!fileSignature) {
     return ''
   }
@@ -66,12 +66,13 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
 
     const rawStream = toStream.readable(record._ipfs.cat(cid, { offset, length }))
     const { peekedStream, contentType } = await new Promise((resolve, reject) => {
-      const peekBytes = fileType.minimumBytes
-      peek(rawStream, peekBytes, (err, streamHead, peekedStream) => {
+      const peekBytes = 4100
+      peek(rawStream, peekBytes, async (err, streamHead, peekedStream) => {
         if (err) {
           return reject(err)
         }
-        resolve({ peekedStream, contentType: detectContentType(streamHead) })
+        const contentType = await detectContentType(streamHead)
+        resolve({ peekedStream, contentType })
       })
     })
 
