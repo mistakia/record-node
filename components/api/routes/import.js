@@ -11,7 +11,7 @@ router.post('/?', async (req, res) => {
 
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

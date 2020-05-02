@@ -1,5 +1,5 @@
 const { sha256 } = require('crypto-hash')
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 
 class Entry {
   constructor () {

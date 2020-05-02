@@ -8,11 +8,12 @@ module.exports = function peers (self) {
       self._monitor = new PeerMonitor(self._ipfs.pubsub, self.peers._topic, self._options.pubsubMonitor)
       self._monitor.on('join', self.peers._announceLogs)
       self._monitor.on('leave', self.peers._onLeave)
-      self._monitor.on('error', (e) => self.logger.err(e))
+      self._monitor.on('error', (e) => self.logger.error(e))
       self._ipfs.pubsub.subscribe(self.peers._topic, self.peers._onMessage)
     },
     _stop: async () => {
       self._monitor && await self._monitor.stop()
+      self._ipfs.pubsub.unsubscribe(self.peers._topic, self.peers._onMessage)
     },
     get: (logAddress) => {
       const peerIds = Object.keys(self.peers._index)
@@ -127,7 +128,7 @@ module.exports = function peers (self) {
 
         self.logger.log(`Record peer added, current count: ${peerCount}`)
       } catch (e) {
-        self.logger.err(e)
+        self.logger.error(e)
       }
     }
   }

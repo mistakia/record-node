@@ -15,7 +15,7 @@ router.get(':logAddress(*)', async (req, res) => {
     })
     res.send(tracks)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -42,7 +42,7 @@ router.post('/?', async (req, res) => {
 
     res.status(400).send({ error: 'Body missing one of \'cid\', \'url\', or \'file\'' })
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -54,7 +54,7 @@ router.delete('/?', async (req, res) => {
     const hash = await record.tracks.remove(trackId)
     res.send({ trackId, hash })
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

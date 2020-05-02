@@ -6,7 +6,6 @@ const { sha256 } = require('crypto-hash')
 const crypto = require('libp2p-crypto')
 const extend = require('deep-extend')
 const debug = require('debug')
-const IPFS = require('ipfs')
 const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
 const Keystore = require('orbit-db-keystore')
@@ -15,8 +14,8 @@ const Storage = require('orbit-db-storage-adapter')
 const Identities = require('orbit-db-identity-provider')
 const secp256k1 = require('secp256k1')
 const leveldown = require('leveldown')
+const { CID } = require('ipfs-http-client')
 
-const { CID } = IPFS
 const manifestRe = /\/orbitdb\/[a-zA-Z0-9]+\/[^/]+\/_manifest/
 
 const components = require('./components')
@@ -65,7 +64,7 @@ class RecordNode extends EventEmitter {
 
     this.logger = debug('record:node')
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
-    this.logger.err = debug('record:node:err')
+    this.logger.error = debug('record:node:err')
 
     this._options = extend(defaultConfig, options)
     this.logger(this._options)
@@ -139,16 +138,16 @@ class RecordNode extends EventEmitter {
   }
 
   async _startIPFS (ipfsAPI) {
-    if (ipfsAPI) {
-      this._ipfs = ipfsAPI
-      // TODO remove this shenanigan
-      this._ipfs.repo.has = async (cid) => {
-        const stat = await this._ipfs.files.stat(cid, { withLocal: true })
-        return stat.local
+    this._ipfs = ipfsAPI
+    this._ipfs.repo.has = async (cid) => {
+      for await (const ref of this._ipfs.refs.local()) {
+        if (ref.err) {
+          this.logger.error(ref.err)
+        } else if (cid.equals(new CID(ref.ref))) {
+          return true
+        }
       }
-    } else {
-      this._options.ipfs.repo = path.resolve(this._options.directory, './ipfs')
-      this._ipfs = await IPFS.create(this._options.ipfs)
+      return false
     }
     this._ipfs.repo.stat().then(repoStats => { this._repoStats = repoStats })
   }
@@ -208,17 +207,23 @@ class RecordNode extends EventEmitter {
         this._orbitdb.stop(),
         this.peers._stop()
       ])
-
-      await this._ipfs.stop()
     } catch (e) {
-      this.logger.err(e)
+      this.logger.error(e)
     }
+  }
+
+  async restart () {
+    await this.stop()
+    await this.start()
   }
 
   async start () {
     this.info._init()
 
-    await this._ipfs.start()
+    const id = await this._ipfs.id()
+    if (!id) {
+      throw new Error('ipfs not available')
+    }
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 

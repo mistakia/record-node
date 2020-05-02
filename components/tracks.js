@@ -10,7 +10,7 @@ const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
-const { CID, globSource } = require('ipfs')
+const { CID, globSource } = require('ipfs-http-client')
 
 const { loadContentFromCID } = require('../utils')
 
@@ -146,7 +146,7 @@ module.exports = function tracks (self) {
           const track = await self.tracks.addTrackFromFile(filepath, { logAddress })
           result.push(track)
         } catch (e) {
-          self.logger.err(e)
+          self.logger.error(e)
         }
         return result
       }
@@ -347,7 +347,7 @@ module.exports = function tracks (self) {
           // TODO re-enable pin removal
           // await self._ipfs.pin.rm(contentCID)
         } catch (error) {
-          self.logger.err(error)
+          self.logger.error(error)
         }
         return hash
       }
@@ -357,7 +357,7 @@ module.exports = function tracks (self) {
           // TODO re-enable pin removal
           // await self._ipfs.pin.rm(content)
         } catch (error) {
-          self.logger.err(error)
+          self.logger.error(error)
         }
         return hash
       }

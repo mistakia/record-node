@@ -10,7 +10,7 @@ describe('record', function () {
   this.timeout(config.timeout)
   let record
 
-  before(async () => { record = await startRecord(config.node1) })
+  before(async () => ({ record } = await startRecord('0')))
   after(async () => record && record.stop())
 
   describe('record.constructor', function () {

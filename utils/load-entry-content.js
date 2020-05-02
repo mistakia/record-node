@@ -1,4 +1,4 @@
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 const loadContentFromCID = require('./load-content-from-cid')
 
 const loadEntryContent = async (ipfs, e) => {

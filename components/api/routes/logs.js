@@ -7,7 +7,7 @@ router.get('/all', async (req, res) => {
     const data = await record.logs.all()
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.send({ error: err.toString() })
   }
 })
@@ -20,7 +20,7 @@ router.get(':logAddress(*)', async (req, res) => {
     const data = await record.logs.list(logAddress)
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -52,7 +52,7 @@ router.post('/?', (req, res, next) => {
     const data = await record.logs.link({ linkAddress, alias })
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -64,7 +64,7 @@ router.delete('/?', async (req, res) => {
     const data = await record.logs.unlink(linkAddress)
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

@@ -3,7 +3,7 @@ const fileType = require('file-type')
 const mime = require('mime-types')
 const peek = require('buffer-peek-stream')
 const toStream = require('it-to-stream')
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 
 const router = express.Router()
 
@@ -88,7 +88,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
 
      * record.gc() */
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

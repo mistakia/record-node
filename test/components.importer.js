@@ -13,7 +13,7 @@ describe('record', function () {
 
   beforeEach(async () => {
     try {
-      record = await startRecord('0')
+      ({ record } = await startRecord('0'))
     } catch (error) {
       console.log(error)
     }

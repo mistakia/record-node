@@ -8,7 +8,7 @@ router.post('/?', async (req, res) => {
     const about = await record.about.set({ name, bio, location })
     res.send(about)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
