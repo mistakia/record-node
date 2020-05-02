@@ -1,5 +1,5 @@
 const extend = require('deep-extend')
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 
 const { throttle } = require('../utils')
 const { RecordStore } = require('../store')

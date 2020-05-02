@@ -11,7 +11,7 @@ describe('record.components.track', function () {
   this.timeout(config.timeout)
   let record
 
-  before(async () => { record = await startRecord('0') })
+  before(async () => ({ record } = await startRecord('0')))
   after(async () => record && record.stop())
 
   describe('record.components.track.addTrackFromFile', function () {

@@ -10,7 +10,7 @@ describe('record', function () {
   this.timeout(config.timeout)
   let record
 
-  beforeEach(async () => { record = await startRecord('0') })
+  beforeEach(async () => ({ record } = await startRecord('0')))
   afterEach(async () => record && record.stop())
 
   describe('components.listens', function () {

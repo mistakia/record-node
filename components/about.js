@@ -15,7 +15,7 @@ module.exports = function about (self) {
         log = await self.log.get(logAddress, { replicate: false })
         entry = log.about.get()
       } catch (error) {
-        self.logger.err(error)
+        self.logger.error(error)
       }
       const entryValue = entry ? entry.payload.value : { content: {} }
 

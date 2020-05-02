@@ -7,7 +7,7 @@ router.get('/?', async (req, res) => {
     const peers = await record.peers.list()
     res.send(peers)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

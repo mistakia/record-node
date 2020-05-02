@@ -108,7 +108,7 @@ module.exports = function importer (self) {
           await self.tracks.addTrackFromCID(track.cid, job.logAddress)
         }
       } catch (e) {
-        self.logger.err(e)
+        self.logger.error(e)
         error = e
       } finally {
         const trackId = track.id

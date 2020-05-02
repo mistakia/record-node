@@ -11,7 +11,7 @@ router.get(':logAddress(*)', async (req, res) => {
     })
     res.send(data)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })
@@ -24,7 +24,7 @@ router.delete(':logAddress(*)', async (req, res) => {
     const response = await record.logs.drop(logAddress)
     res.send(response)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

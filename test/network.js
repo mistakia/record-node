@@ -18,12 +18,12 @@ describe('record', function () {
   before(async () => {
     const limit = 4
     for (let i = 0; i < limit; i++) {
-      const node = await startRecord(i)
-      nodes.push(node)
+      const { record } = await startRecord(i)
+      nodes.push(record)
 
       const peer = nodes[i - 1]
       if (peer) {
-        await connectNode(node, peer)
+        await connectNode(record, peer)
       }
     }
   })

@@ -8,7 +8,7 @@ router.get(':logAddress(*)', async (req, res) => {
     await record.logs.disconnect(logAddress)
     res.send({ success: true })
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

@@ -1,4 +1,4 @@
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 
 const { ListensStore } = require('../store')
 

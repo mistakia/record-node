@@ -57,7 +57,7 @@ module.exports = function logs (self) {
           )
           log._replicator.resume()
         } catch (e) {
-          self.logger.err(e)
+          self.logger.error(e)
         }
       }
 

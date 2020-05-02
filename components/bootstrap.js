@@ -1,7 +1,8 @@
 const Bitboot = require('bitboot')
 const net = require('net')
 
-const { multiaddr, isIPFS } = require('ipfs')
+const isIPFS = require('is-ipfs')
+const { multiaddr } = require('ipfs-http-client')
 
 module.exports = function bootstrap (self) {
   return {
@@ -36,7 +37,7 @@ module.exports = function bootstrap (self) {
       self.bootstrap._server.listen(8383, '0.0.0.0')
 
       self.bb = new Bitboot('record')
-      self.bb.on('error', self.logger.err)
+      self.bb.on('error', self.logger.error)
       self.bb.on('peers', async (peers) => {
         // check for new peers
         for (const peer of peers) {
@@ -44,13 +45,13 @@ module.exports = function bootstrap (self) {
           if (!self.bootstrap._peers.has(id)) {
             self.logger('Found Bitboot node: ', id)
             const client = net.createConnection({ port: 8383, host: peer.host })
-            client.on('error', err => self.logger.err(err))
+            client.on('error', err => self.logger.error(err))
             client.on('data', (peerId) => {
               client.end()
 
               const nodeId = peerId.toString()
               if (!isIPFS.multihash(nodeId)) {
-                self.logger.err('Bitboot node peerId is invalid:', nodeId)
+                self.logger.error('Bitboot node peerId is invalid:', nodeId)
                 return
               }
 
@@ -59,7 +60,7 @@ module.exports = function bootstrap (self) {
               try {
                 self._ipfs.swarm.connect(addr)
               } catch (err) {
-                self.logger.err(err)
+                self.logger.error(err)
               }
             })
             self.bootstrap._peers.set(id, peer)

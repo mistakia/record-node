@@ -1,6 +1,5 @@
 const fs = require('fs')
 const path = require('path')
-const extend = require('deep-extend')
 const Ctl = require('ipfsd-ctl')
 const rimraf = require('rimraf')
 const Record = require('../../index')
@@ -8,7 +7,7 @@ const debug = require('debug')
 
 debug.enable('*')
 
-const startRecord = (id, opts = {}) => new Promise((resolve, reject) => {
+const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, reject) => {
   const directory = path.join(__dirname, `../tmp/nodes/${id}`)
   try {
     rimraf.sync(directory)
@@ -18,8 +17,8 @@ const startRecord = (id, opts = {}) => new Promise((resolve, reject) => {
   }
 
   Ctl.createController({
-    test: true,
-    disposable: true,
+    test: !restartable,
+    disposable: !restartable,
     ipfsHttpModule: require('ipfs-http-client'),
     ipfsBin: require('go-ipfs-dep').path(),
     args: [
@@ -31,6 +30,7 @@ const startRecord = (id, opts = {}) => new Promise((resolve, reject) => {
         Pubsub: {
           Router: 'gossipsub'
         },
+        Boostrap: null,
         Addresses: {
           Swarm: [
             '/ip4/127.0.0.1/tcp/0/ws'
@@ -49,23 +49,24 @@ const startRecord = (id, opts = {}) => new Promise((resolve, reject) => {
         }
       }
     }
-  }).then((ipfsd) => {
-    const defaultOpts = {
+  }).then(async (ipfsd) => {
+    if (restartable) {
+      await ipfsd.init({
+        bits: 1024,
+        emptyRepo: true
+      })
+
+      await ipfsd.start()
+    }
+
+    const recordOpts = {
       directory,
       api: false,
-      bitboot: {
-        enabled: false
-      },
-      orbitdb: {
-        directory: path.join(directory, './orbitdb/')
-      },
-      keystore: path.join(directory, './keystore'),
-      cache: path.join(directory, './cache')
+      bitboot: { enabled: false }
     }
-    const recordOpts = extend(defaultOpts, opts)
     const record = new Record(recordOpts)
     record.on('error', err => reject(err))
-    record.on('ready', () => resolve(record))
+    record.on('ready', () => resolve({ record, ipfsd }))
 
     try {
       record.init(ipfsd.api)

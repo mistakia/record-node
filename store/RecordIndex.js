@@ -2,7 +2,7 @@ const path = require('path')
 const Log = require('ipfs-log')
 const FlexSearch = require('flexsearch')
 const { default: PQueue } = require('p-queue')
-const { CID } = require('ipfs')
+const { CID } = require('ipfs-http-client')
 
 const { throttle, loadEntryContent } = require('../utils')
 

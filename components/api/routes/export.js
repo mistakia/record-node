@@ -7,7 +7,7 @@ router.get('/?', async (req, res) => {
     const keys = await record.getKeys()
     res.send(keys)
   } catch (err) {
-    req.app.locals.record.logger.err(err)
+    req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })
   }
 })

@@ -12,8 +12,10 @@ describe('record.components.logs', function () {
   let record1, record2, link
 
   before(async () => {
-    record1 = await startRecord('0')
-    record2 = await startRecord('1')
+    // eslint-disable-next-line
+    ({ record1 } = await startRecord('0'));
+    // eslint-disable-next-line
+    ({ record2 } = await startRecord('1'));
     await connectNode(record1, record2)
 
     link = {
