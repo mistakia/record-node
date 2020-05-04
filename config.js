@@ -1,40 +1,7 @@
-const Libp2p = require('libp2p')
 const path = require('path')
 const os = require('os')
-const Stardust = require('libp2p-stardust')
-// const DelegatedContentRouter = require('libp2p-delegated-content-routing')
 
 const { RecordStore } = require('./store')
-
-const libp2p = ({ libp2pOptions }) => {
-  libp2pOptions.modules.transport.push(Stardust)
-  /* libp2pOptions.modules.contentRouting = [
-   *   new DelegatedContentRouter(peerInfo.id)
-   * ] */
-  /* libp2pOptions.config.dht = {
-   *   kBucketSize: 20,
-   *   enabled: true,
-   *   randomWalk: {
-   *     enabled: false,
-   *     interval: 300e3,
-   *     timeout: 10e3
-   *   }
-   * } */
-  /* libp2pOptions.config.relay = {
-   *   enabled: true,
-   *   hop: {
-   *     enabled: true,
-   *     active: false
-   *   }
-   * } */
-  libp2pOptions.config.pubsub = {
-    enabled: true,
-    emitSelf: true,
-    signMessages: true,
-    strictSigning: true
-  }
-  return new Libp2p(libp2pOptions)
-}
 
 module.exports = {
   id: undefined,
@@ -65,24 +32,5 @@ module.exports = {
   },
   orbitdb: {
     directory: undefined
-  },
-  ipfs: {
-    init: {
-      bits: 2048,
-      emptyRepo: true
-    },
-    config: {
-      Addresses: {
-        Swarm: [
-          '/ip4/0.0.0.0/tcp/4003/ws',
-          '/ip4/206.189.77.125/tcp/5892/ws/p2p-stardust/p2p/QmPb9StGzfenPYnkyjpc5taLXwoC5hxdUgQub5LSi4AewA'
-        ]
-      },
-      Bootstrap: []
-    },
-    preload: {
-      enabled: false
-    },
-    libp2p
   }
 }
