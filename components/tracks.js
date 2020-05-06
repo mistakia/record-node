@@ -102,8 +102,9 @@ module.exports = function tracks (self) {
       const count = await self.listens.getCount(trackId)
       track.listens = count.timestamps
 
-      const cid = new CID(content.content.hash)
-      track.isLocal = await self._ipfs.repo.has(cid)
+      // TODO re-enable
+      /* const cid = new CID(content.content.hash)
+       * track.isLocal = await self._ipfs.repo.has(cid) */
       return track
     },
     _entryToTrack: async (entry, logAddress = self.address) => {
@@ -129,9 +130,10 @@ module.exports = function tracks (self) {
       const count = await self.listens.getCount(entry.payload.value.id)
       entry.payload.value.listens = count.timestamps
 
-      const cid = new CID(entry.payload.value.content.hash)
-      entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
-
+      // TODO - re-enable
+      /* const cid = new CID(entry.payload.value.content.hash)
+       * entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
+       */
       return entry.payload.value
     },
 
@@ -229,14 +231,11 @@ module.exports = function tracks (self) {
         resolver: []
       }
 
-      // TODO re-enable pinning
-      /* await self._ipfs.pin.add(trackData.hash)
-       * self.logger('Pinned audio')
-       * for (let i = 0; i < trackData.artwork.length; i++) {
-       *   await self._ipfs.pin.add(trackData.artwork[i])
-       * }
-       * self.logger('Pinned artwork')
-       */
+      await self._ipfs.pin.add(trackData.hash) // pin audio file
+      for (let i = 0; i < trackData.artwork.length; i++) {
+        await self._ipfs.pin.add(trackData.artwork[i]) // pin artwork
+      }
+
       if (resolverData) {
         delete resolverData.url
         trackData.resolver = [resolverData]
@@ -274,8 +273,7 @@ module.exports = function tracks (self) {
 
     add: async (trackData, { logAddress } = {}) => {
       const log = await self.log.get(logAddress)
-      const shouldPin = true
-      const entry = await log.tracks.findOrCreate(trackData, shouldPin)
+      const entry = await log.tracks.findOrCreate(trackData, { pin: true })
       const track = await self.tracks._entryToTrack(entry, log.address.toString())
       self.emit('redux', {
         type: 'TRACK_ADDED',
@@ -312,55 +310,17 @@ module.exports = function tracks (self) {
       return self.tracks._entryToTrack(entry, logAddress)
     },
 
-    _isInLinkedLogs: async (trackId) => {
-      let result = false
-      const log = self.log.mine()
-      const entries = await log.logs.all()
-      const values = entries.map(e => e.payload.value)
-      for (const value of values) {
-        const { address } = value.content
-        const l = await self.log.get(address)
-        if (l.tracks.has(trackId)) {
-          result = true
-          return
-        }
-      }
-
-      return result
-    },
-
     remove: async (trackId, { logAddress } = {}) => {
       const log = await self.log.get(logAddress)
       const entry = await log.tracks.getFromId(trackId)
-      const hash = await log.tracks.del(trackId)
-
-      const isInLinkedLogs = await self.tracks._isInLinkedLogs(trackId)
-      if (isInLinkedLogs) {
-        return hash
-      }
-
-      // TODO check logs I have write access before unpinning
-
-      const { content, contentCID } = entry.payload.value
-      if (contentCID) {
-        try {
-          // TODO re-enable pin removal
-          // await self._ipfs.pin.rm(contentCID)
-        } catch (error) {
-          self.logger.error(error)
-        }
-        return hash
-      }
-
-      if (CID.isCID(content)) {
-        try {
-          // TODO re-enable pin removal
-          // await self._ipfs.pin.rm(content)
-        } catch (error) {
-          self.logger.error(error)
-        }
-        return hash
-      }
+      const hash = await log.tracks.del(trackId, { pin: true })
+      // TODO remove artwork pins
+      // remove audio file pin
+      await self.log.removePin({
+        id: trackId,
+        hash: entry.payload.value.content.hash,
+        type: 'track'
+      })
 
       return hash
     },

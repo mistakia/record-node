@@ -93,7 +93,6 @@ class RecordNode extends EventEmitter {
     this._logAddresses = {}
     this._gcLock = false
     this._gcPosition = 0
-    this._gcInterval = this._options.gcInterval
     this._bwStats = {}
     this._repoStats = {}
 
@@ -156,8 +155,9 @@ class RecordNode extends EventEmitter {
     await this._createKeystore()
 
     if (!key) {
-      if (this._options.id) {
-        key = await getKey(this._options.id, this._options.orbitdb.keystore)
+      const id = this._options.id || this._id
+      if (id) {
+        key = await getKey(id, this._options.orbitdb.keystore)
       } else {
         key = await createKey()
       }
@@ -183,7 +183,9 @@ class RecordNode extends EventEmitter {
     this.bootstrap._init()
     this.peers._init()
 
-    this._bwStats = await this._ipfs.stats.bw()
+    for await (const stats of this._ipfs.stats.bw()) {
+      this._bwStats = stats
+    }
   }
 
   async stop () {
@@ -218,62 +220,35 @@ class RecordNode extends EventEmitter {
   }
 
   async start () {
-    this.info._init()
-
     const id = await this._ipfs.id()
     if (!id) {
       throw new Error('ipfs not available')
     }
 
-    this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
-
-    if (this._options.api) {
-      this._api = components.api(this)
+    try {
+      await this._init(this._options.key, this._options.address)
+    } catch (e) {
+      console.log(e)
     }
-
-    this.bootstrap._init()
-    this.peers._init()
   }
 
   async gc () {
-    /* if (this._gcLock) return
+    if (this._gcLock) return
 
-     * this._gcLock = true
+    this._gcLock = true
 
-     * this._bwStats = await this._ipfs.stats.bw()
-     * if (this._bwStats.totalIn.minus(this._gcPosition) > this._gcInterval) {
-     *   this.logger(`Running ipfs gc at ${this._gcPosition}`)
-     *   await this._ipfs.repo.gc()
-     *   this._gcPosition = this._bwStats.totalIn.toNumber()
-     * }
-
-     * this._repoStats = await this._ipfs.repo.stat()
-     * this._gcLock = false */
-  }
-
-  async pinAC (accessControllerAddress) {
-    const acAddress = accessControllerAddress.split('/')[2]
-    await this._ipfs.pin.add(acAddress)
-    const dagNode = await this._ipfs.dag.get(acAddress)
-    await this._ipfs.pin.add(dagNode.value.params.address)
-  }
-
-  async checkContentPin ({ id, cid, type }) {
-    if (type !== 'about') {
-      const log = this.log.mine()
-      const entries = await log.logs.all()
-      const logAddresses = entries.map(e => e.payload.value.content.address)
-      for (const logAddress of logAddresses) {
-        const l = await this.log.get(logAddress)
-        const hasContent = !!l._index.getEntryHash(id, type)
-
-        if (hasContent) {
-          return
-        }
-      }
+    for await (const stats of this._ipfs.stats.bw()) {
+      this._bwStats = stats
     }
 
-    await this._ipfs.pin.rm(cid)
+    if (this._bwStats.totalIn.minus(this._gcPosition) > this._options.gcInterval) {
+      this.logger(`Running ipfs gc at ${this._gcPosition}`)
+      for await (const res of record._ipfs.repo.gc())
+      this._gcPosition = this._bwStats.totalIn.toNumber()
+    }
+
+    this._repoStats = await this._ipfs.repo.stat()
+    this._gcLock = false
   }
 
   async getKeys () {

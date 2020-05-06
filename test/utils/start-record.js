@@ -52,7 +52,7 @@ const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, 
   }).then(async (ipfsd) => {
     if (restartable) {
       await ipfsd.init({
-        bits: 1024,
+        bits: 2048,
         emptyRepo: true
       })
 

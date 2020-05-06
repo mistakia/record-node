@@ -33,7 +33,6 @@ describe('record', function () {
       assert.strictEqual(typeof record.getKeys, 'function')
       assert.strictEqual(typeof record.createIdentity, 'function')
       assert.strictEqual(typeof record.setIdentity, 'function')
-      assert.strictEqual(typeof record.checkContentPin, 'function')
 
       assert.strictEqual(typeof record.address, 'string')
       assert.strictEqual(typeof record.isMe, 'function')

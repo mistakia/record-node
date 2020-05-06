@@ -13,9 +13,9 @@ describe('record.components.logs', function () {
 
   before(async () => {
     // eslint-disable-next-line
-    ({ record1 } = await startRecord('0'));
+    ({ record: record1 } = await startRecord('0'));
     // eslint-disable-next-line
-    ({ record2 } = await startRecord('1'));
+    ({ record: record2 } = await startRecord('1'));
     await connectNode(record1, record2)
 
     link = {
@@ -37,6 +37,7 @@ describe('record.components.logs', function () {
     it('add + list', async function () {
       const linkedLog = await record1.logs.link(link)
       assert.strictEqual(linkedLog.content.address, record2.address)
+
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs[0].content.address, record2.address)
       assert.strictEqual(linkedLogs.length, 1)

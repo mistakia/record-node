@@ -21,32 +21,30 @@ module.exports = function (self) {
       return entries
     },
 
-    findOrCreate: async function (data, shouldPin) {
-      const entry = await new LogEntry().create(self._ipfs, data, shouldPin)
+    findOrCreate: async function (data, { pin = false } = {}) {
+      const entry = await new LogEntry().create(self._ipfs, data, { pin })
       const linkedLog = await self.get(entry.id, 'log')
 
       if (!linkedLog) {
-        return this._add(entry, shouldPin)
+        return this._add(entry, { pin })
       }
 
       const contentCID = linkedLog.payload.value.cid || linkedLog.payload.value.content
       if (!entry.content.equals(contentCID)) {
-        return this._add(entry, shouldPin)
+        return this._add(entry, { pin })
       }
 
       return loadEntryContent(self._ipfs, linkedLog)
     },
 
-    _add: async (entry, shouldPin) => {
-      await self.put(entry)
-      // TODO - renable pinning
-      // if (shouldPin) await self._ipfs.pin.add(hash)
+    _add: async (entry, { pin = false } = {}) => {
+      await self.put(entry, { pin })
       return self.logs.getFromId(entry.id)
     },
 
-    add: async (data, shouldPin) => {
-      const entry = await new LogEntry().create(self._ipfs, data, shouldPin)
-      return this._add(entry, shouldPin)
+    add: async (data, { pin = false } = {}) => {
+      const entry = await new LogEntry().create(self._ipfs, data, { pin })
+      return this._add(entry, { pin })
     },
 
     getFromAddress: async (logAddress) => {
@@ -73,9 +71,6 @@ module.exports = function (self) {
       return self.logs.hasId(id)
     },
 
-    del: (id) => {
-      const hash = self.del(id, 'log')
-      return hash
-    }
+    del: async (id, options) => self.del(id, 'log', options)
   }
 }

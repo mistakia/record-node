@@ -8,16 +8,11 @@ module.exports = function listens (self) {
       const opts = {
         create: true,
         replicate: true,
+        pin: true,
         type: ListensStore.type
       }
       self._listens = await self._orbitdb.open('listens', opts)
-      // TODO re-enable pinning
-      // await self._ipfs.pin.add(self._listens.address.root)
-
-      // TODO re-enable pinning
-      // const { accessControllerAddress } = self._listens.options
-      // self.pinAC(accessControllerAddress)
-
+      await self.log.pinAccessController(self._listens.options.accessControllerAddress)
       await self._listens.load()
     },
 
@@ -42,6 +37,7 @@ module.exports = function listens (self) {
       const listens = await self._listens.list({ start, limit })
       const entries = []
       for (const listen of listens) {
+        // TODO - fix
         const isLocal = await self._ipfs.repo.has(new CID(listen.cid))
         if (!isLocal) {
           continue

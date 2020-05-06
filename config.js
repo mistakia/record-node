@@ -25,6 +25,7 @@ module.exports = {
     localOnly: false,
     create: false,
     overwrite: true,
+    syncLocal: true,
     replicate: true
   },
   bitboot: {

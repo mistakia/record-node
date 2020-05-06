@@ -36,19 +36,23 @@ class RecordStore extends Store {
     return this._oplog.get(hash) // async
   }
 
-  put (doc) {
+  async put (doc, { pin }) {
     if (!doc[this.options.indexBy]) {
       throw new Error(`The provided document doesn't contain field '${this.options.indexBy}'`)
     }
 
-    return this._addOperation({
+    const hash = await this._addOperation({
       op: 'PUT',
       key: doc[this.options.indexBy],
       value: doc
-    }) // async
+    })
+
+    if (pin) await this._ipfs.pin.add(hash, { recursive: false })
+
+    return hash
   }
 
-  del (id, type) {
+  async del (id, type, { pin }) {
     if (type !== 'track' && type !== 'log') {
       throw new Error(`Invalid type: ${type}`)
     }
@@ -57,11 +61,15 @@ class RecordStore extends Store {
       throw new Error(`No entry with id '${id}' in the database`)
     }
 
-    return this._addOperation({
+    const hash = await this._addOperation({
       op: 'DEL',
       key: id,
       value: { type, timestamp: Date.now() }
-    }) // async
+    })
+
+    if (pin) await this._ipfs.pin.add(hash, { recursive: false })
+
+    return hash
   }
 
   async close () {
