@@ -14,7 +14,10 @@ describe('record.restart', function () {
     ({ record, ipfsd } = await startRecord('0', { restartable: true }))
   })
 
-  after(async () => record && record.stop())
+  after(async () => {
+    record && await record.stop()
+    ipfsd && await ipfsd.stop()
+  })
 
   describe('restart', function () {
     const about = {
@@ -34,7 +37,7 @@ describe('record.restart', function () {
       await record.start()
 
       const entry = await record.about.get(record.address)
-      assert.strictEqual(aboutEntry, entry)
+      assert.deepStrictEqual(aboutEntry, entry)
     })
   })
 })

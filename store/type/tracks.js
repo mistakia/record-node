@@ -70,34 +70,32 @@ module.exports = function (self) {
       return !!self._index.getEntryHash(id, 'track')
     },
 
-    findOrCreate: async function (content, shouldPin) {
-      const entry = await new TrackEntry().create(self._ipfs, content, shouldPin)
+    findOrCreate: async function (content, { pin = false } = {}) {
+      const entry = await new TrackEntry().create(self._ipfs, content, { pin })
       const track = await self.get(entry.id, 'track')
 
       // doesn't exist, add
       if (!track) {
-        return this._add(entry, shouldPin)
+        return this._add(entry, { pin })
       }
 
       // exists, but changed
       const contentCID = track.payload.value.cid || track.payload.value.content
       if (!entry.content.equals(contentCID)) {
-        return this._add(entry, shouldPin)
+        return this._add(entry, { pin })
       }
 
       return loadEntryContent(self._ipfs, track)
     },
 
-    _add: async (entry, shouldPin) => {
-      await self.put(entry)
-      // TODO
-      // if (shouldPin) await self._ipfs.pin.add(hash)
+    _add: async (entry, { pin = false } = {}) => {
+      await self.put(entry, { pin })
       return self.tracks.getFromId(entry.id)
     },
 
-    add: async (content, tags, shouldPin) => {
-      const entry = await new TrackEntry().create(self._ipfs, content, shouldPin, tags)
-      return self.tracks._add(entry, shouldPin)
+    add: async (content, tags, { pin = false } = {}) => {
+      const entry = await new TrackEntry().create(self._ipfs, content, { pin, tags })
+      return self.tracks._add(entry, { pin })
     },
 
     getFromResolverId: async (extractor, id) => {
@@ -123,9 +121,6 @@ module.exports = function (self) {
       return loadEntryContent(self._ipfs, entry)
     },
 
-    del: (id) => {
-      const hash = self.del(id, 'track')
-      return hash
-    }
+    del: async (id, options) => self.del(id, 'track', options)
   }
 }

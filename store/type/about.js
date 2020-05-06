@@ -6,12 +6,9 @@ module.exports = function (self) {
     set: async function (data) {
       data.address = self.address.toString()
 
-      const shouldPin = true
-      const entry = await new AboutEntry().create(self._ipfs, data, shouldPin)
+      const entry = await new AboutEntry().create(self._ipfs, data, { pin: true })
       const save = async () => {
-        await self.put(entry)
-        // TODO re-enable pinning
-        // await self._ipfs.pin.add(hash)
+        await self.put(entry, { pin: true })
         return this.get()
       }
 

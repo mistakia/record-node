@@ -23,7 +23,7 @@ class ListensStore extends RecordStore {
     return this._index.getCount(trackId)
   }
 
-  add ({ trackId, logAddress, cid }) {
+  async add ({ trackId, logAddress, cid }) {
     if (!trackId) {
       throw new Error('missing trackId')
     }
@@ -36,12 +36,16 @@ class ListensStore extends RecordStore {
       throw new Error('missing cid')
     }
 
-    return this._addOperation({
+    const hash = await this._addOperation({
       trackId,
       logAddress,
       cid,
       timestamp: new Date().toString()
     })
+
+    await this._ipfs.pin.add(hash, { recursive: false })
+
+    return hash
   }
 
   static get type () {

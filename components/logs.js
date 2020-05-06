@@ -106,22 +106,20 @@ module.exports = function logs (self) {
       }
 
       const log = await self.log.get(logAddress)
-      await log.logs.findOrCreate({ address: linkAddress, alias })
+      const logEntry = await log.logs.findOrCreate({ address: linkAddress, alias }, { pin: true })
       if (self.isReplicating) {
         self.logs._connect(linkAddress, { pin: true })
       }
 
-      // TODO go through log and pin any local hashes
-      /* const linkedLog = await self.log.get(logEntry.payload.value.content.address)
-       * for (const hash of linkedLog._oplog._hashIndex.keys()) {
-       *   const entry = await log._oplog.get(hash)
-       *   const { content } = entry.payload.value
-       *   const { key } = entry.payload
+      // iterate log entries and pin
+      const linkedLog = await self.log.get(logEntry.payload.value.content.address)
+      for (const hash of linkedLog._oplog._hashIndex.keys()) {
+        const entry = await log._oplog.get(hash)
+        await self._ipfs.pin.add(entry.hash, { recursive: false })
+        const { content } = entry.payload.value
+        if (content) await self._ipfs.pin.add(content.toString(), { recursive: false })
+      }
 
-       *   await self._ipfs.pin.add(content, { recursive: false }) // add content pin
-       *   await self._ipfs.pin.add(key, { recursive: false }) // add log entry pins
-       * }
-       */
       return self.logs.get({
         sourceAddress: self.address,
         targetAddress: linkAddress
@@ -211,19 +209,9 @@ module.exports = function logs (self) {
     unlink: async (linkAddress) => {
       const log = self.log.mine()
       const logEntry = await log.logs.getFromAddress(linkAddress)
-      await log.logs.del(logEntry.payload.value.id)
-
-      // TODO re-enable pin removal
-      /* const linkedLog = await self.log.get(logEntry.payload.value.content.address)
-       * for (const hash of linkedLog._oplog._hashIndex.keys()) {
-       *   const entry = await log._oplog.get(hash)
-       *   const { content, type } = entry.payload.value
-       *   const { key } = entry.payload
-       *   await self.checkContentPin({ id: key, cid: content, type }) // removes exclusive content pins
-       *   await self._ipfs.pin.rm(key, { recursive: false }) // removes log entry pins
-       * }
-       */
-      self.logs._disconnect(logEntry.payload.value.content.address)
+      await log.logs.del(logEntry.payload.value.id, { pin: true }) // remove from log
+      await self.log.removePins(logEntry.payload.value.content.address)
+      self.logs._disconnect(logEntry.payload.value.content.address) // disconnect pubsub
 
       return { id: logEntry.id, linkAddress }
     },

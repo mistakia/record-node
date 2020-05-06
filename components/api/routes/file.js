@@ -20,7 +20,7 @@ const detectContentType = async (chunk) => {
 router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
   try {
     const { cid } = req.params
-    const { localOnly } = req.query // TODO: use logAddress for pin
+    const { localOnly, logAddress } = req.query
     const { record } = req.app.locals
 
     if (localOnly) {
@@ -32,18 +32,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
 
     const range = req.headers.range
 
-    // FIX for strange delay in getting file stats
-    const getSize = (delay) => new Promise((resolve, reject) => {
-      // Exponentially back-off
-      const timeout = setTimeout(() => getSize(delay * 2).then(resolve), delay)
-
-      record._ipfs.files.stat(`/ipfs/${cid}`, { size: true }).then(({ size }) => {
-        clearTimeout(timeout)
-        resolve(size)
-      })
-    })
-
-    const size = await getSize(1000)
+    const { size } = await record._ipfs.files.stat(`/ipfs/${cid}`, { size: true })
 
     let offset
     let length
@@ -80,13 +69,16 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     res.writeHead(range ? 206 : 200, head)
     peekedStream.pipe(res)
 
-    // TODO re-enable pinning
-    /* if (logAddress) {
-     *   const shouldPin = await record.logs.has(record.address, logAddress)
-     *   if (shouldPin) await record._ipfs.pin.add(cid)
-     * }
+    if (logAddress) {
+      if (record.address === logAddress) {
+        await record._ipfs.pin.add(cid)
+      } else {
+        const isLinkedLog = await record.logs.has(record.address, logAddress)
+        if (isLinkedLog) await record._ipfs.pin.add(cid)
+      }
+    }
 
-     * record.gc() */
+    record.gc()
   } catch (err) {
     req.app.locals.record.logger.error(err)
     res.status(500).send({ error: err.toString() })

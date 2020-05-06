@@ -9,18 +9,10 @@ const logNameRe = /^[0-9a-zA-Z-]*$/
 module.exports = function log (self) {
   return {
     _init: async (address = 'record') => {
-      const opts = extend({}, self._options.store, { create: true, replicate: true })
+      const opts = extend({}, self._options.store, { create: true, replicate: true, pin: true })
       self._log = await self._orbitdb.open(address, opts)
-      // TODO - re-enable pinning
-      // await self._ipfs.pin.add(self._log.address.root)
-
-      // TODO - re-enable pinning
-      // const { accessControllerAddress } = self._log.options
-      // await self.pinAC(accessControllerAddress)
-
+      await self.log.pinAccessController(self._log.options.accessControllerAddress)
       await self._log.load()
-
-      // TODO - setup all logs I have write access to
     },
 
     mine: () => {
@@ -166,13 +158,53 @@ module.exports = function log (self) {
         self.logger(`new entry ${logAddress}/${entry.hash}`)
         throttledReplicateProgress(logAddress, hash, entry)
 
-        // TODO re-enable pinning
-        /* const shouldPin = await log.logs.hasAddress(logAddress)
-         * if (shouldPin) {
-         *   await self._ipfs.pin.add(hash, { recursive: false })
-         *   await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
-         * } */
+        const isLinked = await log.logs.hasAddress(logAddress)
+        if (isLinked) {
+          await self._ipfs.pin.add(hash, { recursive: false })
+          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
+        }
       })
+    },
+
+    pinAccessController: async (accessControllerAddress) => {
+      const acAddress = accessControllerAddress.split('/')[2]
+      await self._ipfs.pin.add(acAddress)
+      const dagNode = await self._ipfs.dag.get(acAddress)
+      await self._ipfs.pin.add(dagNode.value.params.address)
+    },
+
+    removePin: async ({ id, hash, type }) => {
+      // TODO check all logs, not just linked logs
+
+      if (type !== 'about') {
+        const log = self.log.mine()
+        const entries = await log.logs.all()
+        const linkedAddresses = entries.map(e => e.payload.value.content.address)
+        for (const linkAddress of linkedAddresses) {
+          const linkedLog = await self.log.get(linkAddress)
+          const hasContent = !!linkedLog._index.getEntryHash(id, type)
+
+          if (hasContent) {
+            return // exit without unpinning
+          }
+        }
+      }
+
+      self.logger(`Removing pin for ${hash}`)
+      await self._ipfs.pin.rm(hash)
+    },
+
+    removePins: async function (logAddress) {
+      self.logger(`Removing pins for ${logAddress}`)
+
+      const log = await self.log.get(logAddress)
+      for (const hash of log._oplog._hashIndex.keys()) {
+        const entry = await log._oplog.get(hash)
+        const { type, contentCID } = entry.payload.value
+        const { key } = entry.payload
+        await self.log.removePin({ id: key, hash: contentCID, type })
+        await self._ipfs.pin.rm(entry.hash, { recursive: false })
+      }
     },
 
     drop: async function (logAddress) {
@@ -184,15 +216,25 @@ module.exports = function log (self) {
         throw new Error('Cannot drop default log')
       }
 
-      // TODO: remove all exclusive pins
-
-      const log = await this.get(logAddress)
+      const log = await self.log.get(logAddress)
       if (log._type === RecordStore.type) {
+        await self.log.removePins(logAddress)
         log._cache.del(log._index._cacheIndexKey)
         log._cache.del(log._index._cacheSearchIndexKey)
-
         delete self._logAddresses[logAddress]
       }
+
+      try {
+        await self._ipfs.pin.rm(log.address.root)
+
+        const acAddress = log.options.accessControllerAddress.split('/')[2]
+        await self._ipfs.pin.rm(acAddress)
+        const dagNode = await self._ipfs.dag.get(acAddress)
+        await self._ipfs.pin.rm(dagNode.value.params.address)
+      } catch (error) {
+        self.logger(error)
+      }
+
       await log.drop(logAddress)
 
       return { logAddress }
@@ -235,11 +277,8 @@ module.exports = function log (self) {
         })
       }
 
-      // TODO re-enable pinning
-      /* await self._ipfs.pin.add(log.address.root)
-       * const { accessControllerAddress } = log.options
-       * await self.pinAC(accessControllerAddress)
-       */
+      await self._ipfs.pin.add(log.address.root)
+      await self.log.pinAccessController(log.options.accessControllerAddress)
       await this._registerEvents(log)
       await log.load()
 
