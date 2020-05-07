@@ -21,7 +21,10 @@ describe('record.gc', function () {
   })
 
   const runGC = async () => {
-    for await (const res of record._ipfs.repo.gc())
+    // eslint-disable-next-line
+    for await (const res of record._ipfs.repo.gc()) {
+      // TODO
+    }
 
     await record.stop()
     await ipfsd.stop()
