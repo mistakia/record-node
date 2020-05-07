@@ -173,20 +173,32 @@ module.exports = function log (self) {
       await self._ipfs.pin.add(dagNode.value.params.address)
     },
 
+    isInPinnedLogs: async ({ id, type }) => {
+      const log = self.log.mine()
+      const inLog = !!log._index.getEntryHash(id, type)
+      if (inLog) {
+        return true
+      }
+
+      const entries = await log.logs.all()
+      const linkedAddresses = entries.map(e => e.payload.value.content.address)
+      for (const linkAddress of linkedAddresses) {
+        const linkedLog = await self.log.get(linkAddress)
+        const hasContent = !!linkedLog._index.getEntryHash(id, type)
+
+        if (hasContent) {
+          return true
+        }
+      }
+
+      return false
+    },
+
     removePin: async ({ id, hash, type }) => {
-      // TODO check all logs, not just linked logs
-
       if (type !== 'about') {
-        const log = self.log.mine()
-        const entries = await log.logs.all()
-        const linkedAddresses = entries.map(e => e.payload.value.content.address)
-        for (const linkAddress of linkedAddresses) {
-          const linkedLog = await self.log.get(linkAddress)
-          const hasContent = !!linkedLog._index.getEntryHash(id, type)
-
-          if (hasContent) {
-            return // exit without unpinning
-          }
+        const isInPinnedLogs = await self.log.isInPinnedLogs({ id, type })
+        if (isInPinnedLogs) {
+          return // exit without unpinning
         }
       }
 
