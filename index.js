@@ -243,7 +243,10 @@ class RecordNode extends EventEmitter {
 
     if (this._bwStats.totalIn.minus(this._gcPosition) > this._options.gcInterval) {
       this.logger(`Running ipfs gc at ${this._gcPosition}`)
-      for await (const res of record._ipfs.repo.gc())
+      // eslint-disable-next-line
+      for await (const res of this._ipfs.repo.gc()) {
+        // TODO
+      }
       this._gcPosition = this._bwStats.totalIn.toNumber()
     }
 

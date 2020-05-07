@@ -10,7 +10,7 @@ const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
-const { CID, globSource } = require('ipfs-http-client')
+const { globSource } = require('ipfs-http-client')
 
 const { loadContentFromCID } = require('../utils')
 

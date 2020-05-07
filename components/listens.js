@@ -1,5 +1,3 @@
-const { CID } = require('ipfs-http-client')
-
 const { ListensStore } = require('../store')
 
 module.exports = function listens (self) {
@@ -37,12 +35,7 @@ module.exports = function listens (self) {
       const listens = await self._listens.list({ start, limit })
       const entries = []
       for (const listen of listens) {
-        // TODO - fix
-        const isLocal = await self._ipfs.repo.has(new CID(listen.cid))
-        if (!isLocal) {
-          continue
-        }
-
+        // TODO - check for missing cids
         const track = await self.tracks.getFromCID(listen.cid, listen.trackId)
         entries.push(track)
       }
