@@ -154,15 +154,12 @@ module.exports = function log (self) {
       }
 
       const throttledReplicateProgress = throttle(onReplicateProgress, 2000)
-      log.events.on('replicate.progress', async (logAddress, hash, entry, progress, total) => {
+      log.events.on('replicate.progress', (logAddress, hash, entry, progress, total) => {
         self.logger(`new entry ${logAddress}/${entry.hash}`)
         throttledReplicateProgress(logAddress, hash, entry)
 
-        const isLinked = await log.logs.hasAddress(logAddress)
-        if (isLinked) {
-          await self._ipfs.pin.add(hash, { recursive: false })
-          await self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
-        }
+        self._ipfs.pin.add(hash, { recursive: false })
+        if (entry.payload.value.content) self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
       })
     },
 
