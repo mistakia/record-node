@@ -12,7 +12,7 @@ module.exports = {
   chromaprintPath: null,
   youtubedlPath: null,
   importer: {
-    enabled: false,
+    enabled: true,
     directory: null
   },
   pubsubMonitor: {
