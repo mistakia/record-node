@@ -1,18 +1,19 @@
-const fs = require('fs').promises
+const fs = require('fs')
+const fsPromises = fs.promises
 const path = require('path')
 const jsonfile = require('jsonfile')
 
-const fileExists = async path => !!(await fs.stat(path).catch(e => false))
+const fileExists = async path => !!(await fsPromises.stat(path).catch(e => false))
 const walk = async (dir, {
   filelist = [],
   dirlist = [],
   onFile
 } = {}) => {
-  const files = await fs.readdir(dir)
+  const files = await fsPromises.readdir(dir)
 
   for (const file of files) {
     const filepath = path.join(dir, file)
-    const stat = await fs.stat(filepath)
+    const stat = await fsPromises.stat(filepath)
 
     if (stat.isDirectory()) {
       dirlist.push(filepath)
@@ -135,6 +136,8 @@ module.exports = function importer (self) {
           payload: {
             file,
             trackId,
+            track,
+            logAddresses: jobLogAddresses,
             completed: Object.keys(queue.completed).length,
             remaining: Object.keys(queue.files).length
           }
@@ -149,6 +152,14 @@ module.exports = function importer (self) {
         self.importer._importing = true
         self.importer._worker()
       }
+    },
+    watch: async () => {
+      const directory = self.importer._directory
+      const dirExists = await fileExists(directory)
+      if (!dirExists) {
+        await fsPromises.mkdir(directory)
+      }
+      self.importer._watcher = fs.watch(directory, self.importer._onImportDirectoryChange)
     },
     add: async (filepath, logAddress = self.address) => {
       const jobId = `${logAddress}${filepath}`
@@ -183,7 +194,7 @@ module.exports = function importer (self) {
         self.importer.start()
       }
 
-      const stat = await fs.stat(filepath)
+      const stat = await fsPromises.stat(filepath)
       if (stat.isDirectory()) {
         await walk(filepath, { onFile })
       } else {
@@ -193,14 +204,15 @@ module.exports = function importer (self) {
       queue.jobs[jobId].queued = true
       jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
     },
-    setDirectory: (filepath) => {
+    setDirectory: async (filepath) => {
       if (!path.isAbsolute(filepath)) {
         throw new Error(`${filepath} is not absolute.`)
       }
 
       self.importer._directory = filepath
-      self.improter._watcher.stop()
-      self.importer.init()
+      if (self.importer._watcher) self.importer._watcher.stop()
+      await self.importer.watch()
+      return self.importer._directory
     },
     init: async () => {
       self.importer._queuePath = path.resolve(self._options.directory, './queue.json')
@@ -216,16 +228,10 @@ module.exports = function importer (self) {
         return
       }
 
-      if (!self._options.importer.directory) {
-        return
-      }
+      const defaultDir = path.resolve(self._options.directory, './import')
+      self.importer._directory = self._options.importer.directory || defaultDir
 
-      const directory = self.importer._directory = self._options.importer.directory
-      const dirExists = await fileExists(directory)
-      if (!dirExists) {
-        await fs.mkdir(directory)
-      }
-      self.importer._watcher = fs.watch(directory, self.importer._onImportDirectoryChange)
+      await self.importer.watch()
     }
   }
 }

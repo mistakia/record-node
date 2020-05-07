@@ -252,6 +252,14 @@ class RecordNode extends EventEmitter {
 
     this._repoStats = await this._ipfs.repo.stat()
     this._gcLock = false
+
+    this.emit('redux', {
+      type: 'INFO_IPFS',
+      payload: {
+        bw: this._bwStats,
+        repo: this._repoStats
+      }
+    })
   }
 
   async getKeys () {

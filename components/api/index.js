@@ -32,13 +32,13 @@ module.exports = (self) => {
   app.use('/disconnect', routes.disconnect)
   app.use('/export', routes.export)
   app.use('/import', routes.import)
-  app.use('/info', routes.info)
   app.use('/listens', routes.listens)
   app.use('/peers', routes.peers)
   app.use('/resolve', routes.resolve)
   app.use('/tags', routes.tags)
   app.use('/file', routes.file)
   app.use('/tracks', routes.tracks)
+  app.use('/settings', routes.settings)
 
   const { port } = options
   return app.listen(port, () => self.logger(`API listening on port ${port}`))

@@ -22,7 +22,10 @@ module.exports = function info (self) {
       return {
         subs,
         bw: self._bwStats,
-        repo: self._repoStats
+        repo: self._repoStats,
+        importer: {
+          directory: self.importer._directory
+        }
       }
     }
   }
