@@ -39,6 +39,7 @@ module.exports = (self) => {
   app.use('/file', routes.file)
   app.use('/tracks', routes.tracks)
   app.use('/settings', routes.settings)
+  app.use('/importer', routes.importer)
 
   const { port } = options
   return app.listen(port, () => self.logger(`API listening on port ${port}`))
