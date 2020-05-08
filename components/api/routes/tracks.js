@@ -44,6 +44,10 @@ router.post('/?', async (req, res) => {
 
     if (url) {
       const track = await record.tracks.addTrackFromUrl(url)
+      record.emit('redux', {
+        type: 'TRACK_ADDED',
+        payload: { data: track, logAddress: record.address }
+      })
       return res.send(track)
     }
 

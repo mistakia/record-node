@@ -178,17 +178,18 @@ module.exports = function tracks (self) {
 
       // check if already in this log, give that entry priority for now
       // TODO merge if content cid is different
-      let entry = await self.tracks.get({ logAddress, trackId: id })
+      const entry = await self.tracks.get({ logAddress, trackId: id })
       if (entry) {
         return entry
       }
 
       // check if in other logs
       // TODO merge if content cid is different
-      entry = await self.tracks.get({ trackId: id })
-      if (entry) {
-        return entry
-      }
+      /* entry = await self.tracks.get({ trackId: id })
+       * if (entry) {
+       *   return entry
+       * }
+       */
 
       // TODO - move to worker thread
       const metadata = await musicMetadata.parseFile(filepath)
@@ -275,10 +276,6 @@ module.exports = function tracks (self) {
       const log = await self.log.get(logAddress)
       const entry = await log.tracks.findOrCreate(trackData, { pin: true })
       const track = await self.tracks._entryToTrack(entry, log.address.toString())
-      self.emit('redux', {
-        type: 'TRACK_ADDED',
-        payload: { data: track, logAddress: log.address.toString() }
-      })
       return track
     },
 
@@ -291,7 +288,7 @@ module.exports = function tracks (self) {
       if (!logAddress) {
         const localAddresses = await self.log.getLocalAddresses()
         for (const localAddress of localAddresses) {
-          const track = self.tracks.get({ logAddress: localAddress, trackId })
+          const track = await self.tracks.get({ logAddress: localAddress, trackId })
           if (track) {
             return track
           }

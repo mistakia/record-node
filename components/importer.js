@@ -49,9 +49,11 @@ module.exports = function importer (self) {
         fs.unlinkSync(file)
 
         const dir = path.dirname(file)
-        const { filelist } = await walk(dir)
-        if (!filelist.length) {
-          fs.rmdirSync(dir)
+        if (dir !== self.importer._directory) {
+          const { filelist } = await walk(dir)
+          if (!filelist.length) {
+            fs.rmdirSync(dir)
+          }
         }
       }
 
@@ -99,14 +101,14 @@ module.exports = function importer (self) {
         const firstJobId = jobIds.shift()
         const firstJob = queue.jobs[firstJobId]
         if (!track.id) {
-          track = await self.tracks.addTrackFromFile(file, firstJob.logAddress)
+          track = await self.tracks.addTrackFromFile(file, { logAddress: firstJob.logAddress })
         } else {
-          await self.tracks.addTrackFromCID(track.cid, firstJob.logAddress)
+          await self.tracks.addTrackFromCID(track.cid, { logAddress: firstJob.logAddress })
         }
 
         for (const jobId of jobIds) {
           const job = queue.jobs[jobId]
-          await self.tracks.addTrackFromCID(track.cid, job.logAddress)
+          await self.tracks.addTrackFromCID(track.cid, { logAddress: job.logAddress })
         }
       } catch (e) {
         self.logger.error(e)
@@ -203,6 +205,10 @@ module.exports = function importer (self) {
 
       queue.jobs[jobId].queued = true
       jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
+    },
+    list: () => {
+      const files = Object.keys(queue.files)
+      return { files }
     },
     setDirectory: async (filepath) => {
       if (!path.isAbsolute(filepath)) {
