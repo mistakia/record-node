@@ -22,7 +22,7 @@ const walk = async (dir, {
       dirlist = data.dirlist
     } else {
       filelist.push(filepath)
-      if (onFile) onFile(filepath)
+      if (onFile) await onFile(filepath)
     }
   }
 
@@ -44,9 +44,11 @@ module.exports = function importer (self) {
       self.importer.add(self.importer._directory)
     },
     _cleanup: async (file) => {
+      self.logger(`importer cleanup ${file}`)
+
       // cleanup import directory
       if (file.includes(self.importer._directory)) {
-        fs.unlinkSync(file)
+        if (fs.existsSync(file)) fs.unlinkSync(file)
 
         const dir = path.dirname(file)
         if (dir !== self.importer._directory) {
@@ -72,6 +74,7 @@ module.exports = function importer (self) {
     },
     _worker: async () => {
       const files = Object.keys(queue.files)
+
       if (!files.length) {
         self.importer._importing = false
         self.emit('redux', {
@@ -84,6 +87,8 @@ module.exports = function importer (self) {
       let error
       const file = files[0]
       const jobIds = queue.files[file]
+
+      self.logger(`importer processing ${file}`)
 
       try {
         if (queue.completed[file]) {
@@ -168,29 +173,35 @@ module.exports = function importer (self) {
     },
     add: async (filepath, logAddress = self.address) => {
       const jobId = `${logAddress}${filepath}`
+      if (queue.jobs[jobId] && !queue.jobs[jobId].queued) {
+        queue.jobs[jobId].changed = true
+        return
+      }
+
       queue.jobs[jobId] = {
         queued: false,
+        changed: false,
         filepath,
         logAddress
       }
 
-      const onFile = (file) => {
+      const onFile = async (file) => {
         if (queue.completed[file]) {
           const { logAddresses, error } = queue.completed[file]
 
           if (error) {
-            return
+            return self.importer._cleanup(file)
           }
 
           if (logAddresses && logAddresses.includes(logAddress)) {
-            return
+            return self.importer._cleanup(file)
           }
         }
 
         if (queue.files[file]) {
           const jobIds = queue.files[file]
           if (!jobIds.includes(jobId)) {
-            queue.files[file] = queue.files[file].push(jobId)
+            queue.files[file].push(jobId)
           }
         } else {
           queue.files[file] = [jobId]
@@ -199,15 +210,21 @@ module.exports = function importer (self) {
         self.importer.start()
       }
 
+      self.logger(`importer start ${jobId}`)
       const stat = await fsPromises.stat(filepath)
       if (stat.isDirectory()) {
         await walk(filepath, { onFile })
       } else {
-        onFile(filepath)
+        await onFile(filepath)
       }
 
       queue.jobs[jobId].queued = true
       jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
+
+      // re-add filepath if changed while adding
+      if (queue.jobs[jobId].changed) {
+        self.importer.add(filepath, logAddress)
+      }
     },
     list: () => {
       const files = Object.keys(queue.files)
