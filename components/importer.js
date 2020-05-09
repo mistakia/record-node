@@ -133,12 +133,22 @@ module.exports = function importer (self) {
         delete queue.files[file]
         jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
 
+        const errors = []
+        Object.keys(queue.completed).forEach(file => {
+          const i = queue.completed[file]
+          if (i.error) {
+            errors.push({ file, error: i.error })
+          }
+        })
+
         self.emit('redux', {
           type: 'IMPORTER_PROCESSED_FILE',
           payload: {
             file,
             trackId,
             track,
+            errors,
+            files: Object.keys(queue.files).map(file => ({ file })),
             logAddresses: jobLogAddresses,
             completed: Object.keys(queue.completed).length,
             remaining: Object.keys(queue.files).length
