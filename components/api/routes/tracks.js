@@ -1,6 +1,5 @@
 const express = require('express')
 const router = express.Router()
-const fsPromises = require('fs').promises
 
 router.get(':logAddress(*)', async (req, res) => {
   try {
@@ -32,14 +31,8 @@ router.post('/?', async (req, res) => {
     }
 
     if (file) {
-      const stat = await fsPromises.stat(file)
-      if (stat.isFile()) {
-        const track = await record.tracks.addTracksFromFile(file)
-        return res.send(track)
-      } else if (stat.isDirectory()) {
-        record.importer.add(file)
-        return res.send()
-      }
+      const track = await record.tracks.addTracksFromFS(file)
+      return res.send(track)
     }
 
     if (url) {
