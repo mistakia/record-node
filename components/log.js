@@ -211,7 +211,7 @@ module.exports = function log (self) {
         const entry = await log._oplog.get(hash)
         const { type, contentCID } = entry.payload.value
         const { key } = entry.payload
-        await self.log.removePin({ id: key, hash: contentCID, type })
+        if (contentCID) await self.log.removePin({ id: key, hash: contentCID, type }) // TODO: add tests
         await self._ipfs.pin.rm(entry.hash, { recursive: false })
       }
     },
