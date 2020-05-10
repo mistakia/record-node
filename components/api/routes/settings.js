@@ -8,7 +8,7 @@ router.get('/?', async (req, res) => {
     res.send(data)
   } catch (err) {
     req.app.locals.record.logger.error(err)
-    res.send({ error: err.toString() })
+    res.status(500).send({ error: err.toString() })
   }
 })
 
@@ -20,7 +20,7 @@ router.post('/importer', async (req, res) => {
     res.send({ directory })
   } catch (err) {
     req.app.locals.record.logger.error(err)
-    res.send({ error: err.toString() })
+    res.status(500).send({ error: err.toString() })
   }
 })
 
