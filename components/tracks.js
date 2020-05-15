@@ -75,6 +75,9 @@ const downloadFile = (resolverData) => {
 
 module.exports = function tracks (self) {
   return {
+    _init: () => {
+      if (self._options.ffmpegPath) ffmpeg.setFfmpegPath(self._options.ffmpegPath)
+    },
     _contentToTrack: async (content, trackId) => {
       let track = {
         id: trackId,

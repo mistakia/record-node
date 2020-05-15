@@ -182,6 +182,7 @@ class RecordNode extends EventEmitter {
 
     this.bootstrap._init()
     this.peers._init()
+    this.tracks._init()
 
     for await (const stats of this._ipfs.stats.bw()) {
       this._bwStats = stats
