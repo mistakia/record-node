@@ -67,7 +67,14 @@ module.exports = function importer (self) {
         }
 
         const tasksLeft = jobIds.has(jobId)
+        const job = queue.jobs[jobId]
         if (!tasksLeft) {
+          self.emit('redux', {
+            type: 'IMPORTER_FINISHED',
+            payload: {
+              ...job
+            }
+          })
           delete queue.jobs[jobId]
         }
       }
@@ -77,9 +84,6 @@ module.exports = function importer (self) {
 
       if (!files.length) {
         self.importer._importing = false
-        self.emit('redux', {
-          type: 'IMPORTER_FINISHED'
-        })
         return
       }
 
