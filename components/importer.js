@@ -47,7 +47,7 @@ module.exports = function importer (self) {
       self.logger(`importer cleanup ${file}`)
 
       // cleanup import directory
-      if (file.includes(self.importer._directory)) {
+      if (self._options.importer.enabled && file.includes(self.importer._directory)) {
         if (fs.existsSync(file)) fs.unlinkSync(file)
 
         const dir = path.dirname(file)
