@@ -250,23 +250,33 @@ module.exports = function tracks (self) {
 
     addTrackFromUrl: async (resolverData, { logAddress } = {}) => {
       if (typeof resolverData === 'string') {
-        const results = await self.resolve(resolverData)
-        resolverData = results[0]
+        resolverData = await self.resolve(resolverData)
       }
 
       if (!resolverData) {
         return null
       }
 
-      const log = self.log.mine()
-      const entry = await log.tracks.getFromResolverId(resolverData.extractor, resolverData.id)
-
-      if (entry) {
-        return self.tracks._entryToTrack(entry)
+      if (!Array.isArray(resolverData)) {
+        resolverData = [resolverData]
       }
 
-      const filepath = await downloadFile(resolverData)
-      return self.tracks.addTrackFromFile(filepath, { resolverData, logAddress })
+      const log = self.log.mine()
+      const entries = []
+      for (const item of resolverData) {
+        const entry = await log.tracks.getFromResolverId(item.extractor, item.id)
+
+        if (entry) {
+          entries.push(await self.tracks._entryToTrack(entry))
+          continue
+        }
+
+        const filepath = await downloadFile(item)
+        // TODO - hand off to importer
+        entries.push(await self.tracks.addTrackFromFile(filepath, { resolverData: item, logAddress }))
+      }
+
+      return entries
     },
 
     addTrackFromCID: async (cid, { logAddress } = {}) => {
