@@ -183,6 +183,7 @@ module.exports = function importer (self) {
       if (!dirExists) {
         await fsPromises.mkdir(directory)
       }
+      self.importer.add(self.importer._directory)
       self.importer._watcher = fs.watch(directory, self.importer._onImportDirectoryChange)
     },
     add: async (filepath, logAddress = self.address) => {
