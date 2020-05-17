@@ -13,7 +13,7 @@ module.exports = {
   ffmpegPath: null,
   youtubedlPath: null,
   importer: {
-    enabled: true,
+    enabled: false,
     directory: null
   },
   pubsubMonitor: {
