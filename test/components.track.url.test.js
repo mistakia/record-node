@@ -14,39 +14,39 @@ describe('record.components.track', function () {
   after(async () => record && record.stop())
 
   describe('record.components.track.addTrackFromUrl', function () {
-    let track1
+    let tracks
     const urlpath1 = 'https://soundcloud.com/asa-moto101/kifesh?in=deewee-2/sets/asa-moto-playtime-deewee030'
     const urlpath2 = 'https://www.youtube.com/watch?v=a7jdHdR-oF8'
 
     describe('add', function () {
       it('added with log length of 1', async function () {
-        track1 = await record.tracks.addTrackFromUrl(urlpath1)
-        const entry = await record._log.tracks.getFromId(track1.id)
-        assert.notStrictEqual(track1, undefined)
-        assert.strictEqual(track1.type, 'track')
+        tracks = await record.tracks.addTrackFromUrl(urlpath1)
+        const entry = await record._log.tracks.getFromId(tracks[0].id)
+        assert.notStrictEqual(tracks[0], undefined)
+        assert.strictEqual(tracks[0].type, 'track')
         assert.strictEqual(entry.clock.time, 1)
-        assert.strictEqual(track1.content.audio.duration, 276.34938775510204)
+        assert.strictEqual(tracks[0].content.audio.duration, 276.34938775510204)
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track1.contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
+        assert.strictEqual(tracks[0].contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(track1.content.hash, 'QmSn3parzLeoSEThmfJNbRPtfMt91QQWCPjWdrP9x3WxS3')
+        assert.strictEqual(tracks[0].content.hash, 'QmSn3parzLeoSEThmfJNbRPtfMt91QQWCPjWdrP9x3WxS3')
       })
     })
 
     describe('get', function () {
       let track
-      before(async () => { track = await record.tracks.get({ logAddress: record.address, trackId: track1.id }) })
+      before(async () => { track = await record.tracks.get({ logAddress: record.address, trackId: tracks[0].id }) })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, track1.contentCID)
+        assert.strictEqual(track.contentCID, tracks[0].contentCID)
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(track.content.hash, track1.content.hash)
+        assert.strictEqual(track.content.hash, tracks[0].content.hash)
       })
     })
 
@@ -59,11 +59,11 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(tracks[0].contentCID, track1.contentCID)
+        assert.strictEqual(tracks[0].contentCID, tracks[0].contentCID)
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(tracks[0].content.hash, track1.content.hash)
+        assert.strictEqual(tracks[0].content.hash, tracks[0].content.hash)
       })
     })
 
@@ -72,9 +72,9 @@ describe('record.components.track', function () {
       before(async () => { track = await record.tracks.addTrackFromUrl(urlpath1) })
 
       it('duplicate detected', async function () {
-        const entry = await record._log.tracks.getFromId(track1.id)
-        assert.notStrictEqual(track1, undefined)
-        assert.strictEqual(track1.type, 'track')
+        const entry = await record._log.tracks.getFromId(tracks[0].id)
+        assert.notStrictEqual(tracks[0], undefined)
+        assert.strictEqual(tracks[0].type, 'track')
         assert.strictEqual(entry.clock.time, 1)
       })
 
@@ -84,16 +84,16 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, track1.contentCID)
+        assert.strictEqual(track[0].contentCID, tracks[0].contentCID)
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(track.content.hash, track1.content.hash)
+        assert.strictEqual(track[0].content.hash, tracks[0].content.hash)
       })
     })
 
     describe('remove track', function () {
-      before(async () => { await record.tracks.remove(track1.id) })
+      before(async () => { await record.tracks.remove(tracks[0].id) })
 
       it('list doesnt include track', async function () {
         const tracks = await record.tracks.list(record.address)
@@ -106,40 +106,40 @@ describe('record.components.track', function () {
       before(async () => { track = await record.tracks.addTrackFromUrl(urlpath1) })
 
       it('track added', async function () {
-        const entry = await record._log.tracks.getFromId(track.id)
-        assert.notStrictEqual(track, undefined)
-        assert.strictEqual(track.type, 'track')
+        const entry = await record._log.tracks.getFromId(track[0].id)
+        assert.notStrictEqual(track[0], undefined)
+        assert.strictEqual(track[0].type, 'track')
         assert.strictEqual(entry.clock.time, 3)
-        assert.strictEqual(track.content.audio.duration, 276.34938775510204)
+        assert.strictEqual(track[0].content.audio.duration, 276.34938775510204)
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
+        assert.strictEqual(track[0].contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(track.content.hash, 'QmSn3parzLeoSEThmfJNbRPtfMt91QQWCPjWdrP9x3WxS3')
+        assert.strictEqual(track[0].content.hash, 'QmSn3parzLeoSEThmfJNbRPtfMt91QQWCPjWdrP9x3WxS3')
       })
     })
 
     describe('add new track', function () {
       let track
-      before(async () => { track = await record.tracks.addTrackFromUrl(urlpath2) })
+      before(async () => { track[0] = await record.tracks.addTrackFromUrl(urlpath2) })
 
       it('track added', async function () {
-        const entry = await record._log.tracks.getFromId(track.id)
-        assert.notStrictEqual(track, undefined)
-        assert.strictEqual(track.type, 'track')
+        const entry = await record._log.tracks.getFromId(track[0].id)
+        assert.notStrictEqual(track[0], undefined)
+        assert.strictEqual(track[0].type, 'track')
         assert.strictEqual(entry.clock.time, 4)
-        assert.strictEqual(track.content.audio.duration, 560.9186167800453)
+        assert.strictEqual(track[0].content.audio.duration, 560.9186167800453)
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX8AnNVZ1oYarXR8WrsccY3rgsd4M9yH3eo71hSvCkCyw5CRnmkSafh3gqd7ejwA2T6vBLBo4jYQR7XtCP7QmKKE1X')
+        assert.strictEqual(track[0].contentCID, 'zBwWX8AnNVZ1oYarXR8WrsccY3rgsd4M9yH3eo71hSvCkCyw5CRnmkSafh3gqd7ejwA2T6vBLBo4jYQR7XtCP7QmKKE1X')
       })
 
       it('audio file hash', function () {
-        assert.strictEqual(track.content.hash, 'QmYzoASpXMiUVs7nAq7vdga31N5ZmsSMEFzwvrPyioT7yC')
+        assert.strictEqual(track[0].content.hash, 'QmYzoASpXMiUVs7nAq7vdga31N5ZmsSMEFzwvrPyioT7yC')
       })
     })
   })
