@@ -105,6 +105,7 @@ module.exports = function logs (self) {
         throw new Error(`invalid address: ${linkAddress}`)
       }
 
+      self.logger(`Link log: ${linkAddress}`)
       const log = await self.log.get(logAddress)
       const logEntry = await log.logs.findOrCreate({ address: linkAddress, alias }, { pin: true })
       if (self.isReplicating) {
@@ -207,6 +208,7 @@ module.exports = function logs (self) {
     },
 
     unlink: async (linkAddress) => {
+      self.logger(`Unlink log: ${linkAddress}`)
       const log = self.log.mine()
       const logEntry = await log.logs.getFromAddress(linkAddress)
       await log.logs.del(logEntry.payload.value.id, { pin: true }) // remove from log

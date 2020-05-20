@@ -8,6 +8,7 @@ module.exports = function bootstrap (self) {
   return {
     _peers: new Map(),
     _stop: async () => {
+      self.logger('stopping bootstrap server')
       const closeServer = () => new Promise((resolve) => {
         self.bootstrap._server.close(() => resolve())
       })
@@ -27,6 +28,8 @@ module.exports = function bootstrap (self) {
       if (!self._options.bitboot.enabled) {
         return
       }
+
+      self.logger('starting bootstrap server')
 
       self.bootstrap._server = net.createServer(async (socket) => {
         const identity = await self._ipfs.id()
