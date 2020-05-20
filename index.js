@@ -123,6 +123,7 @@ class RecordNode extends EventEmitter {
   }
 
   async init (ipfsAPI) {
+    this.logger('initializing')
     await this._startIPFS(ipfsAPI)
     await this._init(this._options.key, this._options.address)
     const ipfs = await this._ipfs.id()
@@ -190,6 +191,7 @@ class RecordNode extends EventEmitter {
   }
 
   async stop () {
+    this.logger('stopping')
     const closeAPI = () => new Promise((resolve, reject) => {
       if (!this._api) {
         return resolve()
@@ -216,11 +218,13 @@ class RecordNode extends EventEmitter {
   }
 
   async restart () {
+    this.logger('restarting')
     await this.stop()
     await this.start()
   }
 
   async start () {
+    this.logger('starting')
     const id = await this._ipfs.id()
     if (!id) {
       throw new Error('ipfs not available')
@@ -236,6 +240,7 @@ class RecordNode extends EventEmitter {
   async gc () {
     if (this._gcLock) return
 
+    this.logger('running garbage collect')
     this._gcLock = true
 
     for await (const stats of this._ipfs.stats.bw()) {
@@ -261,6 +266,7 @@ class RecordNode extends EventEmitter {
   }
 
   async createIdentity () {
+    this.logger('creating identity')
     const keys = await createKey()
     return this.setIdentity(keys.privateKeyBytes)
   }
@@ -287,6 +293,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _createKeystore () {
+    this.logger('creating keystore')
     const keystorePath = path.resolve(this._options.directory, './keystore')
     if (!fs.existsSync(keystorePath)) {
       fs.mkdirSync(keystorePath, { recursive: true })
@@ -296,6 +303,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _createCache () {
+    this.logger('creating cache')
     const cachePath = path.resolve(this._options.directory, './cache')
     if (!fs.existsSync(cachePath)) {
       fs.mkdirSync(cachePath, { recursive: true })
@@ -305,6 +313,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _loadCache () {
+    this.logger('loading cache')
     const keys = []
     this._cacheStorage.createKeyStream().on('data', (data) => {
       const key = data.toString()

@@ -3,6 +3,7 @@ const { ListensStore } = require('../store')
 module.exports = function listens (self) {
   return {
     _init: async () => {
+      self.logger('initializing listens')
       const opts = {
         create: true,
         replicate: true,

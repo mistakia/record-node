@@ -76,7 +76,10 @@ const downloadFile = (resolverData) => {
 module.exports = function tracks (self) {
   return {
     _init: () => {
-      if (self._options.ffmpegPath) ffmpeg.setFfmpegPath(self._options.ffmpegPath)
+      if (self._options.ffmpegPath) {
+        self.logger(`set ffmpeg path: ${self._options.ffmpegPath}`)
+        ffmpeg.setFfmpegPath(self._options.ffmpegPath)
+      }
     },
     _contentToTrack: async (content, trackId) => {
       let track = {
@@ -250,6 +253,7 @@ module.exports = function tracks (self) {
 
     addTrackFromUrl: async (resolverData, { logAddress } = {}) => {
       if (typeof resolverData === 'string') {
+        self.logger(`Adding track from URL: ${resolverData}`)
         resolverData = await self.resolve(resolverData)
       }
 
@@ -280,6 +284,7 @@ module.exports = function tracks (self) {
     },
 
     addTrackFromCID: async (cid, { logAddress } = {}) => {
+      self.logger(`adding track from cid: ${cid}`)
       const dagNode = await self._ipfs.dag.get(cid)
       const content = dagNode.value
       return self.tracks.add(content, { logAddress })
@@ -321,6 +326,7 @@ module.exports = function tracks (self) {
     },
 
     remove: async (trackId, { logAddress } = {}) => {
+      self.logger(`removing track: ${trackId}`)
       const log = await self.log.get(logAddress)
       const entry = await log.tracks.getFromId(trackId)
       const hash = await log.tracks.del(trackId, { pin: true })

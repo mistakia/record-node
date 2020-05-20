@@ -164,6 +164,7 @@ module.exports = function log (self) {
     },
 
     pinAccessController: async (accessControllerAddress) => {
+      self.logger(`pinning access controller address: ${accessControllerAddress}`)
       const acAddress = accessControllerAddress.split('/')[2]
       await self._ipfs.pin.add(acAddress)
       const dagNode = await self._ipfs.dag.get(acAddress)
@@ -225,6 +226,7 @@ module.exports = function log (self) {
         throw new Error('Cannot drop default log')
       }
 
+      self.logger(`dropping log ${logAddress}`)
       const log = await self.log.get(logAddress)
       if (log._type === RecordStore.type) {
         await self.log.removePins(logAddress)
