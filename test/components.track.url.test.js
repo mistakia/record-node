@@ -124,7 +124,7 @@ describe('record.components.track', function () {
 
     describe('add new track', function () {
       let track
-      before(async () => { track[0] = await record.tracks.addTrackFromUrl(urlpath2) })
+      before(async () => { track = await record.tracks.addTrackFromUrl(urlpath2) })
 
       it('track added', async function () {
         const entry = await record._log.tracks.getFromId(track[0].id)

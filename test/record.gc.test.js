@@ -4,15 +4,21 @@ const path = require('path')
 const assert = require('assert')
 const {
   config,
-  startRecord
+  startRecord,
+  connectNode
 } = require('./utils')
 
 describe('record.gc', function () {
   this.timeout(config.timeout)
   let record, ipfsd
+  let record2, ipfsd2
 
   before(async () => {
-    ({ record, ipfsd } = await startRecord('0', { restartable: true }))
+    // eslint-disable-next-line
+    ({ record, ipfsd } = await startRecord('0', { restartable: true }));
+    // eslint-disable-next-line
+    ({ record: record2, ipfsd: ipfsd2 } = await startRecord('1'));
+    await connectNode(record, record2)
   })
 
   after(async () => {
@@ -40,9 +46,17 @@ describe('record.gc', function () {
       location: 'test world'
     }
 
-    // TODO manifest
+    it('manifest & access controller', async function () {
+      const { address } = record2
+      await record.logs.connect(address)
+      await record2.stop()
+      await ipfsd2.stop()
 
-    // TODO access controller
+      await runGC()
+
+      const log = await record.log.get(address)
+      assert.strictEqual(log.id, address)
+    })
 
     it('about', async function () {
       const aboutEntry = await record.about.set(about)

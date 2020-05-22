@@ -3,8 +3,10 @@ const { CID } = require('ipfs-http-client')
 
 const { throttle } = require('../utils')
 const { RecordStore } = require('../store')
+const Errors = require('../errors')
 
 const logNameRe = /^[0-9a-zA-Z-]*$/
+const timeout = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 module.exports = function log (self) {
   return {
@@ -33,15 +35,24 @@ module.exports = function log (self) {
       const localAddresses = await self.log.getLocalAddresses()
       const logs = []
       for (const logAddress of localAddresses) {
-        const log = await self.log.get(logAddress)
-        logs.push(log)
+        try {
+          const log = await self.log.get(logAddress)
+          logs.push(log)
+        } catch (err) {
+          self.logger.error(err)
+        }
       }
       return logs
     },
 
     canAppend: async (logAddress) => {
-      const log = await self.log.get(logAddress, { replicate: false })
-      return log.access.write.includes(self.identity)
+      try {
+        const log = await self.log.get(logAddress, { replicate: false })
+        return log.access.write.includes(self.identity)
+      } catch (err) {
+        self.logger.error(err)
+        return false
+      }
     },
 
     isMine: (log) => {
@@ -84,8 +95,8 @@ module.exports = function log (self) {
         return false
       }
 
-      const ipfsAC = await self._ipfs.dag.get(new CID(hash))
-      const hasIPFSAC = await self._ipfs.repo.has(new CID(ipfsAC.value.params.address))
+      const ac = await self._ipfs.dag.get(new CID(hash))
+      const hasIPFSAC = await self._ipfs.repo.has(new CID(ac.value.params.address))
       if (!hasIPFSAC) {
         return false
       }
@@ -276,7 +287,14 @@ module.exports = function log (self) {
 
       const opts = extend({ replicate: false }, self._options.store, options)
       self.logger(`Loading log: ${logAddress}`, opts)
-      const log = await self._orbitdb.open(logAddress, opts)
+      const log = await Promise.race([
+        timeout(5000),
+        self._orbitdb.open(logAddress, opts)
+      ])
+
+      if (!log) {
+        throw new Errors.CannotOpenLogError()
+      }
 
       if (log._type === RecordStore.type) {
         const data = await self.logs.get({ targetAddress: logAddress })

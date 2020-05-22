@@ -15,6 +15,7 @@ const Identities = require('orbit-db-identity-provider')
 const secp256k1 = require('secp256k1')
 const leveldown = require('leveldown')
 const { CID } = require('ipfs-http-client')
+const Errors = require('./errors')
 
 const manifestRe = /\/orbitdb\/[a-zA-Z0-9]+\/[^/]+\/_manifest/
 
@@ -66,7 +67,7 @@ class RecordNode extends EventEmitter {
     this.logger.log = console.log.bind(console) // log to stdout instead of stderr
     this.logger.error = debug('record:node:err')
 
-    this._options = extend(defaultConfig, options)
+    this._options = extend({}, defaultConfig, options)
     this.logger(this._options)
 
     this._options.orbitdb.storage = Storage(leveldown)
@@ -354,3 +355,4 @@ class RecordNode extends EventEmitter {
 }
 
 module.exports = RecordNode
+module.exports.Errors = Errors
