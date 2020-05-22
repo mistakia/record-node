@@ -10,9 +10,9 @@ module.exports = function about (self) {
     },
     get: async (logAddress) => {
       self.logger(`Get about for: ${logAddress}`)
-      let entry, log
+      const log = await self.log.get(logAddress, { replicate: false })
+      let entry
       try {
-        log = await self.log.get(logAddress, { replicate: false })
         entry = log.about.get()
       } catch (error) {
         self.logger.error(error)

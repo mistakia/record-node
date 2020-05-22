@@ -51,6 +51,20 @@ describe('record.components', function () {
       assert.strictEqual(canAppend2, false)
     })
 
+    it('getManifest', async function () {
+      const addr = record1.parseAddress(record1.address)
+      const manifest = await record1.log.getManifest(addr.root)
+      assert.strictEqual(manifest.name, 'record')
+      assert.strictEqual(manifest.type, 'recordstore')
+      assert.strictEqual(manifest.accessController.substring(0, 6), '/ipfs/')
+    })
+
+    it('getLocalAddresses', async function () {
+      const addresses = await record1.log.getLocalAddresses()
+      assert.strictEqual(addresses.length, 1)
+      assert.strictEqual(addresses[0], record2.address)
+    })
+
     describe('get', function () {
       it('no address given', async function () {
         const log = await record1.log.get()
