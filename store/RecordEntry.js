@@ -6,7 +6,7 @@ class Entry {
     this._entry = {}
   }
 
-  async create (ipfs, id, content, { pin = false } = {}) {
+  async create (ipfs, id, content) {
     this._entry = {
       id,
       timestamp: Date.now(),
@@ -18,7 +18,7 @@ class Entry {
     const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
     this._entry.content = cid
 
-    if (pin) await ipfs.pin.add(cid.toString(), { recursive: false })
+    await ipfs.pin.add(cid.toString(), { recursive: false })
 
     return this._entry
   }
@@ -30,7 +30,7 @@ class TrackEntry extends Entry {
     this._type = 'track'
   }
 
-  async create (ipfs, content, { tags = [], pin = false } = {}) {
+  async create (ipfs, content, { tags = [] } = {}) {
     const id = await sha256(content.tags.acoustid_fingerprint)
     this._entry = {
       tags
@@ -46,7 +46,7 @@ class TrackEntry extends Entry {
       })
     }
 
-    return super.create(ipfs, id, content, { pin })
+    return super.create(ipfs, id, content)
   }
 }
 
@@ -57,9 +57,9 @@ class LogEntry extends Entry {
     this._type = 'log'
   }
 
-  async create (ipfs, content, options) {
+  async create (ipfs, content) {
     const id = await sha256(content.address)
-    return super.create(ipfs, id, content, options)
+    return super.create(ipfs, id, content)
   }
 }
 
@@ -70,9 +70,9 @@ class AboutEntry extends Entry {
     this._type = 'about'
   }
 
-  async create (ipfs, content, options) {
+  async create (ipfs, content) {
     const id = await sha256(content.address)
-    return super.create(ipfs, id, content, options)
+    return super.create(ipfs, id, content)
   }
 }
 

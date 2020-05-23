@@ -7,7 +7,7 @@ const {
   startRecord
 } = require('./utils')
 
-describe('record.components.track', function () {
+describe('record.components.track.add', function () {
   this.timeout(config.timeout)
   let record
 
@@ -22,10 +22,9 @@ describe('record.components.track', function () {
     describe('add', async function () {
       it('added with log length of 1', async function () {
         track1 = await record.tracks.addTrackFromFile(filepath1)
-        const entry = await record._log.tracks.getFromId(track1.id)
         assert.notStrictEqual(track1, undefined)
         assert.strictEqual(track1.type, 'track')
-        assert.strictEqual(entry.clock.time, 1)
+        assert.strictEqual(record._log._oplog.length, 1)
         assert.strictEqual(track1.content.audio.duration, 644.7804081632653)
       })
 
@@ -40,7 +39,7 @@ describe('record.components.track', function () {
 
     describe('get', async function () {
       let track
-      before(async () => { track = await record.tracks.get({ logAddress: record.address, trackId: track1.id }) })
+      before(async () => { track = await record.tracks.get({ address: record.address, trackId: track1.id }) })
 
       it('contentCID', function () {
         assert.strictEqual(track.contentCID, track1.contentCID)
@@ -53,7 +52,7 @@ describe('record.components.track', function () {
 
     describe('list', async function () {
       let tracks
-      before(async () => { tracks = await record.tracks.list(record.address) })
+      before(async () => { tracks = await record.tracks.list({ addresses: [record.address] }) })
 
       it('has one track', function () {
         assert.strictEqual(tracks.length, 1)
@@ -73,14 +72,14 @@ describe('record.components.track', function () {
       before(async () => { track = await record.tracks.addTrackFromFile(filepath1) })
 
       it('duplicate detected', async function () {
-        const entry = await record._log.tracks.getFromId(track1.id)
         assert.notStrictEqual(track1, undefined)
         assert.strictEqual(track1.type, 'track')
-        assert.strictEqual(entry.clock.time, 1)
+        assert.strictEqual(record._log._oplog.length, 1)
+        // TODO (high) assert oplog length
       })
 
       it('list includes one track', async function () {
-        const tracks = await record.tracks.list(record.address)
+        const tracks = await record.tracks.list({ addresses: [record.address] })
         assert.strictEqual(tracks.length, 1)
       })
 
@@ -97,7 +96,7 @@ describe('record.components.track', function () {
       before(async () => { await record.tracks.remove(track1.id) })
 
       it('list doesnt include track', async function () {
-        const tracks = await record.tracks.list(record.address)
+        const tracks = await record.tracks.list({ addresses: [record.address] })
         assert.strictEqual(tracks.length, 0)
       })
     })
@@ -107,10 +106,9 @@ describe('record.components.track', function () {
       before(async () => { track = await record.tracks.addTrackFromFile(filepath1) })
 
       it('track added', async function () {
-        const entry = await record._log.tracks.getFromId(track.id)
         assert.notStrictEqual(track, undefined)
         assert.strictEqual(track.type, 'track')
-        assert.strictEqual(entry.clock.time, 3)
+        assert.strictEqual(record._log._oplog.length, 3)
         assert.strictEqual(track.content.audio.duration, 644.7804081632653)
       })
       it('contentCID', function () {
@@ -127,10 +125,9 @@ describe('record.components.track', function () {
       before(async () => { track = await record.tracks.addTrackFromFile(filepath2) })
 
       it('track added', async function () {
-        const entry = await record._log.tracks.getFromId(track.id)
         assert.notStrictEqual(track, undefined)
         assert.strictEqual(track.type, 'track')
-        assert.strictEqual(entry.clock.time, 4)
+        assert.strictEqual(record._log._oplog.length, 4)
         assert.strictEqual(track.content.audio.duration, 361.97877551020406)
       })
       it('contentCID', function () {

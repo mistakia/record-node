@@ -100,43 +100,43 @@ module.exports = function importer (self) {
 
       try {
         if (queue.completed[file]) {
-          const { trackId, logAddresses } = queue.completed[file]
-          if (trackId && logAddresses && logAddresses.length) {
-            track = self.tracks.get({ logAddress: logAddresses[0], trackId })
+          const { trackId, addresses } = queue.completed[file]
+          if (trackId && addresses && addresses.length) {
+            track = self.tracks.get({ address: addresses[0], trackId })
           }
         }
 
         const firstJobId = jobIds.shift()
         const firstJob = queue.jobs[firstJobId]
         if (!track.id) {
-          track = await self.tracks.addTrackFromFile(file, { logAddress: firstJob.logAddress })
+          track = await self.tracks.addTrackFromFile(file, { address: firstJob.address })
         } else {
-          await self.tracks.addTrackFromCID(track.cid, { logAddress: firstJob.logAddress })
+          await self.tracks.addTrackFromCID(track.cid, { address: firstJob.address })
         }
 
         for (const jobId of jobIds) {
           const job = queue.jobs[jobId]
-          await self.tracks.addTrackFromCID(track.cid, { logAddress: job.logAddress })
+          await self.tracks.addTrackFromCID(track.cid, { address: job.address })
         }
       } catch (e) {
         self.logger.error(e)
         error = e
       } finally {
         const trackId = track.id
-        const jobLogAddressesSet = new Set(Object.keys(queue.jobs).map(jobId => queue.jobs[jobId].logAddress))
-        const jobLogAddresses = Array.from(jobLogAddressesSet)
+        const jobAddressesSet = new Set(Object.keys(queue.jobs).map(jobId => queue.jobs[jobId].address))
+        const jobAddresses = Array.from(jobAddressesSet)
         if (queue.completed[file]) {
           if (error) {
             queue.completed[file].error = error
           }
 
-          if (Array.isArray(queue.completed[file].logAddresses)) {
-            queue.completed[file].logAddresses = queue.completed[file].logAddresses.concat(jobLogAddresses)
+          if (Array.isArray(queue.completed[file].addresses)) {
+            queue.completed[file].addresses = queue.completed[file].addresses.concat(jobAddresses)
           } else {
-            queue.completed[file].logAddresses = jobLogAddresses
+            queue.completed[file].addresses = jobAddresses
           }
         } else {
-          queue.completed[file] = { error, trackId, logAddresses: jobLogAddresses }
+          queue.completed[file] = { error, trackId, addresses: jobAddresses }
         }
         delete queue.files[file]
         jsonfile.writeFileSync(self.importer._queuePath, queue, { spaces: 2 })
@@ -157,7 +157,7 @@ module.exports = function importer (self) {
             track,
             errors,
             files: Object.keys(queue.files).map(file => ({ file })),
-            logAddresses: jobLogAddresses,
+            addresses: jobAddresses,
             completed: Object.keys(queue.completed).length,
             remaining: Object.keys(queue.files).length
           }
@@ -192,8 +192,8 @@ module.exports = function importer (self) {
       self.importer.add(self.importer._directory)
       self.importer._watcher = fs.watch(directory, self.importer._onImportDirectoryChange)
     },
-    add: async (filepath, logAddress = self.address) => {
-      const jobId = `${logAddress}${filepath}`
+    add: async (filepath, address = self.address) => {
+      const jobId = `${address}${filepath}`
       if (queue.jobs[jobId] && !queue.jobs[jobId].queued) {
         queue.jobs[jobId].changed = true
         return
@@ -203,18 +203,18 @@ module.exports = function importer (self) {
         queued: false,
         changed: false,
         filepath,
-        logAddress
+        address
       }
 
       const onFile = async (file) => {
         if (queue.completed[file]) {
-          const { logAddresses, error } = queue.completed[file]
+          const { addresses, error } = queue.completed[file]
 
           if (error) {
             return self.importer._cleanup(file)
           }
 
-          if (logAddresses && logAddresses.includes(logAddress)) {
+          if (addresses && addresses.includes(address)) {
             return self.importer._cleanup(file)
           }
         }
@@ -244,7 +244,7 @@ module.exports = function importer (self) {
 
       // re-add filepath if changed while adding
       if (queue.jobs[jobId].changed) {
-        self.importer.add(filepath, logAddress)
+        self.importer.add(filepath, address)
       }
     },
     list: () => {

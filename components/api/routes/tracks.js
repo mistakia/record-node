@@ -1,17 +1,19 @@
 const express = require('express')
 const router = express.Router()
 
-router.get(':logAddress(*)', async (req, res) => {
+router.get('/?', async (req, res) => {
   try {
-    const { logAddress } = req.params
     const { record } = req.app.locals
-    const { start, limit, tags, shuffle, query } = req.query
-    const tracks = await record.tracks.list(logAddress, {
+    const { start, limit, tags, shuffle, query, sort, order, addresses } = req.query
+    const tracks = await record.tracks.list({
       start: parseInt(start, 10) || null,
       limit: parseInt(limit, 10) || null,
+      addresses,
       tags,
       shuffle,
-      query
+      query,
+      sort,
+      order
     })
     res.send(tracks)
   } catch (err) {
@@ -39,7 +41,7 @@ router.post('/?', async (req, res) => {
       const track = await record.tracks.addTrackFromUrl(url)
       record.emit('redux', {
         type: 'TRACK_ADDED',
-        payload: { data: track, logAddress: record.address }
+        payload: { data: track, address: record.address }
       })
       return res.send(track)
     }

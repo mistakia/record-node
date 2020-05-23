@@ -1,11 +1,11 @@
 const express = require('express')
 const router = express.Router()
 
-router.get(':logAddress(*)', async (req, res) => {
+router.get('/?', async (req, res) => {
   try {
-    const { logAddress } = req.params
+    const { addresses } = req.query
     const { record } = req.app.locals
-    const tags = await record.tags.list(logAddress)
+    const tags = await record.tags.list(addresses)
     res.send(tags)
   } catch (err) {
     req.app.locals.record.logger.error(err)

@@ -78,11 +78,11 @@ describe('record', function () {
       const logIndexUpdated = events.filter(e => e.type === 'LOG_INDEX_UPDATED')
       const logReplicated = events.filter(e => e.type === 'LOG_REPLICATED')
 
-      assert.strictEqual(logPeerJoined[0].payload.logAddress, nodes[1].address)
-      assert.strictEqual(logReplicateProgress[0].payload.logAddress, nodes[1].address)
+      assert.strictEqual(logPeerJoined[0].payload.address, nodes[1].address)
+      assert.strictEqual(logReplicateProgress[0].payload.address, nodes[1].address)
       assert.notStrictEqual(logReplicateProgress[0].payload.hash, undefined)
-      assert.strictEqual(logIndexUpdated[0].payload.logAddress, nodes[1].address)
-      assert.strictEqual(logReplicated[0].payload.logAddress, nodes[1].address)
+      assert.strictEqual(logIndexUpdated[0].payload.address, nodes[0].address)
+      assert.strictEqual(logReplicated[0].payload.address, nodes[1].address)
       assert.strictEqual(logReplicated[0].payload.length, 1)
     })
 

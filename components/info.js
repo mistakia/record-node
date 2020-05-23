@@ -13,8 +13,8 @@ module.exports = function info (self) {
 
   return {
     _init: () => {
-      // TODO emit event on ipfs peer join
-      // TODO emit event on ipfs peer leave
+      // TODO (low) emit event on ipfs peer join
+      // TODO (low) emit event on ipfs peer leave
     },
     get: async () => {
       const subs = await getSubs()

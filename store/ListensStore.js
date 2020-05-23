@@ -6,6 +6,8 @@ class ListensStore extends RecordStore {
     if (!options.Index) Object.assign(options, { Index: ListensIndex })
     super(ipfs, id, dbname, options)
     this._type = ListensStore.type
+
+    this.afterAdd = options.afterAdd
   }
 
   async list ({ start = 0, limit = 20 } = {}) {
@@ -19,33 +21,24 @@ class ListensStore extends RecordStore {
     return entries.map(e => e.payload)
   }
 
-  getCount (trackId) {
-    return this._index.getCount(trackId)
-  }
-
-  async add ({ trackId, logAddress, cid }) {
+  async add ({ trackId, address }) {
     if (!trackId) {
       throw new Error('missing trackId')
     }
 
-    if (!logAddress) {
-      throw new Error('missing logAddress')
-    }
-
-    if (!cid) {
-      throw new Error('missing cid')
-    }
-
-    const hash = await this._addOperation({
+    const entry = await this._addOperation({
       trackId,
-      logAddress,
-      cid,
-      timestamp: new Date().toString()
+      address,
+      timestamp: Date.now()
     })
 
-    await this._ipfs.pin.add(hash, { recursive: false })
+    if (this.afterAdd) {
+      await this.afterAdd(entry)
+    }
 
-    return hash
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
+
+    return entry.hash
   }
 
   static get type () {

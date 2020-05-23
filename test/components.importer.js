@@ -51,7 +51,7 @@ describe('record', function () {
       assert.strictEqual(processedEvents[0].payload.remaining, 0)
       assert.notStrictEqual(processedEvents[0].payload.trackId, undefined)
 
-      const tracks = await record.tracks.list()
+      const tracks = await record.tracks.list({ addresses: [record.address] })
 
       assert.strictEqual(tracks.length, 1)
       assert.strictEqual(processedEvents[0].payload.trackId, tracks[0].id)
@@ -74,7 +74,7 @@ describe('record', function () {
       assert.strictEqual(processedEvents[1].payload.remaining, 0)
       assert.notStrictEqual(processedEvents[1].payload.trackId, undefined)
 
-      const tracks = await record.tracks.list()
+      const tracks = await record.tracks.list({ addresses: [record.address] })
 
       assert.strictEqual(tracks.length, 2)
       assert.strictEqual(processedEvents[1].payload.trackId, tracks[0].id)

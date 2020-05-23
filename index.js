@@ -82,6 +82,7 @@ class RecordNode extends EventEmitter {
     this.about = components.about(this)
     this.bootstrap = components.bootstrap(this)
     this.logs = components.logs(this)
+    this.indexer = components.indexer(this)
     this.importer = components.importer(this)
     this.info = components.info(this)
     this.listens = components.listens(this)
@@ -91,7 +92,7 @@ class RecordNode extends EventEmitter {
     this.peers = components.peers(this)
 
     // A mapping of cached log addresses to access controller addresses
-    this._logAddresses = {}
+    this._addresses = {}
     this._gcLock = false
     this._gcPosition = 0
     this._bwStats = {}
@@ -119,8 +120,8 @@ class RecordNode extends EventEmitter {
     return this._log.identity.id
   }
 
-  isMe (logAddress) {
-    return this.address === logAddress
+  isMe (address) {
+    return this.address === address
   }
 
   async init (ipfsAPI) {
@@ -178,6 +179,7 @@ class RecordNode extends EventEmitter {
 
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
+    await this.indexer._init()
     await this.log._init(address)
     await this.listens._init()
     await this.importer.init()
@@ -320,7 +322,7 @@ class RecordNode extends EventEmitter {
       const key = data.toString()
       keys.push(key)
     }).on('close', async () => {
-      const deleteLogIds = []
+      const deleteAddresses = []
 
       // Find log manifests to either load or delete from cache
       for (const key of keys) {
@@ -328,22 +330,22 @@ class RecordNode extends EventEmitter {
           const value = await this._cacheStorage.get(key)
           const manifestAddress = JSON.parse(value.toString())
           const manifest = await this._ipfs.dag.get(new CID(manifestAddress))
-          const logAddress = `/orbitdb/${manifestAddress}/${manifest.value.name}`
+          const address = `/orbitdb/${manifestAddress}/${manifest.value.name}`
           if (manifest.value.type === 'recordstore') {
             const { accessController } = manifest.value
             const haveAccessController = await this.log.haveAccessController(accessController)
             if (haveAccessController) {
-              this._logAddresses[logAddress] = accessController
+              this._addresses[address] = accessController
             } else {
-              deleteLogIds.push(logAddress)
+              deleteAddresses.push(address)
             }
           }
         }
       }
 
       for (const key of keys) {
-        for (const logAddress of deleteLogIds) {
-          const shouldDelete = key.includes(logAddress)
+        for (const address of deleteAddresses) {
+          const shouldDelete = key.includes(address)
           if (shouldDelete) {
             this.logger(`Deleting cache for stale log: ${key}`)
             this._cacheStorage.del(key)

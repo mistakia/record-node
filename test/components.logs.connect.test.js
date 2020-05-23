@@ -53,8 +53,8 @@ describe('record.components.logs.connect', function () {
     const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, false)
-    // TODO: check pubsub subscriptions
-    // TODO: check log OrbitDB replicator
+    // TODO (medium) check pubsub subscriptions
+    // TODO (medium) check log OrbitDB replicator
   })
 
   it('connect + disconnect + add + has + isReplicating', async function () {
@@ -65,8 +65,8 @@ describe('record.components.logs.connect', function () {
     const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, true)
-    // TODO: check pubsub subscriptions
-    // TODO: check log OrbitDB replicator
+    // TODO (medium) check pubsub subscriptions
+    // TODO (medium) check log OrbitDB replicator
   })
 
   it('disconnect + has + isReplicating', async function () {
@@ -75,11 +75,11 @@ describe('record.components.logs.connect', function () {
     const isReplicating = await record1.logs.isReplicating(record2.address)
     assert.strictEqual(isReplicating, false)
     assert.strictEqual(has, false)
-    // TODO: check pubsub subscriptions
-    // TODO: check log OrbitDB replicator
+    // TODO (medium) check pubsub subscriptions
+    // TODO (medium) check log OrbitDB replicator
   })
 
-  // TODO
+  // TODO (high)
   /* describe('errors', function () {
    *   it('invalid address', async function () {
 
