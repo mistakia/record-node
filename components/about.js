@@ -2,21 +2,29 @@ const { sha256 } = require('crypto-hash')
 
 module.exports = function about (self) {
   return {
-    set: async function (data, { logAddress } = {}) {
-      const log = await self.log.get(logAddress)
-      const entry = await log.about.set(data)
-      self.peers._announceLogs()
-      return self.about.get(entry.payload.value.content.address)
-    },
-    get: async (logAddress) => {
-      self.logger(`Get about for: ${logAddress}`)
-      const log = await self.log.get(logAddress, { replicate: false })
-      let entry
-      try {
-        entry = log.about.get()
-      } catch (error) {
-        self.logger.error(error)
+    set: async function ({ name = null, bio = null, location = null, avatar = null }, { address = self.address } = {}) {
+      const rows = await self._db('logs')
+        .where({ address, name, bio, location, avatar })
+
+      if (!rows.length) {
+        const log = await self.log.get(address)
+        const data = { name, bio, location, avatar }
+        await log.about.put(data)
+        self.peers._announceLogs()
       }
+
+      return self.about.get(address)
+    },
+    get: async (address) => {
+      self.logger(`Get about for: ${address}`)
+      const index = await self._db('entries')
+        .where({ address, type: 'about' })
+        .orderBy('clock', 'desc')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+
+      const log = await self.log.get(address, { replicate: false })
+      const entry = index.length ? await log.getEntryWithContent(index[0].hash) : undefined
       const entryValue = entry ? entry.payload.value : { content: {} }
 
       if (!entryValue.id) {

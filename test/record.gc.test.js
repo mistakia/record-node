@@ -29,7 +29,7 @@ describe('record.gc', function () {
   const runGC = async () => {
     // eslint-disable-next-line
     for await (const res of record._ipfs.repo.gc()) {
-      // TODO
+      // TODO (low) collect garbage collected pins for test assertions
     }
 
     await record.stop()
@@ -56,6 +56,8 @@ describe('record.gc', function () {
 
       const log = await record.log.get(address)
       assert.strictEqual(log.id, address)
+      // TODO (medium) check manifest address is in pinset
+      // TODO (medium) check ac & ipfs ac address are in pinset
     })
 
     it('about', async function () {
@@ -69,12 +71,15 @@ describe('record.gc', function () {
       assert.deepStrictEqual(aboutEntry, entry)
       const afterContent = await record._ipfs.dag.get(aboutEntry.cid)
       assert.deepStrictEqual(content, afterContent)
+
+      // TODO (medium) check log entry hash is in pinset
+      // TODO (medium) check log entry content cid is in pinset
     })
 
     it('track', async function () {
       const filepath = path.join(__dirname, 'fixtures/tracks/Dj Falcon And Thomas Bangalter - So Much Love To Give(Original Mix).mp3')
       const track = await record.tracks.addTrackFromFile(filepath)
-      const entry = await record._log.tracks.getFromId(track.id)
+      const entry = await record.log.getLogEntryFromId(record.address, track.id)
 
       const dagEntry = await record._ipfs.dag.get(entry.hash)
       const dagContent = await record._ipfs.dag.get(entry.payload.value.contentCID)
@@ -82,7 +87,7 @@ describe('record.gc', function () {
 
       await runGC()
 
-      const afterEntry = await record._log.tracks.getFromId(track.id)
+      const afterEntry = await record.log.getLogEntryFromId(record.address, track.id)
       const afterDagEntry = await record._ipfs.dag.get(entry.hash)
       const afterDagContent = await record._ipfs.dag.get(entry.payload.value.contentCID)
       const afterDagAudio = await record._ipfs.dag.get(entry.payload.value.content.hash)
@@ -92,6 +97,10 @@ describe('record.gc', function () {
       assert.deepStrictEqual(afterDagContent, dagContent)
       assert.deepStrictEqual(afterDagAudio, dagAudio)
 
+      // TODO (high) check log entry content cid is in pinset
+      // TODO (high) check audio hash is in pinset
+      // TODO (high) check artwork hash is in pinset
+
       const statsBefore = await record._ipfs.repo.stat()
 
       await record.tracks.remove(track.id)
@@ -100,7 +109,7 @@ describe('record.gc', function () {
 
       const statsAfter = await record._ipfs.repo.stat()
 
-      const removedEntry = await record._log.tracks.getFromId(track.id)
+      const removedEntry = await record.log.getLogEntryFromId(record.address, track.id)
       const removedDagEntry = await record._ipfs.dag.get(entry.hash)
       const removedDagContent = await record._ipfs.dag.get(entry.payload.value.contentCID)
       let removedDagAudio
@@ -110,11 +119,18 @@ describe('record.gc', function () {
 
       }
 
-      assert.ok(!removedEntry)
+      // TODO (high) check log entry hash is in pinset
+      // TODO (high) check log entry content cid is not in pinset
+      // TODO (high) check audio hash is not in pinset
+      // TODO (high) check artwork hash is not in pinset
+
+      assert.ok(removedEntry)
       assert.ok(removedDagEntry)
       assert.ok(removedDagContent)
       assert.ok(!removedDagAudio)
       assert.strictEqual(statsAfter.repoSize.toNumber() < statsBefore.repoSize.toNumber(), true)
     })
+
+    // TODO (high) add test for checking pins for log links
   })
 })

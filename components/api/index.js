@@ -25,7 +25,7 @@ module.exports = (self) => {
     next()
   })
 
-  app.use('/about', routes.about)
+  app.use('/about', routes.about) // TODO (low) move to /log
   app.use('/connect', routes.connect)
   app.use('/log', routes.log)
   app.use('/logs', routes.logs)

@@ -12,12 +12,12 @@ router.get('/all', async (req, res) => {
   }
 })
 
-router.get(':logAddress(*)', async (req, res) => {
+router.get(':address(*)', async (req, res) => {
   try {
-    const { logAddress } = req.params
+    const { address } = req.params
     const { record } = req.app.locals
 
-    const data = await record.logs.list(logAddress)
+    const data = await record.logs.list(address)
     res.send(data)
   } catch (err) {
     req.app.locals.record.logger.error(err)

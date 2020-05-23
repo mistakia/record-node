@@ -12,7 +12,17 @@ const musicMetadata = require('music-metadata')
 const { sha256 } = require('crypto-hash')
 const { globSource } = require('ipfs-http-client')
 
-const { loadContentFromCID } = require('../utils')
+const orderByTrackIds = (array, trackIds) => {
+  array.sort((a, b) => {
+    if (trackIds.indexOf(a.key) > trackIds.indexOf(b.key)) {
+      return 1
+    } else {
+      return -1
+    }
+  })
+
+  return array
+}
 
 const getAcoustID = (filepath, options) => {
   return new Promise((resolve, reject) => {
@@ -81,69 +91,54 @@ module.exports = function tracks (self) {
         ffmpeg.setFfmpegPath(self._options.ffmpegPath)
       }
     },
-    _contentToTrack: async (content, trackId) => {
-      let track = {
-        id: trackId,
-        tags: [],
-        isLocal: false,
-        haveTrack: false,
-        listens: [],
-        externalTags: [],
-        ...content
-      }
+    _getIndexInfo: async (trackId) => {
+      const tracks = await self._db('tracks')
+        .innerJoin('entries', 'tracks.id', 'entries.key')
+        .orderBy('clock', 'desc')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+        .where({ id: trackId })
+        .andWhere('entries.address', self.address)
 
-      if (!trackId) {
-        return track
-      }
+      const tags = await self._db('tags')
+        .where({ trackid: trackId })
 
-      const log = self.log.mine()
-      track.haveTrack = log.tracks.has(trackId)
-      if (track.haveTrack) {
-        const entry = await log.tracks.getFromId(trackId)
-        track = entry.payload.value
-        track.haveTrack = true
-        track.externalTags = []
-      }
-
-      const count = await self.listens.getCount(trackId)
-      track.listens = count.timestamps
-
-      // TODO re-enable
-      /* const cid = new CID(content.content.hash)
-       * track.isLocal = await self._ipfs.repo.has(cid) */
-      return track
+      return { tracks, tags }
     },
-    _entryToTrack: async (entry, logAddress = self.address) => {
-      if (!self.isMe(logAddress)) {
-        const myLog = self.log.mine()
-        const externalTags = entry.payload.value.tags
-        const haveTrack = myLog.tracks.has(entry.payload.key)
-        if (haveTrack) {
-          const track = await myLog.tracks.getFromId(entry.payload.value.id)
-          track.payload.value.externalTags = externalTags
-          entry = track
-        } else {
-          entry.payload.value.externalTags = externalTags
-          entry.payload.value.tags = []
-        }
+    _entryToTrack: async (entry, address = self.address) => {
+      const indexInfo = await self.tracks._getIndexInfo(entry.payload.key)
 
-        entry.payload.value.haveTrack = haveTrack
-      } else {
-        entry.payload.value.haveTrack = true
-        entry.payload.value.externalTags = []
+      const haveTrack = !!indexInfo.tracks.length
+      if (!self.isMe(address) && haveTrack) {
+        const log = self.log.mine()
+        entry = await log.getEntryWithContent(indexInfo.tracks[0].hash)
       }
+
+      const selfTags = []
+      const externalTags = []
+      for (const { address, tag } of indexInfo.tags) {
+        if (address === self.address) {
+          selfTags.push({ address, tag })
+        } else {
+          externalTags.push({ address, tag })
+        }
+      }
+      const tags = selfTags.concat(externalTags)
+
+      entry.payload.value.haveTrack = haveTrack
+      entry.payload.value.tags = tags
 
       const count = await self.listens.getCount(entry.payload.value.id)
       entry.payload.value.listens = count.timestamps
 
-      // TODO - re-enable
+      // TODO (low) - re-enable
       /* const cid = new CID(entry.payload.value.content.hash)
        * entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
        */
       return entry.payload.value
     },
 
-    addTracksFromFS: async (filepath, { logAddress } = {}) => {
+    addTracksFromFS: async (filepath, { address } = {}) => {
       self.logger(`Searching ${filepath} for tracks`)
 
       let result = []
@@ -151,7 +146,7 @@ module.exports = function tracks (self) {
 
       if (stat.isFile()) {
         try {
-          const track = await self.tracks.addTrackFromFile(filepath, { logAddress })
+          const track = await self.tracks.addTrackFromFile(filepath, { address })
           result.push(track)
         } catch (e) {
           self.logger.error(e)
@@ -165,7 +160,7 @@ module.exports = function tracks (self) {
         for (let i = 0; i < pathsInDir.length; i++) {
           const tracks = await self.tracks.addTracksFromFS(
             path.resolve(filepath, pathsInDir[i]),
-            { logAddress }
+            { address }
           )
           result = tracks.concat(result)
         }
@@ -173,7 +168,7 @@ module.exports = function tracks (self) {
 
       return result
     },
-    addTrackFromFile: async (filepath, { resolverData, logAddress } = {}) => {
+    addTrackFromFile: async (filepath, { resolverData, address } = {}) => {
       self.logger(`Adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath, {
         command: self._options.chromaprintPath
@@ -183,21 +178,13 @@ module.exports = function tracks (self) {
       const id = await sha256(acoustid.fingerprint)
 
       // check if already in this log, give that entry priority for now
-      // TODO merge if content cid is different
-      const entry = await self.tracks.get({ logAddress, trackId: id })
+      // TODO (low) use existing entry if possible, prioritze own log over others
+      const entry = await self.tracks.get({ address, trackId: id })
       if (entry) {
         return entry
       }
 
-      // check if in other logs
-      // TODO merge if content cid is different
-      /* entry = await self.tracks.get({ trackId: id })
-       * if (entry) {
-       *   return entry
-       * }
-       */
-
-      // TODO - move to worker thread
+      // TODO (low) - move to worker thread
       const metadata = await musicMetadata.parseFile(filepath)
       const pictures = metadata.common.picture
       delete metadata.common.picture
@@ -248,10 +235,10 @@ module.exports = function tracks (self) {
         trackData.resolver = [resolverData]
       }
 
-      return self.tracks.add(trackData, { logAddress })
+      return self.tracks.add(trackData, [], { address })
     },
 
-    addTrackFromUrl: async (resolverData, { logAddress } = {}) => {
+    addTrackFromUrl: async (resolverData, { address = self.address } = {}) => {
       if (typeof resolverData === 'string') {
         self.logger(`Adding track from URL: ${resolverData}`)
         resolverData = await self.resolve(resolverData)
@@ -268,86 +255,183 @@ module.exports = function tracks (self) {
       const log = self.log.mine()
       const entries = []
       for (const item of resolverData) {
-        const entry = await log.tracks.getFromResolverId(item.extractor, item.id)
+        const { extractor, id } = item
+        // TODO (low) - use existing entry
+        const rows = await self._db('tracks')
+          .innerJoin('entries', 'tracks.id', 'entries.key')
+          .innerJoin('resolvers', 'entries.key', 'resolvers.trackid')
+          .where({ extractor })
+          .andWhere('tracks.address', address)
+          .andWhere('resolvers.id', id)
+          .limit(1)
 
-        if (entry) {
-          entries.push(await self.tracks._entryToTrack(entry))
-          continue
+        if (rows.length) {
+          const { hash } = rows[0]
+          const entry = await log.getEntryWithContent(hash)
+
+          if (entry) {
+            entries.push(await self.tracks._entryToTrack(entry))
+            continue
+          }
         }
 
         const filepath = await downloadFile(item)
-        // TODO - hand off to importer
-        entries.push(await self.tracks.addTrackFromFile(filepath, { resolverData: item, logAddress }))
+        // TODO (low) - hand off to importer
+        entries.push(await self.tracks.addTrackFromFile(filepath, { resolverData: item, address }))
       }
 
       return entries
     },
 
-    addTrackFromCID: async (cid, { logAddress } = {}) => {
+    addTrackFromCID: async (cid, { address } = {}) => {
       self.logger(`adding track from cid: ${cid}`)
       const dagNode = await self._ipfs.dag.get(cid)
       const content = dagNode.value
-      return self.tracks.add(content, { logAddress })
+      return self.tracks.add(content, { address })
     },
 
-    add: async (trackData, { logAddress } = {}) => {
-      const log = await self.log.get(logAddress)
-      const entry = await log.tracks.findOrCreate(trackData, { pin: true })
+    add: async (trackData, { address } = {}) => {
+      const log = await self.log.get(address)
+      const entry = await log.tracks.put(trackData, [])
       const track = await self.tracks._entryToTrack(entry, log.address.toString())
       return track
     },
 
-    getFromCID: async (cid, trackId) => {
-      const content = await loadContentFromCID(self._ipfs, cid, 'track')
-      return self.tracks._contentToTrack(content, trackId)
-    },
+    get: async ({ address = self.address, trackId }) => {
+      const rows = await self._db('tracks')
+        .innerJoin('entries', 'tracks.id', 'entries.key')
+        .where({ key: trackId, type: 'track' })
+        .andWhere('tracks.address', address)
+        .orderBy('clock', 'desc')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
 
-    get: async ({ logAddress, trackId }) => {
-      if (!logAddress) {
-        const localAddresses = await self.log.getLocalAddresses()
-        for (const localAddress of localAddresses) {
-          const track = await self.tracks.get({ logAddress: localAddress, trackId })
-          if (track) {
-            return track
-          }
-        }
-
+      if (!rows.length) {
         return null
       }
 
-      const log = await self.log.get(logAddress, { replicate: false })
-      const entry = await log.tracks.getFromId(trackId)
+      const { hash } = rows[0]
+      const log = await self.log.get(address, { replicate: false })
+      const entry = await log.getEntryWithContent(hash)
 
       if (!entry) {
+        // TODO (low) handle / repair index
+        self.logger(`${address} missing ${hash}`)
         return null
       }
 
-      return self.tracks._entryToTrack(entry, logAddress)
+      return self.tracks._entryToTrack(entry, address)
     },
 
-    remove: async (trackId, { logAddress } = {}) => {
-      self.logger(`removing track: ${trackId}`)
-      const log = await self.log.get(logAddress)
-      const entry = await log.tracks.getFromId(trackId)
-      const hash = await log.tracks.del(trackId, { pin: true })
-      // TODO remove artwork pins
-      // remove audio file pin
-      await self.log.removePin({
-        id: trackId,
-        hash: entry.payload.value.content.hash,
-        type: 'track'
-      })
+    has: async (address, trackId) => {
+      const rows = await self._db('tracks')
+        .where({ address, id: trackId })
+        .limit(1)
 
+      return !!rows.length
+    },
+
+    remove: async (trackId, { address = self.address } = {}) => {
+      const has = await self.tracks.has(address, trackId)
+      if (!has) {
+        throw new Error(`track does not exist: ${trackId}`)
+      }
+
+      self.logger(`removing track: ${trackId}`)
+      const log = await self.log.get(address)
+      const hash = await log.tracks.del(trackId)
       return hash
     },
 
-    list: async (logAddress, opts) => {
-      const log = await self.log.get(logAddress, { replicate: false })
-      const entries = await log.tracks.all(opts)
+    list: async ({
+      addresses = [],
+      start = 0,
+      shuffle = false,
+      query = null,
+      tags = [],
+      limit = 20,
+      sort = null,
+      order = null
+    } = {}) => {
+      if (addresses && !Array.isArray(addresses)) {
+        addresses = [addresses]
+      }
+
+      if (tags && !Array.isArray(tags)) {
+        tags = [tags]
+      }
+
+      let sql = self._db('tracks')
+        .offset(start)
+        .limit(limit)
+
+      if (tags.length) {
+        let tagsSQL = self._db('tags')
+          .whereIn('tag', tags)
+          .groupBy('trackid')
+          .havingRaw('count(tags.trackid) = ?', tags.length)
+
+        if (addresses.length) {
+          tagsSQL = tagsSQL.whereIn('address', addresses)
+        }
+
+        const tagRows = await tagsSQL
+        const trackIds = tagRows.map(t => t.trackid)
+        sql = sql.whereIn('tracks.id', trackIds)
+      }
+
+      if (addresses.length) {
+        sql = sql.whereIn('tracks.address', addresses)
+      }
+
+      if (query) {
+        const searchTerm = `%${query}%`
+        sql = sql.leftJoin('resolvers', 'tracks.id', 'resolvers.trackid')
+          .where(function () {
+            this.orWhere('title', 'like', searchTerm)
+            this.orWhere('artist', 'like', searchTerm)
+            this.orWhere('album', 'like', searchTerm)
+            this.orWhere('remixer', 'like', searchTerm)
+            this.orWhere('fulltitle', 'like', searchTerm)
+          })
+      }
+
+      let entryRows
+      if (shuffle || (order && sort)) {
+        if (shuffle) {
+          sql = sql.orderByRaw('RANDOM()')
+        } else {
+          // TODO (high) validate sort
+          // TODO (high) validate order
+          sql = sql.orderBy(sort, order)
+        }
+
+        const rows = await sql
+        const trackIds = rows.map(t => t.id)
+        entryRows = await self._db('entries')
+          .whereIn('key', trackIds)
+          .orderBy('clock', 'desc')
+          .orderBy('timestamp', 'desc')
+          .groupBy('key')
+
+        entryRows = orderByTrackIds(entryRows, trackIds)
+      } else {
+        entryRows = await sql.innerJoin('entries', 'tracks.id', 'entries.key')
+          .orderBy('clock', 'desc')
+          .orderBy('timestamp', 'desc')
+          .groupBy('key')
+      }
+
+      const entries = []
+      for (const row of entryRows) {
+        const log = await self.log.get(row.address, { replicate: false })
+        const entry = await log.getEntryWithContent(row.hash)
+        entries.push(entry)
+      }
 
       const tracks = []
       for (const entry of entries) {
-        const track = await self.tracks._entryToTrack(entry, logAddress)
+        const track = await self.tracks._entryToTrack(entry, entry.id)
         tracks.push(track)
       }
 

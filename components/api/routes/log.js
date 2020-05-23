@@ -1,13 +1,13 @@
 const express = require('express')
 const router = express.Router()
 
-router.get(':logAddress(*)', async (req, res) => {
+router.get(':address(*)', async (req, res) => {
   try {
-    const { logAddress } = req.params
+    const { address } = req.params
     const { record } = req.app.locals
 
     const data = await record.logs.get({
-      targetAddress: logAddress
+      targetAddress: address
     })
     res.send(data)
   } catch (err) {
@@ -16,12 +16,12 @@ router.get(':logAddress(*)', async (req, res) => {
   }
 })
 
-router.delete(':logAddress(*)', async (req, res) => {
+router.delete(':address(*)', async (req, res) => {
   try {
-    const { logAddress } = req.params
+    const { address } = req.params
     const { record } = req.app.locals
 
-    const response = await record.logs.drop(logAddress)
+    const response = await record.logs.drop(address)
     res.send(response)
   } catch (err) {
     req.app.locals.record.logger.error(err)

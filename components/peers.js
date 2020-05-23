@@ -17,14 +17,14 @@ module.exports = function peers (self) {
       self._monitor && await self._monitor.stop()
       self._ipfs.pubsub.unsubscribe(self.peers._topic, self.peers._onMessage)
     },
-    get: (logAddress) => {
+    get: (address) => {
       const peerIds = Object.keys(self.peers._index)
       const peerLogs = []
       for (const peerId of peerIds) {
         peerLogs.push(self.peers._index[peerId].about)
         self.peers._index[peerId].logs.forEach(l => peerLogs.push(l))
       }
-      return peerLogs.find(p => p.content.address === logAddress)
+      return peerLogs.find(p => p.content.address === address)
     },
     list: async () => {
       const peerIds = Object.keys(self.peers._index)
@@ -48,29 +48,29 @@ module.exports = function peers (self) {
       return peers
     },
     _announceLogs: async (peer) => {
-      const logAddresses = Object.keys(self._logAddresses)
+      const addresses = Object.keys(self._addresses)
       const data = {
         logs: []
       }
 
       data.about = await self.about.get(self.address)
 
-      for (const logAddress of logAddresses) {
-        const isLocal = self.log.isLocal(logAddress)
+      for (const address of addresses) {
+        const isLocal = self.log.isLocal(address)
         if (!isLocal) {
           continue
         }
 
-        const isEmpty = await self.log.isEmpty(logAddress)
+        const isEmpty = await self.log.isEmpty(address)
         if (isEmpty) {
           continue
         }
 
-        const about = await self.about.get(logAddress)
+        const about = await self.about.get(address)
         data.logs.push(about)
       }
       const message = Buffer.from(JSON.stringify(data))
-      // TODO send to specific peer when available
+      // TODO (low) send to specific peer when available
       self._ipfs.pubsub.publish(self.peers._topic, message)
     },
     _onLeave: (peerId) => {
@@ -86,7 +86,7 @@ module.exports = function peers (self) {
       self.emit('redux', {
         type: 'RECORD_PEER_LEFT',
         payload: {
-          logAddress: peer.about.content.address,
+          address: peer.about.content.address,
           peerCount,
           peerId
         }
@@ -95,7 +95,7 @@ module.exports = function peers (self) {
       for (const about of peer.logs) {
         self.emit('redux', {
           type: 'RECORD_PEER_LEFT',
-          payload: { logAddress: about.content.address, peerCount, peerId }
+          payload: { address: about.content.address, peerCount, peerId }
         })
       }
     },
@@ -113,7 +113,7 @@ module.exports = function peers (self) {
       const peerCount = Object.keys(self.peers._index).length
       self.emit('redux', {
         type: 'RECORD_PEER_JOINED',
-        payload: { logAddress: address, peerCount, peerId }
+        payload: { address: address, peerCount, peerId }
       })
     },
     _onMessage: async (message) => {

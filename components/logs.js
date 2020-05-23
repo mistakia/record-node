@@ -1,7 +1,21 @@
+const { sha256 } = require('crypto-hash')
 const extend = require('deep-extend')
+
+const { loadEntryContent } = require('../utils')
 
 module.exports = function logs (self) {
   return {
+    _getEntryHash: async ({ address, linkAddress }) => {
+      const key = await sha256(linkAddress)
+      const rows = await self._db('entries')
+        .select('hash')
+        .where({ type: 'log', address, op: 'PUT', key })
+        .orderBy('clock', 'desc')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+
+      return rows.length ? rows[0].hash : undefined
+    },
     connect: async function (address) {
       if (address) {
         return this._connect(address)
@@ -9,12 +23,10 @@ module.exports = function logs (self) {
 
       self.isReplicating = true
 
-      const log = self.log.mine()
-      const entries = await log.logs.all()
-      const values = entries.map(e => e.payload.value)
-      for (const value of values) {
-        const { address } = value.content
-        this._connect(address, { pin: true })
+      const links = await self._db('links').where({ address: self.address })
+      const addresses = links.map(l => l.link)
+      for (const address of addresses) {
+        this._connect(address)
       }
 
       self.emit('redux', { type: 'LOGS_CONNECTED' })
@@ -27,24 +39,22 @@ module.exports = function logs (self) {
 
       self.isReplicating = false
 
-      const log = self.log.mine()
-      const entries = await log.logs.all()
-      const values = entries.map(e => e.payload.value)
-      for (const value of values) {
-        const { address } = value.content
+      const links = await self._db('links').where({ address: self.address })
+      const addresses = links.map(l => l.link)
+      for (const address of addresses) {
         this._disconnect(address)
       }
 
       self.emit('redux', { type: 'LOGS_DISCONNECTED' })
     },
 
-    _connect: async (address, { pin = false } = {}) => {
+    _connect: async (address) => {
       if (self.isMe(address)) {
         return
       }
 
       self.logger(`Connecting log: ${address}`)
-      const log = await self.log.get(address, { replicate: true, pin })
+      const log = await self.log.get(address, { replicate: true })
       self.logger(`Connected log: ${address}`)
 
       if (!log.options.replicate) {
@@ -61,7 +71,7 @@ module.exports = function logs (self) {
         }
       }
 
-      self.emit('redux', { type: 'LOG_CONNECTED', payload: { logAddress: address } })
+      self.emit('redux', { type: 'LOG_CONNECTED', payload: { address } })
     },
 
     _disconnect: async (address) => {
@@ -84,7 +94,7 @@ module.exports = function logs (self) {
       log.options.replicate = false
       log._replicator.pause()
 
-      self.emit('redux', { type: 'LOG_DISCONNECTED', payload: { logAddress: address } })
+      self.emit('redux', { type: 'LOG_DISCONNECTED', payload: { address } })
     },
 
     isReplicating: async (address) => {
@@ -96,7 +106,7 @@ module.exports = function logs (self) {
       return log.options.replicate
     },
 
-    link: async ({ logAddress, alias, linkAddress }) => {
+    link: async ({ address = self.address, alias = null, linkAddress }) => {
       if (self.isMe(linkAddress)) {
         throw new Error(`unable to add self: ${linkAddress}`)
       }
@@ -106,19 +116,18 @@ module.exports = function logs (self) {
       }
 
       self.logger(`Link log: ${linkAddress}`)
-      const log = await self.log.get(logAddress)
-      const logEntry = await log.logs.findOrCreate({ address: linkAddress, alias }, { pin: true })
-      if (self.isReplicating) {
-        self.logs._connect(linkAddress, { pin: true })
+      const rows = await self._db('links')
+        .where({ address, alias, link: linkAddress })
+        .limit(1)
+
+      const log = await self.log.get(address)
+      if (!rows.length) {
+        const data = { address: linkAddress, alias }
+        await log.logs.put(data)
       }
 
-      // iterate log entries and pin
-      const linkedLog = await self.log.get(logEntry.payload.value.content.address)
-      for (const hash of linkedLog._oplog._hashIndex.keys()) {
-        const entry = await log._oplog.get(hash)
-        await self._ipfs.pin.add(entry.hash, { recursive: false })
-        const { content } = entry.payload.value
-        if (content) await self._ipfs.pin.add(content.toString(), { recursive: false })
+      if (self.isReplicating) {
+        self.logs._connect(linkAddress)
       }
 
       return self.logs.get({
@@ -127,13 +136,19 @@ module.exports = function logs (self) {
       })
     },
 
-    _getEntry: async (logAddress, linkedAddress) => {
-      if (logAddress === linkedAddress) {
+    _getEntry: async (address, linkAddress) => {
+      if (address === linkAddress) {
         return {}
       }
 
-      const log = await self.log.get(logAddress, { replicate: false })
-      const entry = await log.logs.getFromAddress(linkedAddress)
+      const entryHash = await self.logs._getEntryHash({ address, linkAddress })
+      if (!entryHash) {
+        return {}
+      }
+
+      const log = await self.log.get(address, { replicate: false })
+      const logEntry = await log.get(entryHash)
+      const entry = await loadEntryContent(self._ipfs, logEntry)
       return entry ? entry.payload.value : {}
     },
 
@@ -146,8 +161,9 @@ module.exports = function logs (self) {
         sourceAddress = targetAddress
       }
 
+      const isMyLog = self.isMe(sourceAddress)
       let myEntry = {}
-      if (!self.isMe(sourceAddress)) {
+      if (!isMyLog) {
         myEntry = await self.logs._getEntry(self.address, targetAddress)
       }
 
@@ -162,13 +178,14 @@ module.exports = function logs (self) {
         self._ipfs.pubsub.peers(targetAddress)
       ])
 
+      const isLinked = isMyLog ? !!entry.id : !!myEntry.id
       let replicationStatus = {}
       let replicationStats = {}
       let length = 0
       let trackCount = 0
       let logCount = 0
       let isReplicating = false
-      let isBuildingIndex = false
+      let isLoadingIndex = false
       let isProcessingIndex = false
       let heads = []
 
@@ -180,15 +197,15 @@ module.exports = function logs (self) {
         replicationStats = log._replicator._stats
         length = log._oplog._hashIndex.size
         heads = log._oplog.heads
-        isBuildingIndex = log._index.isBuilding
-        isProcessingIndex = log._index.isProcessing
-        trackCount = log._index.trackCount
-        logCount = log._index.logCount
+        isLoadingIndex = self.indexer.isLoading(targetAddress)
+        isProcessingIndex = self.indexer.isProcessing(targetAddress)
+        trackCount = await self.indexer.trackCount(targetAddress)
+        logCount = await self.indexer.logCount(targetAddress)
       }
 
       return extend(about, peerEntry, entry, myEntry, {
         isReplicating,
-        isBuildingIndex,
+        isLoadingIndex,
         isProcessingIndex,
         trackCount,
         logCount,
@@ -197,65 +214,72 @@ module.exports = function logs (self) {
         replicationStats,
         length,
         heads,
-        isLinked: !!myEntry.id || self.log.mine().logs.hasId(entry.id),
+        isLinked,
         isMe: self.isMe(targetAddress)
       })
     },
 
-    has: async (logAddress, linkedAddress) => {
-      const log = await self.log.get(logAddress, { replicate: false })
-      return log.logs.hasAddress(linkedAddress)
+    has: async (address, linkAddress) => {
+      const rows = await self._db('links')
+        .where({ address, link: linkAddress })
+        .limit(1)
+
+      return !!rows.length
     },
 
     unlink: async (linkAddress) => {
       self.logger(`Unlink log: ${linkAddress}`)
       const log = self.log.mine()
-      const logEntry = await log.logs.getFromAddress(linkAddress)
-      await log.logs.del(logEntry.payload.value.id, { pin: true }) // remove from log
-      await self.log.removePins(logEntry.payload.value.content.address)
-      self.logs._disconnect(logEntry.payload.value.content.address) // disconnect pubsub
+      const rows = await self._db('links')
+        .where({ address: self.address, link: linkAddress })
+        .limit(1)
 
-      return { id: logEntry.id, linkAddress }
+      if (!rows.length) {
+        throw new Error(`${linkAddress} is not linked`)
+      }
+      const id = await sha256(linkAddress)
+      await log.logs.del(id)
+      self.logs._disconnect(linkAddress)
+      // TODO remove exclusive content, audio, artwork pins
+
+      return { id, linkAddress }
     },
 
     all: async () => {
-      const all = new Map()
-
-      const considerLog = async (log) => {
-        const isLinked = await self.logs.has(self.address, log.content.address)
-        if (!isLinked) {
-          const suggestedLog = all.get(log.id)
-          const count = suggestedLog ? suggestedLog.count++ : 0
-          all.set(log.id, extend(log, { count }))
+      const links = {}
+      const linkedRows = await self._db('links')
+      linkedRows.forEach(r => {
+        links[r.address] = true
+        links[r.link] = true
+      })
+      const addresses = Object.keys(links)
+      const logs = []
+      for (const address of addresses) {
+        try {
+          const log = await self.logs.get({
+            sourceAddress: self.address,
+            targetAddress: address
+          })
+          logs.push(log)
+        } catch (err) {
+          self.logger.error(err)
         }
       }
 
-      const logs = await self.logs.list(self.address)
-      for (const log of logs) {
-        all.set(log.id, log)
-        const linkedLogs = await self.logs.list(log.content.address)
-        for (const linkedLog of linkedLogs) {
-          await considerLog(linkedLog)
-        }
-      }
-
-      const logAddresses = Object.keys(self._logAddresses)
-      for (const logAddress of logAddresses) {
-        const c = await self.logs.get({ targetAddress: logAddress })
-        all.set(c.id, c)
-      }
-
-      return Array.from(all.values())
+      return logs
     },
 
-    list: async (logAddress) => {
-      const log = await self.log.get(logAddress, { replicate: false })
-      const entries = await log.logs.all()
-      const getLog = (e) => self.logs.get({
-        sourceAddress: logAddress,
-        targetAddress: e.payload.value.content.address
+    _list: async (address) => {
+      return self._db('links').where({ address })
+    },
+
+    list: async (address = self.address) => {
+      const linkedRows = await self.logs._list(address)
+      const getLog = (r) => self.logs.get({
+        sourceAddress: address,
+        targetAddress: r.link
       })
-      const promises = entries.map(e => getLog(e))
+      const promises = linkedRows.map(r => getLog(r))
       return Promise.all(promises)
     }
   }

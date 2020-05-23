@@ -70,8 +70,16 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     peekedStream.pipe(res)
 
     if (trackId) {
-      const isInPinnedLogs = await record.log.isInPinnedLogs({ id: trackId, type: 'track' })
-      if (isInPinnedLogs) {
+      // get linked log addresses
+      const linkedRows = await record.logs._list(record.address)
+      const linked = linkedRows.map(r => r.link)
+
+      // pin track audio if in linked logs or in main log
+      linked.push(record.address)
+      const rows = await record._db('tracks')
+        .whereIn('address', linked)
+        .andWhere('id', trackId)
+      if (rows.length) {
         await record._ipfs.pin.add(cid)
       }
     }

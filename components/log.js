@@ -1,19 +1,61 @@
 const extend = require('deep-extend')
 const { CID } = require('ipfs-http-client')
 
-const { throttle } = require('../utils')
+const { throttle, loadEntryContent } = require('../utils')
 const { RecordStore } = require('../store')
 const Errors = require('../errors')
 
 const logNameRe = /^[0-9a-zA-Z-]*$/
 const timeout = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+/* const sortFn = (a, b) => {
+ *   // TODO (medium) pass sortFn to orbitdb.open/create
+ *   // sort by clocks
+ *   // sort by entry payload timestamp
+ *   // take first entry
+ * }
+ *  */
 module.exports = function log (self) {
   return {
+    _beforePut: async (recordEntry, { id }) => {
+      if (recordEntry.content) {
+        const address = id
+        const cid = recordEntry.content.toString()
+        const { tags, id: trackId } = recordEntry
+        const entries = await self._db('entries').where({ cid, address: id })
+        const length = tags && tags.length
+        if (!length) {
+          if (!entries.length) {
+            return
+          } else if (entries.length) {
+            throw new Errors.DuplicateEntryError()
+          }
+        }
+
+        // check tags for equality
+        const tagRows = await self._db('tags').whereIn('tag', tags).where({ address, trackid: trackId })
+        if (tags.length === tagRows.length && tagRows.filter(t => !tags.includes(t.tag)).length) {
+          throw new Errors.DuplicateEntryError()
+        }
+      }
+    },
+
+    _afterWrite: async (logEntry) => {
+      const loadedEntry = await loadEntryContent(self._ipfs, logEntry)
+      return self.indexer.add(loadedEntry)
+    },
+
     _init: async (address = 'record') => {
-      const opts = extend({}, self._options.store, { create: true, replicate: true, pin: true })
+      const opts = extend(
+        {},
+        self._options.store,
+        { beforePut: self.log._beforePut, afterWrite: self.log._afterWrite },
+        { create: true, replicate: true }
+      )
       self._log = await self._orbitdb.open(address, opts)
+      await self._ipfs.pin.add(self._log.address.root) // pin manifest
       await self.log.pinAccessController(self._log.options.accessControllerAddress)
+      await self.log._registerEvents(self._log)
       await self._log.load()
     },
 
@@ -22,11 +64,11 @@ module.exports = function log (self) {
     },
 
     getLocalAddresses: async () => {
-      const logAddresses = Object.keys(self._logAddresses)
+      const addresses = Object.keys(self._addresses)
       const localAddresses = []
-      for (const logAddress of logAddresses) {
-        const isLocal = await self.log.isLocal(logAddress)
-        if (isLocal) localAddresses.push(logAddress)
+      for (const address of addresses) {
+        const isLocal = await self.log.isLocal(address)
+        if (isLocal) localAddresses.push(address)
       }
       return localAddresses
     },
@@ -34,9 +76,9 @@ module.exports = function log (self) {
     getLocalLogs: async () => {
       const localAddresses = await self.log.getLocalAddresses()
       const logs = []
-      for (const logAddress of localAddresses) {
+      for (const address of localAddresses) {
         try {
-          const log = await self.log.get(logAddress)
+          const log = await self.log.get(address)
           logs.push(log)
         } catch (err) {
           self.logger.error(err)
@@ -45,9 +87,9 @@ module.exports = function log (self) {
       return logs
     },
 
-    canAppend: async (logAddress) => {
+    canAppend: async (address) => {
       try {
-        const log = await self.log.get(logAddress, { replicate: false })
+        const log = await self.log.get(address, { replicate: false })
         return log.access.write.includes(self.identity)
       } catch (err) {
         self.logger.error(err)
@@ -59,23 +101,23 @@ module.exports = function log (self) {
       return self._log.address === log.address
     },
 
-    isOpen: (logAddress) => {
-      return !!self._orbitdb.stores[logAddress]
+    isOpen: (address) => {
+      return !!self._orbitdb.stores[address]
     },
 
-    isEmpty: async (logAddress) => {
-      const log = await self.log.get(logAddress, { replicate: false })
+    isEmpty: async (address) => {
+      const log = await self.log.get(address, { replicate: false })
       return !(log._oplog._hashIndex.size || log._oplog._length)
     },
 
-    isLocal: async (logAddress) => {
-      const address = self.parseAddress(logAddress)
-      const haveManifest = self.log.haveManifest(address.root)
+    isLocal: async (address) => {
+      const parsedAddress = self.parseAddress(address)
+      const haveManifest = self.log.haveManifest(parsedAddress.root)
       if (!haveManifest) {
         return false
       }
 
-      const { accessController } = await self.log.getManifest(address.root)
+      const { accessController } = await self.log.getManifest(parsedAddress.root)
       return self.log.haveAccessController(accessController)
     },
 
@@ -105,40 +147,39 @@ module.exports = function log (self) {
     },
 
     _registerEvents: async (log) => {
-      const logAddress = log.id
+      const address = log.id
 
       log.events.on('peer', (peerId) => {
         self.emit('redux', {
           type: 'LOG_PEER_JOINED',
-          payload: { logAddress, peerId }
+          payload: { address, peerId }
         })
       })
 
-      log.events.on('processed', () => {
+      const onProcessing = (processingCount) => {
+        const isProcessingIndex = self.indexer.isProcessing(address)
         self.emit('redux', {
           type: 'LOG_INDEX_UPDATED',
-          payload: { logAddress, isProcessingIndex: log._index.isProcessing }
+          payload: { address, isProcessingIndex, processingCount }
         })
-      })
+      }
 
-      log.events.on('processing', (processingCount) => {
-        self.emit('redux', {
-          type: 'LOG_INDEX_UPDATED',
-          payload: { logAddress, isProcessingIndex: log._index.isProcessing, processingCount }
-        })
-      })
+      const throttledProcessing = throttle(onProcessing, 2500)
+      log.events.on('processing', throttledProcessing)
 
       let updatedEntries = []
-      const onIndexUpdated = (processingCount) => {
+      const onIndexUpdated = async (processingCount) => {
+        const trackCount = await self.indexer.trackCount(address)
+        const logCount = await self.indexer.logCount(address)
         self.emit('redux', {
           type: 'LOG_INDEX_UPDATED',
           payload: {
-            logAddress,
+            address,
             data: updatedEntries,
-            isProcessingIndex: log._index.isProcessing,
+            isProcessingIndex: self.indexer.isProcessing(address),
             processingCount,
-            trackCount: log._index.trackCount,
-            logCount: log._index.logCount
+            trackCount,
+            logCount
           }
         })
         updatedEntries = []
@@ -150,25 +191,25 @@ module.exports = function log (self) {
         throttledIndexUpdated(processingCount)
       })
 
-      log.events.on('replicated', (logAddress) => {
+      log.events.on('replicated', (address) => {
         self.emit('redux', {
           type: 'LOG_REPLICATED',
-          payload: { logAddress, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+          payload: { address, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
       })
 
-      const onReplicateProgress = (logAddress, hash, entry) => {
+      const onReplicateProgress = (address, hash, entry) => {
         self.emit('redux', {
           type: 'LOG_REPLICATE_PROGRESS',
-          payload: { logAddress, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
+          payload: { address, hash, entry, replicationStatus: log.replicationStatus, replicationStats: log._replicator._stats, length: log._oplog._hashIndex.size }
         })
       }
 
       const throttledReplicateProgress = throttle(onReplicateProgress, 2000)
-      log.events.on('replicate.progress', (logAddress, hash, entry, progress, total) => {
-        self.logger(`new entry ${logAddress}/${entry.hash}`)
-        throttledReplicateProgress(logAddress, hash, entry)
-
+      log.events.on('replicate.progress', (address, hash, entry, progress, total) => {
+        self.logger(`new entry ${address}/${entry.hash}`)
+        throttledReplicateProgress(address, hash, entry)
+        self.indexer._process(entry)
         self._ipfs.pin.add(hash, { recursive: false })
         if (entry.payload.value.content) self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
       })
@@ -182,114 +223,90 @@ module.exports = function log (self) {
       await self._ipfs.pin.add(dagNode.value.params.address)
     },
 
-    isInPinnedLogs: async ({ id, type }) => {
-      const log = self.log.mine()
-      const inLog = !!log._index.getEntryHash(id, type)
-      if (inLog) {
-        return true
+    getLogEntryFromId: async (address, id) => {
+      const rows = await self._db('entries')
+        .where({ address, key: id })
+        .orderBy('clock', 'desc')
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+
+      if (!rows.length) {
+        return undefined
       }
 
-      const entries = await log.logs.all()
-      const linkedAddresses = entries.map(e => e.payload.value.content.address)
-      for (const linkAddress of linkedAddresses) {
-        const linkedLog = await self.log.get(linkAddress)
-        const hasContent = !!linkedLog._index.getEntryHash(id, type)
-
-        if (hasContent) {
-          return true
-        }
-      }
-
-      return false
+      const hash = rows[0].hash
+      const log = await self.log.get(address)
+      return log.getEntryWithContent(hash)
     },
 
-    removePin: async ({ id, hash, type }) => {
-      if (type !== 'about') {
-        const isInPinnedLogs = await self.log.isInPinnedLogs({ id, type })
-        if (isInPinnedLogs) {
-          return // exit without unpinning
-        }
+    drop: async function (address) {
+      if (!address) {
+        throw new Error('missing address')
       }
 
-      self.logger(`Removing pin for ${hash}`)
-      await self._ipfs.pin.rm(hash)
-    },
-
-    removePins: async function (logAddress) {
-      self.logger(`Removing pins for ${logAddress}`)
-
-      const log = await self.log.get(logAddress)
-      for (const hash of log._oplog._hashIndex.keys()) {
-        const entry = await log._oplog.get(hash)
-        const { type, contentCID } = entry.payload.value
-        const { key } = entry.payload
-        if (contentCID) await self.log.removePin({ id: key, hash: contentCID, type }) // TODO: add tests
-        await self._ipfs.pin.rm(entry.hash, { recursive: false })
-      }
-    },
-
-    drop: async function (logAddress) {
-      if (!logAddress) {
-        throw new Error('missing logAddress')
-      }
-
-      if (self.isMe(logAddress)) {
+      if (self.isMe(address)) {
         throw new Error('Cannot drop default log')
       }
 
-      self.logger(`dropping log ${logAddress}`)
-      const log = await self.log.get(logAddress)
+      await self.logs.unlink(address)
+      self.logs._disconnect(address)
+
+      self.logger(`dropping log ${address}`)
+      const log = await self.log.get(address)
       if (log._type === RecordStore.type) {
-        await self.log.removePins(logAddress)
-        log._cache.del(log._index._cacheIndexKey)
-        log._cache.del(log._index._cacheSearchIndexKey)
-        delete self._logAddresses[logAddress]
+        for (const hash of log._oplog._hashIndex.keys()) {
+          const entry = await log._oplog.get(hash)
+          await self._ipfs.pin.rm(entry.hash, { recursive: false }) // remove entry pins
+        }
+        await self.indexer.drop(address)
+        delete self._addresses[address]
       }
 
       try {
-        await self._ipfs.pin.rm(log.address.root)
-
+        await self._ipfs.pin.rm(log.address.root) // remove manifest pin
         const acAddress = log.options.accessControllerAddress.split('/')[2]
-        await self._ipfs.pin.rm(acAddress)
+        await self._ipfs.pin.rm(acAddress) // remove ac pin
         const dagNode = await self._ipfs.dag.get(acAddress)
-        await self._ipfs.pin.rm(dagNode.value.params.address)
+        await self._ipfs.pin.rm(dagNode.value.params.address) // remove ipfs ac pin
       } catch (error) {
         self.logger(error)
       }
 
-      await log.drop(logAddress)
+      // TODO (v0.0.2) remove from cache
 
-      return { logAddress }
+      await log.drop(address)
+
+      return { address }
     },
 
-    get: async function (logAddress = self.address, options = {}) {
-      if (self.isMe(logAddress)) {
+    get: async function (address = self.address, options = {}) {
+      if (self.isMe(address)) {
         return self._log
       }
 
-      if (self.listens.isMe(logAddress)) {
+      if (self.listens.isMe(address)) {
         return self._listensLog
       }
 
-      if (!self.isValidAddress(logAddress)) {
+      if (!self.isValidAddress(address)) {
         if (!options.create) {
-          const addr = await self._orbitdb.determineAddress(logAddress, RecordStore.type)
-          logAddress = addr.toString()
+          const addr = await self._orbitdb.determineAddress(address, RecordStore.type)
+          address = addr.toString()
           options.localOnly = true
-        } else if (!logNameRe.test(logAddress)) {
-          throw new Error(`${logAddress} is not a valid log name`)
+        } else if (!logNameRe.test(address)) {
+          throw new Error(`${address} is not a valid log name`)
         }
       }
 
-      if (this.isOpen(logAddress)) {
-        return self._orbitdb.stores[logAddress]
+      if (this.isOpen(address)) {
+        return self._orbitdb.stores[address]
       }
 
       const opts = extend({ replicate: false }, self._options.store, options)
-      self.logger(`Loading log: ${logAddress}`, opts)
+      self.logger(`Loading log: ${address}`, opts)
       const log = await Promise.race([
         timeout(5000),
-        self._orbitdb.open(logAddress, opts)
+        self._orbitdb.open(address, opts)
       ])
 
       if (!log) {
@@ -297,7 +314,7 @@ module.exports = function log (self) {
       }
 
       if (log._type === RecordStore.type) {
-        const data = await self.logs.get({ targetAddress: logAddress })
+        const data = await self.logs.get({ targetAddress: address })
         self.emit('redux', {
           type: 'LOG_LOADING',
           payload: {
@@ -306,14 +323,16 @@ module.exports = function log (self) {
         })
       }
 
-      await self._ipfs.pin.add(log.address.root)
+      await self._ipfs.pin.add(log.address.root) // pin manifest
       await self.log.pinAccessController(log.options.accessControllerAddress)
       await this._registerEvents(log)
       await log.load()
 
+      // send to indexer
+
       if (log._type === RecordStore.type) {
-        self._logAddresses[log.address.toString()] = log.options.accessControllerAddress
-        const data = await self.logs.get({ targetAddress: logAddress })
+        self._addresses[log.address.toString()] = log.options.accessControllerAddress
+        const data = await self.logs.get({ targetAddress: address })
         self.emit('redux', {
           type: 'LOG_LOADED',
           payload: {

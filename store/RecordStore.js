@@ -3,8 +3,9 @@ const Store = require('orbit-db-store')
 const RecordIndex = require('./RecordIndex')
 const tracks = require('./type/tracks')
 const logs = require('./type/logs')
-const tags = require('./type/tags')
 const about = require('./type/about')
+
+const { loadEntryContent } = require('../utils')
 
 class RecordStore extends Store {
   constructor (ipfs, id, dbname, options = {}) {
@@ -15,68 +16,75 @@ class RecordStore extends Store {
 
     this.tracks = tracks(this)
     this.logs = logs(this)
-    this.tags = tags(this)
     this.about = about(this)
-
-    this._replicator.on('load.progress', (id, hash, entry) => {
-      this._index.process(entry)
-    })
+    this.beforePut = options.beforePut
+    this.afterWrite = options.afterWrite
   }
 
-  get (id, type) {
-    if (type !== 'track' && type !== 'log') {
-      throw new Error(`Invalid type: ${type}`)
+  async getEntryWithContent (hash) {
+    if (!hash) {
+      return undefined
     }
 
-    const hash = this._index.getEntryHash(id, type)
+    const entry = await this.get(hash)
+    if (!entry) {
+      return undefined
+    }
+
+    return loadEntryContent(this._ipfs, entry)
+  }
+
+  async get (hash) {
     if (!hash) {
-      return null
+      return undefined
     }
 
     return this._oplog.get(hash) // async
   }
 
-  async put (doc, { pin }) {
+  async put (doc) {
     if (!doc[this.options.indexBy]) {
       throw new Error(`The provided document doesn't contain field '${this.options.indexBy}'`)
     }
 
-    const hash = await this._addOperation({
+    if (this.beforePut) {
+      await this.beforePut(doc, { id: this.id })
+    }
+
+    const entry = await this._addOperation({
       op: 'PUT',
       key: doc[this.options.indexBy],
       value: doc
     })
 
-    if (pin) await this._ipfs.pin.add(hash, { recursive: false })
+    if (this.afterWrite) {
+      await this.afterWrite(entry)
+    }
 
-    return hash
+    // TODO (low) causes ~20% slowdown
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
+
+    return entry
   }
 
-  async del (id, type, { pin }) {
+  async del (id, type) {
     if (type !== 'track' && type !== 'log') {
       throw new Error(`Invalid type: ${type}`)
     }
 
-    if (!this._index.has(id, type)) {
-      throw new Error(`No entry with id '${id}' in the database`)
-    }
-
-    const hash = await this._addOperation({
+    const entry = await this._addOperation({
       op: 'DEL',
       key: id,
       value: { type, timestamp: Date.now() }
     })
 
-    if (pin) await this._ipfs.pin.add(hash, { recursive: false })
+    if (this.afterWrite) {
+      await this.afterWrite(entry)
+    }
 
-    return hash
-  }
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
 
-  async close () {
-    if (this._index.save) await this._index.save() // TODO Listens store missing save
-    await super.close()
-
-    return Promise.resolve()
+    return entry.hash
   }
 
   static get type () {
