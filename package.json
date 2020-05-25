@@ -7,6 +7,8 @@
     "record": "./bin/cli.js"
   },
   "scripts": {
+    "benchmark": "node --expose-gc benchmark/index.js -r --grep baseline",
+    "benchmark:stress": "node --expose-gc benchmark/index.js -r --grep stress",
     "lint": "$(npm bin)/standard '**/*.js'",
     "lint:fix": "$(npm bin)/standard --fix '**/*.js'",
     "test": "TEST=all mocha",
@@ -56,6 +58,6 @@
     "mocha": "7.1.2",
     "rimraf": "^3.0.2",
     "standard": "^14.3.3",
-    "yargs": "^12.0.1"
+    "yargs": "^15.3.1"
   }
 }
