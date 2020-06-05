@@ -6,6 +6,7 @@ router.get(':address(*)', async (req, res) => {
     const { address } = req.params
     const { record } = req.app.locals
 
+    await record.logs.connect(address)
     const data = await record.logs.get({
       targetAddress: address
     })
