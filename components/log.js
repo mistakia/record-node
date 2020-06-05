@@ -328,7 +328,7 @@ module.exports = function log (self) {
       await this._registerEvents(log)
       await log.load()
 
-      // send to indexer
+      // TODO (high) send to indexer
 
       if (log._type === RecordStore.type) {
         self._addresses[log.address.toString()] = log.options.accessControllerAddress

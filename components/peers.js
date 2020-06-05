@@ -125,7 +125,11 @@ module.exports = function peers (self) {
 
         const peerCount = Object.keys(self.peers._index).length
         for (const about of data.logs) {
-          await self.peers._add(about, message.from)
+          try {
+            await self.peers._add(about, message.from)
+          } catch (e) {
+            self.logger.error(e)
+          }
         }
 
         self.logger(`Record peer added, current count: ${peerCount}`)

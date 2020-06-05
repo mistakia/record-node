@@ -252,6 +252,7 @@ module.exports = function logs (self) {
         links[r.address] = true
         links[r.link] = true
       })
+      Object.keys(self._addresses).forEach(a => links[a] = true)
       const addresses = Object.keys(links)
       const logs = []
       for (const address of addresses) {
