@@ -403,10 +403,15 @@ module.exports = function tracks (self) {
         } else {
           // TODO (high) validate sort
           // TODO (high) validate order
-          sql = sql.orderBy(sort, order)
+          if (sort === 'title') {
+            sql = sql.leftJoin('resolvers', 'tracks.id', 'resolvers.trackid')
+              .orderByRaw(`COALESCE(title, fulltitle) COLLATE NOCASE ${order}`)
+          } else {
+            sql = sql.orderByRaw(`${sort} COLLATE NOCASE ${order}`)
+          }
         }
 
-        const rows = await sql
+        const rows = await sql.select('tracks.id')
         const trackIds = rows.map(t => t.id)
         entryRows = await self._db('entries')
           .whereIn('key', trackIds)
