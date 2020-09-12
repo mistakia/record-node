@@ -41,7 +41,7 @@
     "morgan": "^1.10.0",
     "morgan-debug": "^2.0.0",
     "music-metadata": "6.3.7",
-    "node-fetch": "^2.6.0",
+    "node-fetch": "^2.6.1",
     "orbit-db": "github:mistakia/orbit-db#proto/record",
     "orbit-db-cache": "^0.3.0",
     "orbit-db-identity-provider": "^0.3.0",
