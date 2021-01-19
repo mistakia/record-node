@@ -20,7 +20,7 @@ const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, 
     test: !restartable,
     disposable: !restartable,
     ipfsHttpModule: require('ipfs-http-client'),
-    ipfsBin: require('go-ipfs-dep').path(),
+    ipfsBin: require('go-ipfs').path(),
     args: [
       '--enable-pubsub-experiment'
     ],
@@ -52,7 +52,6 @@ const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, 
   }).then(async (ipfsd) => {
     if (restartable) {
       await ipfsd.init({
-        bits: 2048,
         emptyRepo: true
       })
 

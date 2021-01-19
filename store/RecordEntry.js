@@ -16,7 +16,7 @@ class Entry {
     }
 
     const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
-    this._entry.content = cid
+    this._entry.content = cid.toBaseEncodedString('base58btc')
 
     await ipfs.pin.add(cid.toString(), { recursive: false })
 

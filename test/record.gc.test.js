@@ -114,7 +114,7 @@ describe('record.gc', function () {
       const removedDagContent = await record._ipfs.dag.get(entry.payload.value.contentCID)
       let removedDagAudio
       try {
-        removedDagAudio = await record._ipfs.dag.get(entry.payload.value.content.hash, undefined, { timeout: 2000 })
+        removedDagAudio = await record._ipfs.dag.get(entry.payload.value.content.hash, { timeout: 2000 })
       } catch (e) {
 
       }
@@ -124,7 +124,7 @@ describe('record.gc', function () {
       // TODO (high) check audio hash is not in pinset
       // TODO (high) check artwork hash is not in pinset
 
-      assert.ok(removedEntry)
+      assert.ok(!removedEntry)
       assert.ok(removedDagEntry)
       assert.ok(removedDagContent)
       assert.ok(!removedDagAudio)
