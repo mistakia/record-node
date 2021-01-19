@@ -20,7 +20,7 @@ module.exports = function log (self) {
     _beforePut: async (recordEntry, { id }) => {
       if (recordEntry.content) {
         const address = id
-        const cid = recordEntry.content.toString()
+        const cid = recordEntry.content
         const { tags, id: trackId } = recordEntry
         const entries = await self._db('entries').where({ cid, address: id })
         const length = tags && tags.length
@@ -28,14 +28,12 @@ module.exports = function log (self) {
           if (!entries.length) {
             return
           } else if (entries.length) {
-            throw new Errors.DuplicateEntryError()
+            // check tags for equality
+            const tagRows = await self._db('tags').whereIn('tag', tags).where({ address, trackid: trackId })
+            if (tags.length === tagRows.length && tagRows.filter(t => !tags.includes(t.tag)).length) {
+              throw new Errors.DuplicateEntryError()
+            }
           }
-        }
-
-        // check tags for equality
-        const tagRows = await self._db('tags').whereIn('tag', tags).where({ address, trackid: trackId })
-        if (tags.length === tagRows.length && tagRows.filter(t => !tags.includes(t.tag)).length) {
-          throw new Errors.DuplicateEntryError()
         }
       }
     },

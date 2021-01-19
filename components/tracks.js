@@ -197,7 +197,7 @@ module.exports = function tracks (self) {
       self.logger('Cleanded file tags')
 
       let audioFile
-      for await (const file of self._ipfs.add(globSource(processPath))) {
+      for await (const file of self._ipfs.addAll(globSource(processPath))) {
         audioFile = file
       }
       await fsPromises.unlink(processPath)
@@ -205,7 +205,7 @@ module.exports = function tracks (self) {
 
       const results = []
       if (pictures) {
-        for await (const file of self._ipfs.add(pictures.map(p => p.data))) {
+        for await (const file of self._ipfs.addAll(pictures.map(p => p.data))) {
           results.push(file)
         }
       }

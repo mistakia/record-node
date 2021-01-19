@@ -20,18 +20,8 @@ const loadEntryContent = async (ipfs, e) => {
     return entry
   }
 
-  // missing needed cid info
-  if (
-    !entry.payload.value.content.codec ||
-      !entry.payload.value.content.version ||
-      !entry.payload.value.content.hash
-  ) {
-    throw new Error('missing cid information')
-  }
-
-  const { codec, version, hash } = entry.payload.value.content
   const { type } = entry.payload.value
-  const cid = new CID(version, codec, Buffer.from(hash.data))
+  const cid = new CID(entry.payload.value.content)
   const content = await loadContentFromCID(ipfs, cid, type)
 
   entry.payload.value = Object.assign(entry.payload.value, content)

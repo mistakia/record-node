@@ -250,7 +250,7 @@ module.exports = function indexer (self) {
       for (const row of rows) {
         const { cid } = row
 
-        const dagNode = await self._ipfs.dag.get(cid, undefined, { timeout: 3000 })
+        const dagNode = await self._ipfs.dag.get(cid, { timeout: 3000 })
         if (!dagNode.value) {
           continue
         }
@@ -334,9 +334,15 @@ module.exports = function indexer (self) {
       const { hash } = entry
       const cid = entry.payload.value.contentCID
 
-      await self._db('entries').insert({
-        address, hash, type, op, clock, key, cid, timestamp
-      })
+      if (op !== 'DEL') {
+        await self._db('entries').insert({
+          address, hash, type, op, clock, key, cid, timestamp
+        })
+      } else {
+        await self._db('entries').where({
+          address, key, type
+        }).del()
+      }
 
       const log = await self.log.get(address)
       log.events.emit('indexUpdated', self.indexer.indexQueueSize(address), entry)

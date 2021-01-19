@@ -69,7 +69,7 @@ module.exports = function peers (self) {
         const about = await self.about.get(address)
         data.logs.push(about)
       }
-      const message = Buffer.from(JSON.stringify(data))
+      const message = JSON.stringify(data)
       // TODO (low) send to specific peer when available
       self._ipfs.pubsub.publish(self.peers._topic, message)
     },
@@ -118,7 +118,8 @@ module.exports = function peers (self) {
     },
     _onMessage: async (message) => {
       try {
-        const data = JSON.parse(message.data)
+        const str = Buffer.from(message.data).toString()
+        const data = JSON.parse(str)
         self.peers._index[message.from] = data
 
         await self.peers._add(data.about, message.from)

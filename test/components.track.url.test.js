@@ -132,7 +132,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track[0].contentCID, 'zBwWX8AnNVZ1oYarXR8WrsccY3rgsd4M9yH3eo71hSvCkCyw5CRnmkSafh3gqd7ejwA2T6vBLBo4jYQR7XtCP7QmKKE1X')
+        assert.strictEqual(track[0].contentCID, 'zBwWX5dPcTAKjurHvbUA62qEp2RG23WVzXFF1qpbH2RcYwWCEihAayJfnqqWcVSS4jJAJRJUXa3cL6iqEdfTG3bpwH7hk')
       })
 
       it('audio file hash', function () {
