@@ -24,15 +24,11 @@ module.exports = function log (self) {
         const { tags, id: trackId } = recordEntry
         const entries = await self._db('entries').where({ cid, address: id })
         const length = tags && tags.length
-        if (!length) {
-          if (!entries.length) {
-            return
-          } else if (entries.length) {
-            // check tags for equality
-            const tagRows = await self._db('tags').whereIn('tag', tags).where({ address, trackid: trackId })
-            if (tags.length === tagRows.length && tagRows.filter(t => !tags.includes(t.tag)).length) {
-              throw new Errors.DuplicateEntryError()
-            }
+        if (!length && entries.length) {
+          // check tags for equality
+          const tagRows = await self._db('tags').whereIn('tag', tags).where({ address, trackid: trackId })
+          if (tags.length === tagRows.length && tagRows.filter(t => !tags.includes(t.tag)).length) {
+            throw new Errors.DuplicateEntryError()
           }
         }
       }

@@ -6,34 +6,48 @@
 # than the prescribed lifecycle of 1.0. In general, we recommend using this generated
 # configuration as a reference rather than using it in production, though in most
 # cases it should duplicate the execution of your original 1.0 config.
-version: 2
+version: 2.1
 jobs:
   build:
     working_directory: ~/record/node
     parallelism: 1
     docker:
-    - image: circleci/node:10.11.0
+    - image: cimg/base:stable-18.04
     steps:
       - checkout # special step to check out source code to working directory
       - run:
-          name: update-npm
-          command: 'sudo npm install -g npm@latest'
+          name: install-node
+          command: |
+            curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+      - run:
+          name: install-ffmpeg
+          command: |
+            sudo apt-get install software-properties-common
+            sudo add-apt-repository -y ppa:savoury1/ffmpeg4
+            sudo apt-get update
+            sudo apt-get install libchromaprint-tools ffmpeg
+      - run:
+          name: install-yarn
+          command: |
+            curl -o- -L https://yarnpkg.com/install.sh | bash
+            echo 'export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"' >> $BASH_ENV
       - restore_cache: # special step to restore the dependency cache
           # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
-          key: dependency-cache-{{ checksum "package.json" }}
+          key: yarn-packages-{{ checksum "yarn.lock" }}
       - run:
-          name: install-npm
-          command: npm install
+          name: install-node-modules
+          command: yarn install --immutable
       - save_cache: # special step to save the dependency cache
-          key: dependency-cache-{{ checksum "package.json" }}
+          key: yarn-packages-{{ checksum "yarn.lock" }}
           paths:
-            - ./node_modules
+            - ~/.cache/yarn
       - run: # run lint
           name: lint
-          command: npm run lint
+          command: yarn run lint
       - run: # run tests
           name: test
-          command: npm run test
+          command: yarn run test
       - store_artifacts: # special step to save test results as as artifact
           # Upload test summary for display in Artifacts: https://circleci.com/docs/2.0/artifacts/
           path: test-results.xml
