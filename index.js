@@ -2,7 +2,6 @@ const EventEmitter = require('events')
 const path = require('path')
 const fs = require('fs')
 
-const { sha256 } = require('crypto-hash')
 const crypto = require('libp2p-crypto')
 const extend = require('deep-extend')
 const debug = require('debug')
@@ -20,6 +19,7 @@ const Errors = require('./errors')
 const manifestRe = /\/orbitdb\/[a-zA-Z0-9]+\/[^/]+\/_manifest/
 
 const components = require('./components')
+const { sha256 } = require('./utils')
 const {
   RecordStore,
   ListensStore
@@ -166,7 +166,7 @@ class RecordNode extends EventEmitter {
       }
     }
 
-    this._id = await sha256(key.publicKey)
+    this._id = sha256(key.publicKey)
     await this._keyStorage.put(this._id, JSON.stringify(key))
 
     this._options.orbitdb.identity = await Identities.createIdentity({

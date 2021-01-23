@@ -1,4 +1,4 @@
-const { sha256 } = require('crypto-hash')
+const { sha256 } = require('../utils')
 
 module.exports = function about (self) {
   return {
@@ -28,7 +28,7 @@ module.exports = function about (self) {
       const entryValue = entry ? entry.payload.value : { content: {} }
 
       if (!entryValue.id) {
-        entryValue.id = await sha256(log.address.toString())
+        entryValue.id = sha256(log.address.toString())
       }
 
       if (!entryValue.content.address) {

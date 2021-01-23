@@ -1,4 +1,4 @@
-const { sha256 } = require('crypto-hash')
+const { sha256 } = require('../utils')
 const { CID } = require('ipfs-http-client')
 
 class Entry {
@@ -31,7 +31,7 @@ class TrackEntry extends Entry {
   }
 
   async create (ipfs, content, { tags = [] } = {}) {
-    const id = await sha256(content.tags.acoustid_fingerprint)
+    const id = sha256(content.tags.acoustid_fingerprint)
     this._entry = {
       tags
     }
@@ -58,7 +58,7 @@ class LogEntry extends Entry {
   }
 
   async create (ipfs, content) {
-    const id = await sha256(content.address)
+    const id = sha256(content.address)
     return super.create(ipfs, id, content)
   }
 }
@@ -71,7 +71,7 @@ class AboutEntry extends Entry {
   }
 
   async create (ipfs, content) {
-    const id = await sha256(content.address)
+    const id = sha256(content.address)
     return super.create(ipfs, id, content)
   }
 }
