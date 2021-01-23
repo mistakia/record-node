@@ -1,12 +1,11 @@
-const { sha256 } = require('crypto-hash')
 const extend = require('deep-extend')
 
-const { loadEntryContent } = require('../utils')
+const { loadEntryContent, sha256 } = require('../utils')
 
 module.exports = function logs (self) {
   return {
     _getEntryHash: async ({ address, linkAddress }) => {
-      const key = await sha256(linkAddress)
+      const key = sha256(linkAddress)
       const rows = await self._db('entries')
         .select('hash')
         .where({ type: 'log', address, op: 'PUT', key })
@@ -237,7 +236,7 @@ module.exports = function logs (self) {
       if (!rows.length) {
         throw new Error(`${linkAddress} is not linked`)
       }
-      const id = await sha256(linkAddress)
+      const id = sha256(linkAddress)
       await log.logs.del(id)
       self.logs._disconnect(linkAddress)
       // TODO remove exclusive content, audio, artwork pins

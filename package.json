@@ -20,7 +20,6 @@
     "bitboot": "^0.1.0",
     "body-parser": "^1.18.3",
     "buffer-peek-stream": "^1.0.1",
-    "crypto-hash": "1.3.0",
     "debug": "4.3.1",
     "deep-extend": "^0.6.0",
     "express": "^4.16.3",

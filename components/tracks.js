@@ -9,8 +9,9 @@ const fetch = require('node-fetch')
 const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
-const { sha256 } = require('crypto-hash')
+
 const { globSource } = require('ipfs-http-client')
+const { sha256 } = require('../utils')
 
 const orderByTrackIds = (array, trackIds) => {
   array.sort((a, b) => {
@@ -175,7 +176,7 @@ module.exports = function tracks (self) {
       })
       self.logger('Generated AcoustID Fingerprint')
 
-      const id = await sha256(acoustid.fingerprint)
+      const id = sha256(acoustid.fingerprint)
 
       // check if already in this log, give that entry priority for now
       // TODO (low) use existing entry if possible, prioritze own log over others
