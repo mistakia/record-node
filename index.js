@@ -28,7 +28,7 @@ const defaultConfig = require('./config')
 
 const createKey = async () => {
   const keys = await crypto.keys.generateKeyPair('secp256k1', 256)
-  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
+  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
@@ -38,7 +38,7 @@ const createKey = async () => {
 
 const getKey = async (id, storage) => {
   const keys = await storage.getKey(id)
-  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
+  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
@@ -48,7 +48,7 @@ const getKey = async (id, storage) => {
 
 const createKeyFromPk = async (pk) => {
   const keys = await crypto.keys.unmarshalPrivateKey(Buffer.from(pk, 'hex'))
-  const decompressedKey = secp256k1.publicKeyConvert(keys.public.marshal(), false)
+  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
