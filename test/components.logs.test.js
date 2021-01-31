@@ -64,8 +64,12 @@ describe('record.components.logs', function () {
       assert.strictEqual(record1._log._oplog.length, 3)
     })
 
-    it('duplicate + rename + list', function () {
-
+    it('rename + list', async function () {
+      const newAlias = 'test node2 rename'
+      await record1.logs.link({ ...link, alias: newAlias })
+      const linkedLogs = await record1.logs.list()
+      assert.strictEqual(linkedLogs.length, 1)
+      assert.strictEqual(record1._log._oplog.length, 4)
     })
 
     describe('errors', function () {
