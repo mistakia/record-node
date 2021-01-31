@@ -1,5 +1,4 @@
 const path = require('path')
-const util = require('util')
 
 const Errors = require('../errors')
 const knex = require('knex')
@@ -114,20 +113,10 @@ module.exports = function indexer (self) {
       const { name, location, bio, avatar } = entry.payload.value.content
       const address = entry.payload.value.content.address || entry.id
       const id = entry.payload.key
-      const insert = self._db('logs')
+      return self._db('logs')
         .insert({ name, location, bio, avatar, address, id })
-
-      const update = self._db('logs')
-        .update({ name, location, bio, avatar })
-        .whereRaw('logs.id = ?', [id])
-
-      const query = util.format(
-        '%s ON CONFLICT (id) DO UPDATE SET %s',
-        insert.toString(),
-        update.toString().replace(/^update\s.*\sset\s/i, '')
-      )
-
-      await self._db.raw(query)
+        .onConflict('id')
+        .merge()
     },
 
     _addToTracks: async (entry) => {
@@ -141,20 +130,10 @@ module.exports = function indexer (self) {
         title, artist, artists, albumartist, album, remixer, bpm, duration, bitrate
       }
 
-      const insert = self._db('tracks')
+      return self._db('tracks')
         .insert({ ...data, id, address })
-
-      const update = self._db('tracks')
-        .update({ ...data })
-        .whereRaw('tracks.id = ? and tracks.address = ?', [id, address])
-
-      const query = util.format(
-        '%s ON CONFLICT (address, id) DO UPDATE SET %s',
-        insert.toString(),
-        update.toString().replace(/^update\s.*\sset\s/i, '')
-      )
-
-      await self._db.raw(query)
+        .onConflict(['address', 'id'])
+        .merge()
     },
 
     _addToTags: async (entry) => {
@@ -207,7 +186,7 @@ module.exports = function indexer (self) {
       const address = entry.id
       const id = entry.payload.key
       const { alias, address: link } = entry.payload.value.content
-      await self._db('links').insert({ address, alias, link, id })
+      await self._db('links').insert({ address, alias, link, id }).onConflict(['address', 'link', 'id']).merge()
     },
 
     _addListen: async (entry) => {
