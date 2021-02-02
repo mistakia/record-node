@@ -5,7 +5,7 @@ const rimraf = require('rimraf')
 const Record = require('../../index')
 const debug = require('debug')
 
-debug.enable('*')
+// debug.enable('*')
 
 const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, reject) => {
   const directory = path.join(__dirname, `../tmp/nodes/${id}`)

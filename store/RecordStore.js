@@ -82,6 +82,7 @@ class RecordStore extends Store {
       await this.afterWrite(entry)
     }
 
+    // TODO (low) causes ~20% slowdown
     await this._ipfs.pin.add(entry.hash, { recursive: false })
 
     return entry.hash

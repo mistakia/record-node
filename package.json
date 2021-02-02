@@ -53,12 +53,13 @@
     "sqlite3": "5.0.1"
   },
   "devDependencies": {
+    "expose-gc": "^1.0.0",
     "go-ipfs": "0.7.0",
     "ipfsd-ctl": "7.2.0",
     "logplease": "^1.2.14",
     "mocha": "8.2.1",
     "rimraf": "^3.0.2",
     "standard": "16.0.3",
-    "yargs": "16.2.0"
+    "yargs": "^16.2.0"
   }
 }

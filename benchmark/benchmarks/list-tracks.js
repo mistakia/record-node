@@ -13,7 +13,7 @@ const base = {
     return { record }
   },
   cycle: async function ({ record }, { count }) {
-    await record.tracks.list()
+    await record.tracks.list({ addresses: [record.address] })
   },
   teardown: async function ({ record }) {
     await record.stop()
@@ -32,7 +32,12 @@ const stress = {
   }
 }
 
-module.exports = [
-  { name: 'list-tracks-baseline', ...base, ...baseline },
-  { name: 'list-tracks-stress', ...base, ...stress }
-]
+const counts = [100, 500, 1000]
+const benchmarks = []
+for (const count of counts) {
+  const c = { count }
+  benchmarks.push({ name: `list-tracks-${count}-baseline`, ...base, ...c, ...baseline })
+  benchmarks.push({ name: `list-tracks-${count}-stress`, ...base, ...c, ...stress })
+}
+
+module.exports = benchmarks
