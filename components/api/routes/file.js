@@ -80,7 +80,8 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
         .whereIn('address', linked)
         .andWhere('id', trackId)
       if (rows.length) {
-        await record._ipfs.pin.add(cid)
+        // TODO - enable pinning
+        // await record._ipfs.pin.add(cid)
       }
     }
 

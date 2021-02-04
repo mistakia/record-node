@@ -236,14 +236,16 @@ module.exports = function indexer (self) {
         const { hash, artwork } = dagNode.value
 
         try {
-          await self._ipfs.pin.rm(hash) // remove audio
+          // TODO - enable pinning
+          // await self._ipfs.pin.rm(hash) // remove audio
         } catch (err) {
           self.logger.error(err)
         }
 
         for (const cid of artwork) {
           try {
-            await self._ipfs.pin.rm(cid) // remove artwork
+            // TODO - enable pinning
+            // await self._ipfs.pin.rm(cid) // remove artwork
           } catch (err) {
             self.logger.error(err)
           }
