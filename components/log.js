@@ -47,8 +47,9 @@ module.exports = function log (self) {
         { create: true, replicate: true }
       )
       self._log = await self._orbitdb.open(address, opts)
-      await self._ipfs.pin.add(self._log.address.root) // pin manifest
-      await self.log.pinAccessController(self._log.options.accessControllerAddress)
+      // TODO - enable pinning
+      // await self._ipfs.pin.add(self._log.address.root) // pin manifest
+      // await self.log.pinAccessController(self._log.options.accessControllerAddress)
       await self.log._registerEvents(self._log)
       await self._log.load()
     },
@@ -204,17 +205,21 @@ module.exports = function log (self) {
         self.logger(`new entry ${address}/${entry.hash}`)
         throttledReplicateProgress(address, hash, entry)
         self.indexer._process(entry)
-        self._ipfs.pin.add(hash, { recursive: false })
-        if (entry.payload.value.content) self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
+        // TODO - enable pinning
+        // self._ipfs.pin.add(hash, { recursive: false })
+        // TODO - enable pinning
+        // if (entry.payload.value.content) self._ipfs.pin.add(entry.payload.value.content, { recursive: false })
       })
     },
 
     pinAccessController: async (accessControllerAddress) => {
       self.logger(`pinning access controller address: ${accessControllerAddress}`)
       const acAddress = accessControllerAddress.split('/')[2]
-      await self._ipfs.pin.add(acAddress)
+      // TODO - enable pinning
+      // await self._ipfs.pin.add(acAddress)
       const dagNode = await self._ipfs.dag.get(acAddress)
-      await self._ipfs.pin.add(dagNode.value.params.address)
+      // TODO - enable pinning
+      // await self._ipfs.pin.add(dagNode.value.params.address)
     },
 
     getLogEntryFromId: async (address, id) => {
@@ -250,18 +255,22 @@ module.exports = function log (self) {
       if (log._type === RecordStore.type) {
         for (const hash of log._oplog._hashIndex.keys()) {
           const entry = await log._oplog.get(hash)
-          await self._ipfs.pin.rm(entry.hash, { recursive: false }) // remove entry pins
+          // TODO - enable pinning
+          // await self._ipfs.pin.rm(entry.hash, { recursive: false }) // remove entry pins
         }
         await self.indexer.drop(address)
         delete self._addresses[address]
       }
 
       try {
-        await self._ipfs.pin.rm(log.address.root) // remove manifest pin
+        // TODO - enable pinning
+        // await self._ipfs.pin.rm(log.address.root) // remove manifest pin
         const acAddress = log.options.accessControllerAddress.split('/')[2]
-        await self._ipfs.pin.rm(acAddress) // remove ac pin
+        // TODO - enable pinning
+        // await self._ipfs.pin.rm(acAddress) // remove ac pin
         const dagNode = await self._ipfs.dag.get(acAddress)
-        await self._ipfs.pin.rm(dagNode.value.params.address) // remove ipfs ac pin
+        // TODO - enable pinning
+        // await self._ipfs.pin.rm(dagNode.value.params.address) // remove ipfs ac pin
       } catch (error) {
         self.logger(error)
       }
@@ -317,8 +326,9 @@ module.exports = function log (self) {
         })
       }
 
-      await self._ipfs.pin.add(log.address.root) // pin manifest
-      await self.log.pinAccessController(log.options.accessControllerAddress)
+      // TODO - enable pinning
+      // await self._ipfs.pin.add(log.address.root) // pin manifest
+      // await self.log.pinAccessController(log.options.accessControllerAddress)
       await this._registerEvents(log)
       await log.load()
 

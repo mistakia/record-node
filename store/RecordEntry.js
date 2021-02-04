@@ -19,7 +19,8 @@ class Entry {
     this._entry.content = cid.toBaseEncodedString('base58btc')
 
     // TODO (low): causes 30% slowdown
-    await ipfs.pin.add(cid.toString(), { recursive: false })
+    // TODO - enable pinning
+    // await ipfs.pin.add(cid.toString(), { recursive: false })
 
     return this._entry
   }
