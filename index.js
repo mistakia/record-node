@@ -124,9 +124,9 @@ class RecordNode extends EventEmitter {
     return this.address === address
   }
 
-  async init (ipfsAPI) {
+  async init (ipfsd) {
     this.logger('initializing')
-    await this._startIPFS(ipfsAPI)
+    await this._startIPFS(ipfsd)
     await this._init(this._options.key, this._options.address)
     const ipfs = await this._ipfs.id()
     this.emit('ready', {
@@ -139,18 +139,12 @@ class RecordNode extends EventEmitter {
     })
   }
 
-  async _startIPFS (ipfsAPI) {
-    this._ipfs = ipfsAPI
-    this._ipfs.repo.has = async (cid) => {
-      for await (const ref of this._ipfs.refs.local()) {
-        if (ref.err) {
-          this.logger.error(ref.err)
-        } else if (cid.equals(new CID(ref.ref))) {
-          return true
-        }
-      }
-      return false
-    }
+  async _startIPFS (ipfsd) {
+    this._ipfs = ipfsd.api
+    // ipfs.refs.local is too expensive
+    // cli: ipfs refs -r --offline <cid>
+    // cli: ipfs object stat <cid> --offline
+    this._ipfs.repo.has = ipfsd.hasLocal
     this._ipfs.repo.stat().then(repoStats => { this._repoStats = repoStats })
   }
 
@@ -180,8 +174,8 @@ class RecordNode extends EventEmitter {
     this._orbitdb = await OrbitDB.createInstance(this._ipfs, this._options.orbitdb)
 
     await this.indexer._init()
-    await this.log._init(address)
     await this.listens._init()
+    await this.log._init(address)
     await this.importer.init()
 
     this.bootstrap._init()

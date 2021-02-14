@@ -15,8 +15,8 @@ module.exports = function listens (self) {
         afterAdd: self.listens._afterAdd
       }
       self._listens = await self._orbitdb.open('listens', opts)
-      await self._ipfs.pin.add(self._listens.address.root) // pin manifest
-      await self.log.pinAccessController(self._listens.options.accessControllerAddress)
+      // await self._ipfs.pin.add(self._listens.address.root) // pin manifest
+      // await self.log.pinAccessController(self._listens.options.accessControllerAddress)
       await self._listens.load()
     },
 
