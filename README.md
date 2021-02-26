@@ -10,7 +10,9 @@
 
 > Library, CLI and REST API for Record.
 
-A proof of concept distributed music application (library management, sharing, discovery & curation) built entirely on [IPFS](https://github.com/ipfs/js-ipfs). User data is stored on IPFS via a [scuttlebot](http://scuttlebot.io/)-esque immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot).
+Record is a proof of concept immutable distributed system for audio files. Built entirely on [IPFS](https://github.com/ipfs/js-ipfs), user data is stored in a [scuttlebot](http://scuttlebot.io/)-esque immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot).
+
+At it's core, the application intends to be a media library management & playback system akin to [beets](https://github.com/beetbox/beets) with the ability to join various sources of music like [tomahawk player](https://github.com/tomahawk-player/tomahawk). By building everything on top of IPFS, it can become a connected network of libraries, opening the door to many other possibilities (i.e. soundcloud & musicbrainz), while still being entirely distributed and thus being able to function permanently.
 
 *Note: View the [UI/UX repo](https://github.com/mistakia/record-app) for more information.*
 
@@ -52,12 +54,18 @@ wip
 ### Module
 ```js
 const RecordNode = require('record-node')
+const createIPFSDaemon = require('record-ipfsd')
+
+const ipfsd = await createIPFSDaemon({
+    repo: repoPath,
+    ipfsBin: ipfsBinPath
+})
 
 const node = new RecordNode()
 node.on('ready', async () => {
     const log = await node.log.get() // or node.log.get(record.address)
 })
-await node.init()
+await node.init(ipfsd)
 ```
 
 ## API
@@ -66,14 +74,6 @@ await node.init()
 const record = new RecordNode(options)
 ```
 View default options at [`config.js`](https://github.com/mistakia/record-node/blob/master/config.js). Use the `options` argument to specify configuration. It is an object with any of these properties:
-
-##### `options.ipfs`
-
-| Type | Default |
-|------|---------|
-| object | [`config.js`](https://github.com/mistakia/record-node/blob/master/config.js) |
-
-options passed to [IPFS constructor](https://github.com/ipfs/js-ipfs#ipfs-constructor).
 
 ##### `options.api`
 
