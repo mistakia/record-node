@@ -5,7 +5,7 @@ module.exports = function peers (self) {
     _topic: 'RECORD',
     _index: {},
     _init: () => {
-      self.logger('initializing peer monitor')
+      self.logger.info('[node] initializing peer monitor')
       self._monitor = new PeerMonitor(self._ipfs.pubsub, self.peers._topic, self._options.pubsubMonitor)
       self._monitor.on('join', self.peers._announceLogs)
       self._monitor.on('leave', self.peers._onLeave)
@@ -13,7 +13,7 @@ module.exports = function peers (self) {
       self._ipfs.pubsub.subscribe(self.peers._topic, self.peers._onMessage)
     },
     _stop: async () => {
-      self.logger('stop peer monitor')
+      self.logger.info('[node] stop peer monitor')
       self._monitor && await self._monitor.stop()
       self._ipfs.pubsub.unsubscribe(self.peers._topic, self.peers._onMessage)
     },
@@ -81,7 +81,7 @@ module.exports = function peers (self) {
       const peer = self.peers._index[peerId]
       delete self.peers._index[peerId]
       const peerCount = Object.keys(self.peers._index).length
-      self.logger(`Record peer left, remaining: ${peerCount}`)
+      self.logger.info(`[node] record peer left, remaining: ${peerCount}`)
 
       self.emit('redux', {
         type: 'RECORD_PEER_LEFT',
@@ -133,7 +133,7 @@ module.exports = function peers (self) {
           }
         }
 
-        self.logger(`Record peer added, current count: ${peerCount}`)
+        self.logger.info(`[node] record peer added, current count: ${peerCount}`)
       } catch (e) {
         self.logger.error(e)
       }

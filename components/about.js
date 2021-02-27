@@ -16,7 +16,7 @@ module.exports = function about (self) {
       return self.about.get(address)
     },
     get: async (address) => {
-      self.logger(`Get about for: ${address}`)
+      self.logger.info(`[node] get about for: ${address}`)
       const index = await self._db('entries')
         .where({ address, type: 'about' })
         .orderBy('clock', 'desc')

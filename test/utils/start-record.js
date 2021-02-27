@@ -2,10 +2,22 @@ const fs = require('fs')
 const path = require('path')
 const Ctl = require('ipfsd-ctl')
 const rimraf = require('rimraf')
+const exec = require('child_process').exec
 const Record = require('../../index')
-const debug = require('debug')
 
-// debug.enable('*')
+function hasLocal (ipfsBin, path) {
+  const command = `${ipfsBin} dag stat --offline --config ${path}`
+  return function (cid) {
+    return new Promise((resolve, reject) => {
+      exec(`${command} ${cid}`, (err, stdout, stderr) => {
+        if (err || stderr.toLowerCase().includes('error')) {
+          return reject(false)
+        }
+        resolve(true)
+      })
+    })
+  }
+}
 
 const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, reject) => {
   const directory = path.join(__dirname, `../tmp/nodes/${id}`)
@@ -16,11 +28,12 @@ const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, 
     console.log(error)
   }
 
+  const ipfsBin = require('go-ipfs').path()
   Ctl.createController({
     test: !restartable,
     disposable: !restartable,
     ipfsHttpModule: require('ipfs-http-client'),
-    ipfsBin: require('go-ipfs').path(),
+    ipfsBin,
     args: [
       '--enable-pubsub-experiment'
     ],
@@ -67,8 +80,10 @@ const startRecord = (id, { restartable = false } = {}) => new Promise((resolve, 
     record.on('error', err => reject(err))
     record.on('ready', () => resolve({ record, ipfsd }))
 
+    ipfsd.hasLocal = hasLocal(ipfsBin, ipfsd.path)
+
     try {
-      record.init(ipfsd.api)
+      record.init(ipfsd)
     } catch (error) {
       reject(error)
     }

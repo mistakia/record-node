@@ -88,7 +88,7 @@ module.exports = function tracks (self) {
   return {
     _init: () => {
       if (self._options.ffmpegPath) {
-        self.logger(`set ffmpeg path: ${self._options.ffmpegPath}`)
+        self.logger.info(`[node] set ffmpeg path: ${self._options.ffmpegPath}`)
         ffmpeg.setFfmpegPath(self._options.ffmpegPath)
       }
     },
@@ -140,7 +140,7 @@ module.exports = function tracks (self) {
     },
 
     addTracksFromFS: async (filepath, { address } = {}) => {
-      self.logger(`Searching ${filepath} for tracks`)
+      self.logger.info(`[node] searching ${filepath} for tracks`)
 
       let result = []
       const stat = await fsPromises.stat(filepath)
@@ -157,7 +157,7 @@ module.exports = function tracks (self) {
 
       if (stat.isDirectory()) {
         const pathsInDir = await fsPromises.readdir(filepath)
-        self.logger(`Found ${pathsInDir.length} paths in ${filepath}`)
+        self.logger.info(`[node] found ${pathsInDir.length} paths in ${filepath}`)
         for (let i = 0; i < pathsInDir.length; i++) {
           const tracks = await self.tracks.addTracksFromFS(
             path.resolve(filepath, pathsInDir[i]),
@@ -170,11 +170,11 @@ module.exports = function tracks (self) {
       return result
     },
     addTrackFromFile: async (filepath, { resolverData, address } = {}) => {
-      self.logger(`Adding track from ${filepath}`)
+      self.logger.info(`[node] adding track from ${filepath}`)
       const acoustid = await getAcoustID(filepath, {
         command: self._options.chromaprintPath
       })
-      self.logger('Generated AcoustID Fingerprint')
+      self.logger.info('[node] generated AcoustID Fingerprint')
 
       const id = sha256(acoustid.fingerprint)
 
@@ -189,20 +189,20 @@ module.exports = function tracks (self) {
       const metadata = await musicMetadata.parseFile(filepath)
       const pictures = metadata.common.picture
       delete metadata.common.picture
-      self.logger('Extracted metadata')
+      self.logger.info('[node] extracted metadata')
 
       const extension = path.extname(filepath)
       const filename = path.parse(filepath).name
       const processPath = path.resolve(os.tmpdir(), `${filename}-notags${extension}`)
       await removeTags(filepath, processPath)
-      self.logger('Cleanded file tags')
+      self.logger.info('[node] cleanded file tags')
 
       let audioFile
       for await (const file of self._ipfs.addAll(globSource(processPath))) {
         audioFile = file
       }
       await fsPromises.unlink(processPath)
-      self.logger('Added audio to ipfs')
+      self.logger.info('[node] added audio to ipfs')
 
       const results = []
       if (pictures) {
@@ -210,7 +210,7 @@ module.exports = function tracks (self) {
           results.push(file)
         }
       }
-      self.logger('Added artwork to ipfs')
+      self.logger.info('[node] added artwork to ipfs')
 
       const { size } = await self._ipfs.files.stat(`/ipfs/${audioFile.cid.toString()}`, { size: true })
 
@@ -241,7 +241,7 @@ module.exports = function tracks (self) {
 
     addTrackFromUrl: async (resolverData, { address = self.address } = {}) => {
       if (typeof resolverData === 'string') {
-        self.logger(`Adding track from URL: ${resolverData}`)
+        self.logger.info(`[node] adding track from URL: ${resolverData}`)
         resolverData = await self.resolve(resolverData)
       }
 
@@ -285,7 +285,7 @@ module.exports = function tracks (self) {
     },
 
     addTrackFromCID: async (cid, { address } = {}) => {
-      self.logger(`adding track from cid: ${cid}`)
+      self.logger.info(`[node] adding track from cid: ${cid}`)
       const dagNode = await self._ipfs.dag.get(cid)
       const content = dagNode.value
       return self.tracks.add(content, { address })
@@ -317,7 +317,7 @@ module.exports = function tracks (self) {
 
       if (!entry) {
         // TODO (low) handle / repair index
-        self.logger(`${address} missing ${hash}`)
+        self.logger.info(`[node] ${address} missing ${hash}`)
         return null
       }
 
@@ -338,7 +338,7 @@ module.exports = function tracks (self) {
         throw new Error(`track does not exist: ${trackId}`)
       }
 
-      self.logger(`removing track: ${trackId}`)
+      self.logger.info(`[node] removing track: ${trackId}`)
       const log = await self.log.get(address)
       const hash = await log.tracks.del(trackId)
       return hash

@@ -14,7 +14,7 @@ module.exports = function indexer (self) {
     _loading: {},
     _processing: {},
     _init: async () => {
-      self.logger('initializing index')
+      self.logger.info('[node] initializing index')
       const config = {
         client: 'sqlite3',
         connection: {

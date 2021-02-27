@@ -44,12 +44,12 @@ module.exports = function importer (self) {
       self.importer.add(self.importer._directory)
     },
     _cleanup: async (file) => {
-      self.logger('importer cleaning up')
+      self.logger.info('[node] importer cleaning up')
 
       // cleanup import directory
       if (self._options.importer.enabled && file.includes(self.importer._directory)) {
         if (fs.existsSync(file)) {
-          self.logger(`removing imported file from import directory: ${file}`)
+          self.logger.info(`[node] removing imported file from import directory: ${file}`)
           fs.unlinkSync(file)
         }
 
@@ -57,7 +57,7 @@ module.exports = function importer (self) {
         if (dir !== self.importer._directory) {
           const { filelist } = await walk(dir)
           if (!filelist.length) {
-            self.logger(`removing empty directory from import directory: ${dir}`)
+            self.logger.info(`[node] removing empty directory from import directory: ${dir}`)
             fs.rmdirSync(dir)
           }
         }
@@ -96,7 +96,7 @@ module.exports = function importer (self) {
       const file = files[0]
       const jobIds = queue.files[file]
 
-      self.logger(`importer processing: ${file}`)
+      self.logger.info(`[node] importer processing: ${file}`)
 
       try {
         if (queue.completed[file]) {
@@ -169,7 +169,7 @@ module.exports = function importer (self) {
     },
     start: () => {
       if (!self.importer._importing) {
-        self.logger('starting importer')
+        self.logger.info('[node] importer starting')
         self.emit('redux', {
           type: 'IMPORTER_STARTING',
           payload: {
@@ -183,8 +183,8 @@ module.exports = function importer (self) {
       }
     },
     watch: async () => {
-      self.logger('enabling import directory')
       const directory = self.importer._directory
+      self.logger.info(`[node] enabling import directory: ${directory}`)
       const dirExists = await fileExists(directory)
       if (!dirExists) {
         await fsPromises.mkdir(directory)
@@ -231,7 +231,7 @@ module.exports = function importer (self) {
         self.importer.start()
       }
 
-      self.logger(`importer start ${jobId}`)
+      self.logger.info(`[node] importer added: ${jobId}`)
       const stat = await fsPromises.stat(filepath)
       if (stat.isDirectory()) {
         await walk(filepath, { onFile })
@@ -262,7 +262,7 @@ module.exports = function importer (self) {
       return self.importer._directory
     },
     init: async () => {
-      self.logger('initializing importer')
+      self.logger.info('[node] initializing importer')
       self.importer._queuePath = path.resolve(self._options.directory, './queue.json')
       const queueExists = await fileExists(self.importer._queuePath)
       if (queueExists) {

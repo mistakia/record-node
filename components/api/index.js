@@ -1,5 +1,5 @@
 const express = require('express')
-const morgan = require('morgan-debug')
+const morgan = require('morgan')
 const bodyParser = require('body-parser')
 const extend = require('deep-extend')
 
@@ -15,7 +15,7 @@ module.exports = (self) => {
 
   app.locals.record = self
 
-  app.use(morgan('record:node:api', 'combined'))
+  app.use(morgan('combined', { stream: self.logger.stream }))
   app.use(bodyParser.json())
 
   app.use((req, res, next) => {
@@ -42,5 +42,5 @@ module.exports = (self) => {
   app.use('/importer', routes.importer)
 
   const { port } = options
-  return app.listen(port, () => self.logger(`API listening on port ${port}`))
+  return app.listen(port, () => self.logger.info(`[node] api listening on port: ${port}`))
 }

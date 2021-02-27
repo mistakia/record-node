@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-/* global process */
 const { start } = require('./index')
 
 const yargs = require('yargs')

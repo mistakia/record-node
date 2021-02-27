@@ -4,7 +4,6 @@ const fs = require('fs')
 
 const crypto = require('libp2p-crypto')
 const extend = require('deep-extend')
-const debug = require('debug')
 const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
 const Keystore = require('orbit-db-keystore')
@@ -63,12 +62,11 @@ class RecordNode extends EventEmitter {
   constructor (options = {}) {
     super()
 
-    this.logger = debug('record:node')
-    this.logger.log = console.log.bind(console) // log to stdout instead of stderr
-    this.logger.error = debug('record:node:err')
-
     this._options = extend({}, defaultConfig, options)
-    this.logger(this._options)
+    const { logger, ...opts } = this._options
+    this.logger = logger
+    // exclude logger property from output
+    this.logger.info(opts)
 
     this._options.orbitdb.storage = Storage(leveldown)
     this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')
@@ -125,7 +123,7 @@ class RecordNode extends EventEmitter {
   }
 
   async init (ipfsd) {
-    this.logger('initializing')
+    this.logger.info('[node] initializing')
     await this._startIPFS(ipfsd)
     await this._init(this._options.key, this._options.address)
     const ipfs = await this._ipfs.id()
@@ -188,7 +186,7 @@ class RecordNode extends EventEmitter {
   }
 
   async stop () {
-    this.logger('stopping')
+    this.logger.info('[node] stopping')
     const closeAPI = () => new Promise((resolve, reject) => {
       if (!this._api) {
         return resolve()
@@ -215,13 +213,13 @@ class RecordNode extends EventEmitter {
   }
 
   async restart () {
-    this.logger('restarting')
+    this.logger.info('[node] restarting')
     await this.stop()
     await this.start()
   }
 
   async start () {
-    this.logger('starting')
+    this.logger.info('[node] starting')
     const id = await this._ipfs.id()
     if (!id) {
       throw new Error('ipfs not available')
@@ -230,14 +228,14 @@ class RecordNode extends EventEmitter {
     try {
       await this._init(this._options.key, this._options.address)
     } catch (e) {
-      console.log(e)
+      this.logger.error(e)
     }
   }
 
   async gc () {
     if (this._gcLock) return
 
-    this.logger('running garbage collect')
+    this.logger.info('[node] running garbage collect')
     this._gcLock = true
 
     for await (const stats of this._ipfs.stats.bw()) {
@@ -245,7 +243,7 @@ class RecordNode extends EventEmitter {
     }
 
     if (this._bwStats.totalIn.minus(this._gcPosition) > this._options.gcInterval) {
-      this.logger(`Running ipfs gc at ${this._gcPosition}`)
+      this.logger.info(`[node] running IPFS gc at ${this._gcPosition}`)
       // eslint-disable-next-line
       // TODO - enable garbage collection
       /* for await (const res of this._ipfs.repo.gc()) {
@@ -264,7 +262,7 @@ class RecordNode extends EventEmitter {
   }
 
   async createIdentity () {
-    this.logger('creating identity')
+    this.logger.info('[node] creating identity')
     const keys = await createKey()
     return this.setIdentity(keys.privateKeyBytes)
   }
@@ -291,7 +289,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _createKeystore () {
-    this.logger('creating keystore')
+    this.logger.info('[node] creating keystore')
     const keystorePath = path.resolve(this._options.directory, './keystore')
     if (!fs.existsSync(keystorePath)) {
       fs.mkdirSync(keystorePath, { recursive: true })
@@ -301,7 +299,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _createCache () {
-    this.logger('creating cache')
+    this.logger.info('[node] creating cache')
     const cachePath = path.resolve(this._options.directory, './cache')
     if (!fs.existsSync(cachePath)) {
       fs.mkdirSync(cachePath, { recursive: true })
@@ -311,7 +309,7 @@ class RecordNode extends EventEmitter {
   }
 
   async _loadCache () {
-    this.logger('loading cache')
+    this.logger.info('[node] loading cache')
     const keys = []
     this._cacheStorage.createKeyStream().on('data', (data) => {
       const key = data.toString()
@@ -342,7 +340,7 @@ class RecordNode extends EventEmitter {
         for (const address of deleteAddresses) {
           const shouldDelete = key.includes(address)
           if (shouldDelete) {
-            this.logger(`Deleting cache for stale log: ${key}`)
+            this.logger.info(`[node] deleting cache for stale log: ${key}`)
             this._cacheStorage.del(key)
           }
         }
