@@ -23,7 +23,7 @@ module.exports = function tags (self) {
       if (!tag) {
         throw new Error('missing tag')
       }
-      self.logger(`adding tag: ${tag}`)
+      self.logger.info(`[node] adding tag: ${tag}`)
 
       const tracks = await self._db('tracks')
         .innerJoin('entries', 'tracks.id', 'entries.key')
@@ -61,7 +61,7 @@ module.exports = function tags (self) {
         throw new Error('missing tag')
       }
 
-      self.logger(`removing tag: ${tag}`)
+      self.logger.info(`[node] removing tag: ${tag}`)
 
       const rows = await self._db('tags')
         .where({ address: self.address, trackid: trackId })

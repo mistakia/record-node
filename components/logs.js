@@ -52,9 +52,9 @@ module.exports = function logs (self) {
         return
       }
 
-      self.logger(`Connecting log: ${address}`)
+      self.logger.info(`[node] connecting log: ${address}`)
       const log = await self.log.get(address, { replicate: true })
-      self.logger(`Connected log: ${address}`)
+      self.logger.info(`[node] connected log: ${address}`)
 
       if (!log.options.replicate) {
         try {
@@ -78,15 +78,15 @@ module.exports = function logs (self) {
         return
       }
 
-      self.logger(`Disconnecting log: ${address}`)
+      self.logger.info(`[node] disconnecting log: ${address}`)
       if (!self.log.isOpen(address)) {
-        return self.logger(`log is not open: ${address}`)
+        return self.logger.info(`[node] log is not open: ${address}`)
       }
 
       const log = await self.log.get(address)
 
       if (!log.options.replicate) {
-        return self.logger(`log was not replicating: ${address}`)
+        return self.logger.info(`[node] log was not replicating: ${address}`)
       }
 
       await self._orbitdb._pubsub.unsubscribe(address)
@@ -114,7 +114,7 @@ module.exports = function logs (self) {
         throw new Error(`invalid address: ${linkAddress}`)
       }
 
-      self.logger(`Link log: ${linkAddress}`)
+      self.logger.info(`[node] link log: ${linkAddress}`)
       const rows = await self._db('links')
         .where({ address, alias, link: linkAddress })
         .limit(1)
@@ -227,7 +227,7 @@ module.exports = function logs (self) {
     },
 
     unlink: async (linkAddress) => {
-      self.logger(`Unlink log: ${linkAddress}`)
+      self.logger.info(`[node] unlink log: ${linkAddress}`)
       const log = self.log.mine()
       const rows = await self._db('links')
         .where({ address: self.address, link: linkAddress })

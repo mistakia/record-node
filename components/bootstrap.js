@@ -8,7 +8,7 @@ module.exports = function bootstrap (self) {
   return {
     _peers: new Map(),
     _stop: async () => {
-      self.logger('stopping bootstrap server')
+      self.logger.info('[node] stopping bootstrap server')
       const closeServer = () => new Promise((resolve) => {
         self.bootstrap._server.close(() => resolve())
       })
@@ -29,7 +29,7 @@ module.exports = function bootstrap (self) {
         return
       }
 
-      self.logger('starting bootstrap server')
+      self.logger.info('[node] starting bootstrap server')
 
       self.bootstrap._server = net.createServer(async (socket) => {
         const identity = await self._ipfs.id()
@@ -46,7 +46,7 @@ module.exports = function bootstrap (self) {
         for (const peer of peers) {
           const id = peer.id.toString('hex')
           if (!self.bootstrap._peers.has(id)) {
-            self.logger('Found Bitboot node: ', id)
+            self.logger.info(`[node] found bitboot node: ${id}`)
             const client = net.createConnection({ port: 8383, host: peer.host })
             client.on('error', err => self.logger.error(err))
             client.on('data', (peerId) => {
@@ -58,7 +58,7 @@ module.exports = function bootstrap (self) {
                 return
               }
 
-              self.logger('Connecting to Bitboot node peerId: ', nodeId)
+              self.logger.info(`[node] connecting to bitboot node peerId: ${nodeId}`)
               const addr = multiaddr(`/ip4/${peer.host}/tcp/4003/ws/ipfs/${peerId}`)
               try {
                 self._ipfs.swarm.connect(addr)
@@ -71,7 +71,7 @@ module.exports = function bootstrap (self) {
         }
       })
       self.bb.on('rejoin', (nodeId) => {
-        self.logger('Bitboot node id: ', nodeId.toString('hex'))
+        self.logger.info(`[node] bitboot node id: ${nodeId.toString('hex')}`)
       })
     }
   }

@@ -202,7 +202,7 @@ module.exports = function log (self) {
 
       const throttledReplicateProgress = throttle(onReplicateProgress, 2000)
       log.events.on('replicate.progress', (address, hash, entry, progress, total) => {
-        self.logger(`new entry ${address}/${entry.hash}`)
+        self.logger.info(`[node] new entry ${address}/${entry.hash}`)
         throttledReplicateProgress(address, hash, entry)
         self.indexer._process(entry)
         // TODO - enable pinning
@@ -213,7 +213,7 @@ module.exports = function log (self) {
     },
 
     pinAccessController: async (accessControllerAddress) => {
-      self.logger(`pinning access controller address: ${accessControllerAddress}`)
+      self.logger.info(`[node] pinning access controller address: ${accessControllerAddress}`)
       const acAddress = accessControllerAddress.split('/')[2]
       // TODO - enable pinning
       // await self._ipfs.pin.add(acAddress)
@@ -250,7 +250,7 @@ module.exports = function log (self) {
       await self.logs.unlink(address)
       self.logs._disconnect(address)
 
-      self.logger(`dropping log ${address}`)
+      self.logger.info(`[node] dropping log ${address}`)
       const log = await self.log.get(address)
       if (log._type === RecordStore.type) {
         for (const hash of log._oplog._hashIndex.keys()) {
@@ -272,7 +272,7 @@ module.exports = function log (self) {
         // TODO - enable pinning
         // await self._ipfs.pin.rm(dagNode.value.params.address) // remove ipfs ac pin
       } catch (error) {
-        self.logger(error)
+        self.logger.error(error)
       }
 
       // TODO (v0.0.2) remove from cache
@@ -306,7 +306,7 @@ module.exports = function log (self) {
       }
 
       const opts = extend({ replicate: false }, self._options.store, options)
-      self.logger(`Loading log: ${address}`, opts)
+      self.logger.info(`[node] loading log: ${address}`)
       const log = await Promise.race([
         timeout(5000),
         self._orbitdb.open(address, opts)

@@ -7,7 +7,7 @@ module.exports = function listens (self) {
     },
 
     _init: async () => {
-      self.logger('initializing listens')
+      self.logger.info('[node] initializing listens')
       const opts = {
         create: true,
         replicate: true,
