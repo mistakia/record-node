@@ -1,0 +1,84 @@
+name: Test
+
+on: push
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12.13.1
+
+      - name: Yarn install
+        run: |
+          yarn install --frozen-lockfile --network-timeout 300000
+
+      - name: Install ffmpeg & chromaprint
+        run: |
+          sudo apt-get install software-properties-common
+          sudo add-apt-repository -y ppa:savoury1/ffmpeg4
+          sudo apt-get update
+          sudo apt-get install libchromaprint-tools ffmpeg
+
+      - name: Test & Lint
+        run: |
+          yarn lint
+          yarn test
+
+  # 'NODE_ENV' is not recognized as an internal or external command
+  # windows:
+  #   runs-on: windows-latest
+  #   steps:
+  #     - name: Check out Git repository
+  #       uses: actions/checkout@v1
+
+  #     - name: Install Node.js, NPM and Yarn
+  #       uses: actions/setup-node@v1
+  #       with:
+  #         node-version: 12.13.1
+
+  #     - name: Yarn install
+  #       run: |
+  #         yarn install --frozen-lockfile --network-timeout 300000
+
+  #     - name: Install ffmpeg & chromaprint
+  #       run: |
+  #         choco install ffmpeg chromaprint
+
+  #     - name: Test & Lint
+  #       run: |
+  #         yarn lint
+  #         yarn test
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12.13.1
+
+      - name: Yarn install
+        run: |
+          yarn install --frozen-lockfile --network-timeout 300000
+
+      - uses: FedericoCarboni/setup-ffmpeg@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install chromaprint
+        run: |
+          brew install chromaprint
+
+      - name: Test & Lint
+        run: |
+          yarn lint
+          yarn test
