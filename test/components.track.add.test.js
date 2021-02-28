@@ -28,6 +28,36 @@ describe('record.components.track.add', function () {
         assert.strictEqual(track1.content.audio.duration, 644.7804081632653)
       })
 
+      it('entries index', async () => {
+        const entries = await record._db('entries')
+        assert.strictEqual(entries.length, 1)
+        const entry = entries[0]
+        assert.strictEqual(entry.address, record.address)
+        //assert.strictEqual(entry.hash, track1)
+        assert.strictEqual(entry.type, 'track')
+        assert.strictEqual(entry.op, 'PUT')
+        assert.strictEqual(entry.clock, 1)
+        assert.strictEqual(entry.key, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(entry.cid, 'zBwWX7a3zJnTHiSM5SrTRS2XnavGF42zHq5Fom3hxmxs7zAgfRcsiNeuUJtAqmkGTsFzXLVNvFxc1dABnRUqVjGSxfa3d')
+      })
+
+      it('tracks index', async () => {
+        const tracks = await record._db('tracks')
+        assert.strictEqual(tracks.length, 1)
+        const track = tracks[0]
+        assert.strictEqual(track.address, record.address)
+        assert.strictEqual(track.id, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(track.title, 'So Much Love To Give(Original Mix)')
+        assert.strictEqual(track.artist, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.artists, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.albumartist, null)
+        assert.strictEqual(track.album, null)
+        assert.strictEqual(track.remixer, null)
+        assert.strictEqual(track.bpm, null)
+        assert.strictEqual(track.duration, 644.7804081632653)
+        assert.strictEqual(track.bitrate, 192000)
+      })
+
       it('contentCID', function () {
         assert.strictEqual(track1.contentCID, 'zBwWX7a3zJnTHiSM5SrTRS2XnavGF42zHq5Fom3hxmxs7zAgfRcsiNeuUJtAqmkGTsFzXLVNvFxc1dABnRUqVjGSxfa3d')
       })
@@ -78,6 +108,36 @@ describe('record.components.track.add', function () {
         // TODO (high) assert oplog length
       })
 
+      it('entries index', async () => {
+        const entries = await record._db('entries')
+        assert.strictEqual(entries.length, 1)
+        const entry = entries[0]
+        assert.strictEqual(entry.address, record.address)
+        //assert.strictEqual(entry.hash, track1)
+        assert.strictEqual(entry.type, 'track')
+        assert.strictEqual(entry.op, 'PUT')
+        assert.strictEqual(entry.clock, 1)
+        assert.strictEqual(entry.key, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(entry.cid, 'zBwWX7a3zJnTHiSM5SrTRS2XnavGF42zHq5Fom3hxmxs7zAgfRcsiNeuUJtAqmkGTsFzXLVNvFxc1dABnRUqVjGSxfa3d')
+      })
+
+      it('tracks index', async () => {
+        const tracks = await record._db('tracks')
+        assert.strictEqual(tracks.length, 1)
+        const track = tracks[0]
+        assert.strictEqual(track.address, record.address)
+        assert.strictEqual(track.id, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(track.title, 'So Much Love To Give(Original Mix)')
+        assert.strictEqual(track.artist, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.artists, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.albumartist, null)
+        assert.strictEqual(track.album, null)
+        assert.strictEqual(track.remixer, null)
+        assert.strictEqual(track.bpm, null)
+        assert.strictEqual(track.duration, 644.7804081632653)
+        assert.strictEqual(track.bitrate, 192000)
+      })
+
       it('list includes one track', async function () {
         const tracks = await record.tracks.list({ addresses: [record.address] })
         assert.strictEqual(tracks.length, 1)
@@ -99,6 +159,16 @@ describe('record.components.track.add', function () {
         const tracks = await record.tracks.list({ addresses: [record.address] })
         assert.strictEqual(tracks.length, 0)
       })
+
+      it('entries index', async () => {
+        const entries = await record._db('entries')
+        assert.strictEqual(entries.length, 0)
+      })
+
+      it('tracks index', async () => {
+        const tracks = await record._db('tracks')
+        assert.strictEqual(tracks.length, 0)
+      })
     })
 
     describe('re-add track', async function () {
@@ -111,6 +181,37 @@ describe('record.components.track.add', function () {
         assert.strictEqual(record._log._oplog.length, 3)
         assert.strictEqual(track.content.audio.duration, 644.7804081632653)
       })
+
+      it('entries index', async () => {
+        const entries = await record._db('entries')
+        assert.strictEqual(entries.length, 1)
+        const entry = entries[0]
+        assert.strictEqual(entry.address, record.address)
+        //assert.strictEqual(entry.hash, track1)
+        assert.strictEqual(entry.type, 'track')
+        assert.strictEqual(entry.op, 'PUT')
+        assert.strictEqual(entry.clock, 3)
+        assert.strictEqual(entry.key, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(entry.cid, 'zBwWX7a3zJnTHiSM5SrTRS2XnavGF42zHq5Fom3hxmxs7zAgfRcsiNeuUJtAqmkGTsFzXLVNvFxc1dABnRUqVjGSxfa3d')
+      })
+
+      it('tracks index', async () => {
+        const tracks = await record._db('tracks')
+        assert.strictEqual(tracks.length, 1)
+        const track = tracks[0]
+        assert.strictEqual(track.address, record.address)
+        assert.strictEqual(track.id, '0db212b18c9093b6d77090e4764d3f2210c091fafda6d8f11e5d937575ffb2c0')
+        assert.strictEqual(track.title, 'So Much Love To Give(Original Mix)')
+        assert.strictEqual(track.artist, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.artists, 'Dj Falcon And Thomas Bangalter')
+        assert.strictEqual(track.albumartist, null)
+        assert.strictEqual(track.album, null)
+        assert.strictEqual(track.remixer, null)
+        assert.strictEqual(track.bpm, null)
+        assert.strictEqual(track.duration, 644.7804081632653)
+        assert.strictEqual(track.bitrate, 192000)
+      })
+
       it('contentCID', function () {
         assert.strictEqual(track.contentCID, 'zBwWX7a3zJnTHiSM5SrTRS2XnavGF42zHq5Fom3hxmxs7zAgfRcsiNeuUJtAqmkGTsFzXLVNvFxc1dABnRUqVjGSxfa3d')
       })
@@ -130,6 +231,37 @@ describe('record.components.track.add', function () {
         assert.strictEqual(record._log._oplog.length, 4)
         assert.strictEqual(track.content.audio.duration, 361.97877551020406)
       })
+
+      it('entries index', async () => {
+        const entries = await record._db('entries')
+        assert.strictEqual(entries.length, 2)
+        const entry = entries[1]
+        assert.strictEqual(entry.address, record.address)
+        //assert.strictEqual(entry.hash, track1)
+        assert.strictEqual(entry.type, 'track')
+        assert.strictEqual(entry.op, 'PUT')
+        assert.strictEqual(entry.clock, 4)
+        assert.strictEqual(entry.key, 'bc48ea541d77cf4957e4081d61a771f7f18fc72753cc5c55cae0c8ed76e7109b')
+        assert.strictEqual(entry.cid, 'zBwWX7RGxWSQV43w8JB7abwsV1j5HqGZL8BYbTqRTh8CZBe9D68foYWk4xjXr9ChF9zNgXWejTk89c5Sa3ho2iYdb45WN')
+      })
+
+      it('tracks index', async () => {
+        const tracks = await record._db('tracks')
+        assert.strictEqual(tracks.length, 2)
+        const track = tracks[1]
+        assert.strictEqual(track.address, record.address)
+        assert.strictEqual(track.id, 'bc48ea541d77cf4957e4081d61a771f7f18fc72753cc5c55cae0c8ed76e7109b')
+        assert.strictEqual(track.title, '8000 (Clouds Remix)')
+        assert.strictEqual(track.artist, 'Proxy')
+        assert.strictEqual(track.artists, 'Proxy')
+        assert.strictEqual(track.albumartist, null)
+        assert.strictEqual(track.album, null)
+        assert.strictEqual(track.remixer, null)
+        assert.strictEqual(track.bpm, null)
+        assert.strictEqual(track.duration, 361.97877551020406)
+        assert.strictEqual(track.bitrate, 320000)
+      })
+
       it('contentCID', function () {
         assert.strictEqual(track.contentCID, 'zBwWX7RGxWSQV43w8JB7abwsV1j5HqGZL8BYbTqRTh8CZBe9D68foYWk4xjXr9ChF9zNgXWejTk89c5Sa3ho2iYdb45WN')
       })
