@@ -33,7 +33,7 @@ describe('record.components.track.add', function () {
         assert.strictEqual(entries.length, 1)
         const entry = entries[0]
         assert.strictEqual(entry.address, record.address)
-        //assert.strictEqual(entry.hash, track1)
+        // assert.strictEqual(entry.hash, track1)
         assert.strictEqual(entry.type, 'track')
         assert.strictEqual(entry.op, 'PUT')
         assert.strictEqual(entry.clock, 1)
@@ -113,7 +113,7 @@ describe('record.components.track.add', function () {
         assert.strictEqual(entries.length, 1)
         const entry = entries[0]
         assert.strictEqual(entry.address, record.address)
-        //assert.strictEqual(entry.hash, track1)
+        // assert.strictEqual(entry.hash, track1)
         assert.strictEqual(entry.type, 'track')
         assert.strictEqual(entry.op, 'PUT')
         assert.strictEqual(entry.clock, 1)
@@ -187,7 +187,7 @@ describe('record.components.track.add', function () {
         assert.strictEqual(entries.length, 1)
         const entry = entries[0]
         assert.strictEqual(entry.address, record.address)
-        //assert.strictEqual(entry.hash, track1)
+        // assert.strictEqual(entry.hash, track1)
         assert.strictEqual(entry.type, 'track')
         assert.strictEqual(entry.op, 'PUT')
         assert.strictEqual(entry.clock, 3)
@@ -237,7 +237,7 @@ describe('record.components.track.add', function () {
         assert.strictEqual(entries.length, 2)
         const entry = entries[1]
         assert.strictEqual(entry.address, record.address)
-        //assert.strictEqual(entry.hash, track1)
+        // assert.strictEqual(entry.hash, track1)
         assert.strictEqual(entry.type, 'track')
         assert.strictEqual(entry.op, 'PUT')
         assert.strictEqual(entry.clock, 4)
