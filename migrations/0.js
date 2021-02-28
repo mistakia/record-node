@@ -21,7 +21,6 @@ exports.up = async function (knex) {
     table.integer('duration').notNullable()
     table.integer('bitrate').notNullable()
     table.unique(['address', 'id'])
-    table.foreign('address').references('logs.address').onDelete('CASCADE')
   })
 
   await knex.schema.createTable('resolvers', (table) => {
@@ -30,7 +29,6 @@ exports.up = async function (knex) {
     table.text('fulltitle').notNullable()
     table.text('id').notNullable()
     table.unique(['trackid', 'extractor', 'id'])
-    // table.foreign('trackid').references('tracks.id').onDelete('CASCADE')
   })
 
   await knex.schema.createTable('entries', (table) => {
@@ -42,7 +40,6 @@ exports.up = async function (knex) {
     table.text('key').notNullable().index()
     table.text('cid').nullable().index()
     table.integer('timestamp').notNullable()
-    table.foreign('address').references('logs.address').onDelete('CASCADE')
   })
 
   await knex.schema.createTable('tags', (table) => {
@@ -50,7 +47,6 @@ exports.up = async function (knex) {
     table.text('trackid').notNullable()
     table.text('tag').notNullable()
     table.unique(['address', 'trackid', 'tag'])
-    table.foreign('address').references('logs.address').onDelete('CASCADE')
   })
 
   await knex.schema.createTable('links', (table) => {
@@ -59,7 +55,6 @@ exports.up = async function (knex) {
     table.text('id').notNullable()
     table.text('alias').nullable()
     table.unique(['address', 'link', 'id'])
-    table.foreign('address').references('logs.address').onDelete('CASCADE')
   })
 
   await knex.schema.createTable('listens', (table) => {

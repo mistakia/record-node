@@ -36,8 +36,7 @@ class ListensStore extends RecordStore {
       await this.afterAdd(entry)
     }
 
-    // TODO - enable pinning
-    // await this._ipfs.pin.add(entry.hash, { recursive: false })
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
 
     return entry.hash
   }

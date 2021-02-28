@@ -211,11 +211,57 @@ module.exports = function indexer (self) {
       const address = entry.id
       const id = entry.payload.key
 
-      // TODO (high) remove exclusive resolver entries + audio, artwork pins for tracks in this log
-      /* const rows = await self._db('links').where({ address: self.address })
-      * const addresses = rows.map(r => r.link)
-      * addresses.push(self.address)
-       */
+      const links = await self._db('links').where({ address, id })
+      const linkAddress = links[0].link
+
+      // check if linked in other libraries
+      const rows = await self._db('links')
+        .where({ link: linkAddress })
+        .whereNot({ address: self.address })
+      if (rows.length) return self._db('links').where({ address, id }).del()
+
+      const linkedEntries = await self._db('entries').where({ address: linkAddress })
+      const linkedEntryKeys = linkedEntries.map(e => e.key)
+      const nonUniqueEntries = await self._db('entries')
+        .whereNot({ address: linkAddress })
+        .whereIn('key', linkedEntryKeys)
+        .groupBy('key')
+      const nonUniqueKeys = nonUniqueEntries.map(e => e.key)
+      const uniqueEntries = linkedEntries.filter(e => !nonUniqueKeys.includes(e.key))
+
+      const log = await self.log.get(linkAddress)
+      for (const hash of log._oplog._hashIndex.keys()) {
+        // remove entry pins
+        await self._ipfs.pin.rm(hash, { recursive: false })
+
+        // remove entry index
+        await self._db('entries').where({ hash }).del()
+
+        const uniqueEntry = uniqueEntries.find(e => e.hash === hash)
+        if (uniqueEntry) {
+          if (uniqueEntry.type === 'track') {
+            await self._db('tracks').where({ id: uniqueEntry.key }).del()
+            await self._db('resolvers').where({ trackid: uniqueEntry.key }).del()
+          }
+
+          const dagNode = await self._ipfs.dag.get(uniqueEntry.cid, { timeout: 3000 })
+          if (!dagNode) continue
+
+          // remove content, audio and artwork hashes
+          try {
+            await self._ipfs.pin.rm(uniqueEntry.cid)
+            await self._ipfs.pin.rm(dagNode.value.hash)
+            for (const cid of dagNode.value.artwork) {
+              await self._ipfs.pin.rm(cid)
+            }
+          } catch (e) {
+            self.logger.error(e)
+          }
+        }
+      }
+
+      await self._db('logs').where({ address: linkAddress }).del()
+      await self._db('tags').where({ address: linkAddress }).del()
 
       return self._db('links').where({ address, id }).del()
     },
@@ -236,16 +282,14 @@ module.exports = function indexer (self) {
         const { hash, artwork } = dagNode.value
 
         try {
-          // TODO - enable pinning
-          // await self._ipfs.pin.rm(hash) // remove audio
+          await self._ipfs.pin.rm(hash) // remove audio
         } catch (err) {
           self.logger.error(err)
         }
 
         for (const cid of artwork) {
           try {
-            // TODO - enable pinning
-            // await self._ipfs.pin.rm(cid) // remove artwork
+            await self._ipfs.pin.rm(cid) // remove artwork
           } catch (err) {
             self.logger.error(err)
           }

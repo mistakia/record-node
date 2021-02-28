@@ -61,9 +61,7 @@ class RecordStore extends Store {
       await this.afterWrite(entry)
     }
 
-    // TODO (low) causes ~20% slowdown
-    // TODO - enable pinning
-    // await this._ipfs.pin.add(entry.hash, { recursive: false })
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
 
     return entry
   }
@@ -83,9 +81,7 @@ class RecordStore extends Store {
       await this.afterWrite(entry)
     }
 
-    // TODO - enable pinning
-    // TODO (low) causes ~20% slowdown
-    // await this._ipfs.pin.add(entry.hash, { recursive: false })
+    await this._ipfs.pin.add(entry.hash, { recursive: false })
 
     return entry.hash
   }
