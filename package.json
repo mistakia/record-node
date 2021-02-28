@@ -52,7 +52,7 @@
   },
   "devDependencies": {
     "expose-gc": "^1.0.0",
-    "go-ipfs": "0.7.0",
+    "go-ipfs": "0.8.0",
     "ipfsd-ctl": "7.2.0",
     "mocha": "8.2.1",
     "record-ipfsd": "mistakia/record-ipfsd#d6bec86",

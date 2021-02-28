@@ -2841,10 +2841,10 @@ globalthis@^1.0.1:
   dependencies:
     define-properties "^1.1.3"
 
-go-ipfs@0.7.0:
-  version "0.7.0"
-  resolved "https://registry.yarnpkg.com/go-ipfs/-/go-ipfs-0.7.0.tgz#1c19ecec1f5943af4175b8d5fdcb09040a842c64"
-  integrity sha512-1NjJwOKuy3dz55LCQxw2ItinIhsKAHv3M/V47RXWSx0HXERhQSizaccA2Pz/HlCRNC+0O8VAyg0ui2NLf14R8Q==
+go-ipfs@0.8.0:
+  version "0.8.0"
+  resolved "https://registry.yarnpkg.com/go-ipfs/-/go-ipfs-0.8.0.tgz#e5a14f2bc36b76174305e596d29af6712f5465c1"
+  integrity sha512-T2nE6UgsmGeAAlr3//4sL3uNrU76RStJasD7lTNYCQV6mz13ynfku63paZRI5V2oGZTWh8ik7O7d0TXD0qD3rA==
   dependencies:
     go-platform "^1.0.0"
     gunzip-maybe "^1.4.2"

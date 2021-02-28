@@ -244,11 +244,9 @@ class RecordNode extends EventEmitter {
 
     if (this._bwStats.totalIn.minus(this._gcPosition) > this._options.gcInterval) {
       this.logger.info(`[node] running IPFS gc at ${this._gcPosition}`)
-      // eslint-disable-next-line
-      // TODO - enable garbage collection
-      /* for await (const res of this._ipfs.repo.gc()) {
-       *   // TODO
-       * } */
+      for await (const res of this._ipfs.repo.gc()) {
+        this.logger.info('[node] garbage collected:', res)
+      }
       this._gcPosition = this._bwStats.totalIn.toNumber()
     }
 

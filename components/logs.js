@@ -239,7 +239,6 @@ module.exports = function logs (self) {
       const id = sha256(linkAddress)
       await log.logs.del(id)
       self.logs._disconnect(linkAddress)
-      // TODO remove exclusive content, audio, artwork pins
 
       return { id, linkAddress }
     },

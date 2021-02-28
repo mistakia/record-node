@@ -11,7 +11,7 @@ function hasLocal (ipfsBin, path) {
     return new Promise((resolve, reject) => {
       exec(`${command} ${cid}`, (err, stdout, stderr) => {
         if (err || stderr.toLowerCase().includes('error')) {
-          return reject(false)
+          return resolve(false)
         }
         resolve(true)
       })
