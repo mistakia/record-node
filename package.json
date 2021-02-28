@@ -9,8 +9,8 @@
   "scripts": {
     "benchmark": "node --inspect --expose-gc benchmark/index.js -r --grep baseline",
     "benchmark:stress": "node --inspect --expose-gc benchmark/index.js -r --grep stress",
-    "lint": "$(npm bin)/standard '**/*.js'",
-    "lint:fix": "$(npm bin)/standard --fix '**/*.js'",
+    "lint": "standard '**/*.js'",
+    "lint:fix": "standard --fix '**/*.js'",
     "test": "NODE_ENV=test TEST=all mocha --exit",
     "start": "node --trace-warnings bin/cli.js"
   },
