@@ -247,10 +247,22 @@ module.exports = function indexer (self) {
           const dagNode = await self._ipfs.dag.get(uniqueEntry.cid, { timeout: 3000 })
           if (!dagNode) continue
 
-          // remove content, audio and artwork hashes
+          // remove content pin
           try {
             await self._ipfs.pin.rm(uniqueEntry.cid)
+          } catch (e) {
+            self.logger.error(e)
+          }
+
+          // remove audio pin
+          try {
             await self._ipfs.pin.rm(dagNode.value.hash)
+          } catch (e) {
+            self.logger.error(e)
+          }
+
+          // remove artwork pins
+          try {
             for (const cid of dagNode.value.artwork) {
               await self._ipfs.pin.rm(cid)
             }
@@ -303,13 +315,34 @@ module.exports = function indexer (self) {
       await self._db('tracks').where({ address, id }).del()
       await self._db('tags').where({ address, trackid: id }).del()
 
-      const rows = await self._db('links').where({ address: self.address })
-      const addresses = rows.map(r => r.link)
-      addresses.push(self.address)
-      const results = await self._db('tracks').where({ id }).whereIn('address', addresses)
+      const results = await self._db('tracks').where({ id }).whereNot({ address })
       // ignore if track is in other linked logs or in own log
       if (results.length) {
         return
+      }
+
+      const entries = await self._db('entries').where({ key: id })
+      for (const entry of entries) {
+        const dagNode = await self._ipfs.dag.get(entry.cid, { timeout: 3000 })
+        try {
+          await self._ipfs.pin.rm(entry.cid)
+        } catch (error) {
+          self.logger.error(error)
+        }
+
+        try {
+          await self._ipfs.pin.rm(dagNode.value.hash)
+        } catch (error) {
+          self.logger.error(error)
+        }
+
+        try {
+          for (const cid of dagNode.value.artwork) {
+            await self._ipfs.pin.rm(cid)
+          }
+        } catch (error) {
+          self.logger.error(error)
+        }
       }
 
       await self._db('resolvers').where({ trackid: id }).del()
