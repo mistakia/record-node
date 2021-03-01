@@ -58,7 +58,6 @@ describe('record', function () {
        *     peerId: node._orbitdb.id,
        *     peerIds
        *   }
-       *   console.log(result)
        * }
        */
       const waitForSync = () => new Promise((resolve, reject) => {
