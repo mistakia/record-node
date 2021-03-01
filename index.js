@@ -66,7 +66,7 @@ class RecordNode extends EventEmitter {
     const { logger, ...opts } = this._options
     this.logger = logger
     // exclude logger property from output
-    this.logger.info(opts)
+    this.logger.info(JSON.stringify(opts, null, 2))
 
     this._options.orbitdb.storage = Storage(leveldown)
     this._options.orbitdb.directory = path.resolve(this._options.directory, './orbitdb')

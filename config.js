@@ -19,8 +19,7 @@ module.exports = {
   youtubedlPath: null,
   logger: {
     info: IS_TEST ? NOOP : console.log,
-    error: IS_TEST ? NOOP : console.error,
-    stream: IS_TEST ? NOOP : process.stdout
+    error: IS_TEST ? NOOP : console.error
   },
   importer: {
     enabled: false,
