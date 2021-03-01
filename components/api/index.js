@@ -15,7 +15,11 @@ module.exports = (self) => {
 
   app.locals.record = self
 
-  app.use(morgan('combined', { stream: self.logger.stream }))
+  app.use(morgan('combined', {
+    stream: {
+      write: (msg) => self.logger.info(`[node][api] ${msg}`)
+    }
+  }))
   app.use(bodyParser.json())
 
   app.use((req, res, next) => {
