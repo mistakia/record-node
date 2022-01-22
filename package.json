@@ -38,7 +38,7 @@
     "mime-types": "2.1.28",
     "morgan": "^1.10.0",
     "music-metadata": "6.3.7",
-    "node-fetch": "^2.6.0",
+    "node-fetch": "^3.1.1",
     "orbit-db": "mistakia/orbit-db#proto/record",
     "orbit-db-cache": "^0.3.0",
     "orbit-db-identity-provider": "^0.3.0",
