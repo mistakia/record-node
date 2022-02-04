@@ -41,6 +41,8 @@ describe('record.components.logs', function () {
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs[0].content.address, record2.address)
       assert.strictEqual(linkedLogs.length, 1)
+
+      // TODO - check index
     })
 
     it('duplicate + list', async function () {
@@ -48,6 +50,8 @@ describe('record.components.logs', function () {
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 1)
       assert.strictEqual(record1._log._oplog.length, 1)
+
+      // TODO - check index
     })
 
     it('remove + list', async function () {
@@ -55,6 +59,8 @@ describe('record.components.logs', function () {
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 0)
       assert.strictEqual(record1._log._oplog.length, 2)
+
+      // TODO - check index
     })
 
     it('re-add + list', async function () {
@@ -62,6 +68,8 @@ describe('record.components.logs', function () {
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 1)
       assert.strictEqual(record1._log._oplog.length, 3)
+
+      // TODO - check index
     })
 
     it('rename + list', async function () {
@@ -70,6 +78,8 @@ describe('record.components.logs', function () {
       const linkedLogs = await record1.logs.list()
       assert.strictEqual(linkedLogs.length, 1)
       assert.strictEqual(record1._log._oplog.length, 4)
+
+      // TODO - check index
     })
 
     describe('errors', function () {

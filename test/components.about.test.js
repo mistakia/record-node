@@ -26,6 +26,10 @@ describe('record.components', function () {
         aboutEntry = await record.about.set(about)
         assert.ok(aboutEntry.contentCID)
       })
+
+      it('index', async () => {
+        // TODO
+      })
     })
 
     describe('get', async function () {
@@ -41,6 +45,10 @@ describe('record.components', function () {
 
       it('contentCID', function () {
         assert.strictEqual(duplicateEntry.contentCID, aboutEntry.contentCID)
+      })
+
+      it('index', async () => {
+        // TODO
       })
 
       it('duplicate detected', function () {

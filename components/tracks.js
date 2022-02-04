@@ -432,7 +432,8 @@ module.exports = function tracks (self) {
       for (const row of entryRows) {
         const log = await self.log.get(row.address, { replicate: false })
         const entry = await log.getEntryWithContent(row.hash)
-        entries.push(entry)
+        // TODO - investigate issue where entry is undefined
+        if (entry) entries.push(entry)
       }
 
       const tracks = []
