@@ -1,15 +1,21 @@
-/* global describe */
+/* global describe it */
+
+const {
+  config
+} = require('./utils')
 
 describe('record.components.logs.remove', function () {
-  // before
-  // after
+  this.timeout(config.timeout)
 
-  describe('audio & artwork pin', async () => {
-    // TODO (medium) make sure audio & artwork pin is removed
-    // TODO (medium) make sure non-exclusive audio & artwork is not removed
+  it('track in removed log', async function () {
+
   })
 
-  describe('resolver', async () => {
+  it('saved track in removed log', async () => {
+
+  })
+
+  it('resolver', async () => {
     // TODO (medium) make sure resolver is removed
     // TODO (medium) make sure non-exclusive resolver is not removed
   })

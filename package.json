@@ -48,7 +48,7 @@
     "p-queue": "^6.3.0",
     "record-resolver": "mistakia/record-resolver#499873d",
     "secp256k1": "3.8.0",
-    "sqlite3": "5.0.1"
+    "sqlite3": "^5.0.2"
   },
   "devDependencies": {
     "expose-gc": "^1.0.0",

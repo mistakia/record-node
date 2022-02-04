@@ -18,8 +18,8 @@ exports.up = async function (knex) {
     table.text('album').nullable()
     table.text('remixer').nullable()
     table.integer('bpm').nullable()
-    table.integer('duration').notNullable()
-    table.integer('bitrate').notNullable()
+    table.integer('duration').nullable() // TODO: should not be null
+    table.integer('bitrate').nullable() // TODO: should not be null
     table.unique(['address', 'id'])
   })
 
