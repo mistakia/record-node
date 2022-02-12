@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 
 const crypto = require('libp2p-crypto')
+const { decompressPublicKey } = require('libp2p-crypto/src/keys/secp256k1.js')()
 const extend = require('deep-extend')
 const OrbitDB = require('orbit-db')
 const resolver = require('record-resolver')
@@ -10,7 +11,6 @@ const Keystore = require('orbit-db-keystore')
 const Cache = require('orbit-db-cache')
 const Storage = require('orbit-db-storage-adapter')
 const Identities = require('orbit-db-identity-provider')
-const secp256k1 = require('secp256k1')
 const leveldown = require('leveldown')
 const { CID } = require('ipfs-http-client')
 const Errors = require('./errors')
@@ -27,7 +27,7 @@ const defaultConfig = require('./config')
 
 const createKey = async () => {
   const keys = await crypto.keys.generateKeyPair('secp256k1', 256)
-  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
+  const decompressedKey = Buffer.from(decompressPublicKey(keys.public.marshal()))
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
@@ -37,7 +37,7 @@ const createKey = async () => {
 
 const getKey = async (id, storage) => {
   const keys = await storage.getKey(id)
-  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
+  const decompressedKey = Buffer.from(decompressPublicKey(keys.public.marshal()))
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
@@ -47,7 +47,7 @@ const getKey = async (id, storage) => {
 
 const createKeyFromPk = async (pk) => {
   const keys = await crypto.keys.unmarshalPrivateKey(Buffer.from(pk, 'hex'))
-  const decompressedKey = secp256k1.publicKeyConvert(Buffer.from(keys.public.marshal()), false)
+  const decompressedKey = Buffer.from(decompressPublicKey(keys.public.marshal()))
   return {
     publicKey: decompressedKey.toString('hex'),
     privateKey: keys.marshal().toString('hex'),
