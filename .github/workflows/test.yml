@@ -12,7 +12,7 @@ jobs:
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v1
         with:
-          node-version: 12.13.1
+          node-version: 16.15.0
 
       - name: Yarn install
         run: |
@@ -40,7 +40,7 @@ jobs:
   #     - name: Install Node.js, NPM and Yarn
   #       uses: actions/setup-node@v1
   #       with:
-  #         node-version: 12.13.1
+  #         node-version: 16.15.0
 
   #     - name: Yarn install
   #       run: |
@@ -64,7 +64,7 @@ jobs:
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v1
         with:
-          node-version: 12.13.1
+          node-version: 16.15.0
 
       - name: Yarn install
         run: |

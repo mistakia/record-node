@@ -1,6 +1,6 @@
 const os = require('os')
 const fs = require('fs')
-const fsPromises = require('fs').promises
+const fsp = require('fs').promises
 const path = require('path')
 
 const peek = require('buffer-peek-stream')
@@ -10,8 +10,7 @@ const fpcalc = require('fpcalc')
 const ffmpeg = require('fluent-ffmpeg')
 const musicMetadata = require('music-metadata')
 
-const { globSource } = require('ipfs-http-client')
-const { sha256 } = require('../utils')
+const { sha256, formatMetadataAudio, formatMetadataTags } = require('../utils')
 
 const orderByTrackIds = (array, trackIds) => {
   array.sort((a, b) => {
@@ -77,7 +76,7 @@ const downloadFile = (resolverData) => {
       })
     }).catch(async (err) => {
       if (filepath) {
-        await fsPromises.unlink(filepath)
+        await fsp.unlink(filepath)
       }
       reject(err)
     })
@@ -133,7 +132,7 @@ module.exports = function tracks (self) {
       entry.payload.value.listens = count.timestamps
 
       // TODO (low) - re-enable
-      /* const cid = new CID(entry.payload.value.content.hash)
+      /* const cid = CID.parse(entry.payload.value.content.hash)
        * entry.payload.value.isLocal = await self._ipfs.repo.has(cid)
        */
       return entry.payload.value
@@ -143,7 +142,7 @@ module.exports = function tracks (self) {
       self.logger.info(`[node] searching ${filepath} for tracks`)
 
       let result = []
-      const stat = await fsPromises.stat(filepath)
+      const stat = await fsp.stat(filepath)
 
       if (stat.isFile()) {
         try {
@@ -156,7 +155,7 @@ module.exports = function tracks (self) {
       }
 
       if (stat.isDirectory()) {
-        const pathsInDir = await fsPromises.readdir(filepath)
+        const pathsInDir = await fsp.readdir(filepath)
         self.logger.info(`[node] found ${pathsInDir.length} paths in ${filepath}`)
         for (let i = 0; i < pathsInDir.length; i++) {
           const tracks = await self.tracks.addTracksFromFS(
@@ -197,11 +196,8 @@ module.exports = function tracks (self) {
       await removeTags(filepath, processPath)
       self.logger.info('[node] cleanded file tags')
 
-      let audioFile
-      for await (const file of self._ipfs.addAll(globSource(processPath))) {
-        audioFile = file
-      }
-      await fsPromises.unlink(processPath)
+      const audioFile = await self._ipfs.add(fs.createReadStream(processPath))
+      await fsp.unlink(processPath)
       self.logger.info('[node] added audio to ipfs')
 
       const results = []
@@ -217,11 +213,8 @@ module.exports = function tracks (self) {
       const trackData = {
         size,
         hash: audioFile.cid,
-        tags: {
-          ...metadata.common,
-          acoustid_fingerprint: acoustid.fingerprint
-        },
-        audio: metadata.format,
+        tags: formatMetadataTags({ metadata, acoustid }),
+        audio: formatMetadataAudio({ metadata }),
         artwork: results.map(r => r.cid),
         resolver: []
       }

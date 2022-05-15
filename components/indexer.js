@@ -80,8 +80,9 @@ module.exports = function indexer (self) {
 
         const entry = await log._oplog.get(entryHash)
         // Check to see if entry contents are local, add to indexManager if not
-        if (CID.isCID(entry.payload.value.content)) {
-          const haveLocally = await self._ipfs.repo.has(entry.payload.value.content)
+        const contentCID = CID.asCID(entry.payload.value.content)
+        if (contentCID) {
+          const haveLocally = await self._ipfs.repo.has(contentCID)
           if (!haveLocally) {
             self.indexer._process(entry)
             continue
@@ -287,7 +288,8 @@ module.exports = function indexer (self) {
       for (const row of rows) {
         const { cid } = row
 
-        const dagNode = await self._ipfs.dag.get(cid, { timeout: 3000 })
+        const artworkCID = CID.asCID(cid) || CID.parse(cid)
+        const dagNode = await self._ipfs.dag.get(artworkCID, { timeout: 3000 })
         if (!dagNode.value) {
           continue
         }
@@ -323,9 +325,10 @@ module.exports = function indexer (self) {
 
       const entries = await self._db('entries').where({ key: id })
       for (const entry of entries) {
-        const dagNode = await self._ipfs.dag.get(entry.cid, { timeout: 3000 })
+        const entryCID = CID.asCID(entry.cid) || CID.parse(entry.cid)
+        const dagNode = await self._ipfs.dag.get(entryCID, { timeout: 3000 })
         try {
-          await self._ipfs.pin.rm(entry.cid)
+          await self._ipfs.pin.rm(entryCID)
         } catch (error) {
           self.logger.error(error)
         }

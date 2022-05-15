@@ -1,6 +1,7 @@
 /* global describe it before after */
 
 const path = require('path')
+const { base58btc } = require('multiformats/bases/base58')
 const assert = require('assert')
 const {
   config,
@@ -39,7 +40,7 @@ describe('record.components.track.remove', function () {
     it('pins', async function () {
       const pins = []
       for await (const { cid } of record._ipfs.pin.ls({ type: 'direct' })) {
-        pins.push(cid.toBaseEncodedString('base58btc'))
+        pins.push(cid.toString(base58btc))
       }
       // TODO (low) compare pins
       assert.strictEqual(pins.length, 2)

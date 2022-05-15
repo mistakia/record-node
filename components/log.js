@@ -1,4 +1,5 @@
 const extend = require('deep-extend')
+const io = require('orbit-db-io')
 const { CID } = require('ipfs-http-client')
 
 const { throttle, loadEntryContent } = require('../utils')
@@ -116,23 +117,23 @@ module.exports = function log (self) {
     },
 
     getManifest: async (manifestAddress) => {
-      const manifest = await self._ipfs.dag.get(new CID(manifestAddress))
+      const manifest = await self._ipfs.dag.get(CID.parse(manifestAddress))
       return manifest.value
     },
 
     haveManifest: async (manifestAddress) => {
-      return self._ipfs.repo.has(new CID(manifestAddress))
+      return self._ipfs.repo.has(CID.parse(manifestAddress))
     },
 
     haveAccessController: async (accessControllerAddress) => {
       const hash = accessControllerAddress.split('/')[2]
-      const hasAC = await self._ipfs.repo.has(new CID(hash))
+      const hasAC = await self._ipfs.repo.has(CID.parse(hash))
       if (!hasAC) {
         return false
       }
 
-      const ac = await self._ipfs.dag.get(new CID(hash))
-      const hasIPFSAC = await self._ipfs.repo.has(new CID(ac.value.params.address))
+      const ac = await self._ipfs.dag.get(CID.parse(hash))
+      const hasIPFSAC = await self._ipfs.repo.has(CID.parse(ac.value.params.address))
       if (!hasIPFSAC) {
         return false
       }
@@ -213,8 +214,8 @@ module.exports = function log (self) {
       self.logger.info(`[node] pinning access controller address: ${accessControllerAddress}`)
       const acAddress = accessControllerAddress.split('/')[2]
       await self._ipfs.pin.add(acAddress)
-      const dagNode = await self._ipfs.dag.get(acAddress)
-      await self._ipfs.pin.add(dagNode.value.params.address)
+      const data = await io.read(self._ipfs, acAddress)
+      await self._ipfs.pin.add(data.params.address)
     },
 
     getLogEntryFromId: async (address, id) => {

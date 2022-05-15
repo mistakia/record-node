@@ -16,12 +16,12 @@ const loadEntryContent = async (ipfs, e) => {
 
   // content already loaded
   if (entry.payload.value.contentCID) {
-    entry.payload.value.cid = new CID(entry.payload.value.contentCID)
+    entry.payload.value.cid = CID.parse(entry.payload.value.contentCID)
     return entry
   }
 
   const { type } = entry.payload.value
-  const cid = new CID(entry.payload.value.content)
+  const cid = CID.parse(entry.payload.value.content)
   const content = await loadContentFromCID(ipfs, cid, type)
 
   entry.payload.value = Object.assign(entry.payload.value, content)

@@ -1,4 +1,5 @@
 const { CID } = require('ipfs-http-client')
+const { base58btc } = require('multiformats/bases/base58')
 
 const loadContentFromCID = async (ipfs, cid, type) => {
   const item = {}
@@ -9,17 +10,17 @@ const loadContentFromCID = async (ipfs, cid, type) => {
   }
 
   item.content = dagNode.value
-  item.cid = new CID(cid)
-  item.contentCID = item.cid.toBaseEncodedString('base58btc')
+  item.cid = CID.asCID(cid) || CID.parse(cid)
+  item.contentCID = item.cid.toString(base58btc)
 
   // convert track hash & artwork cids to strings
   if (type === 'track') {
-    if (CID.isCID(item.content.hash)) {
-      item.content.hash = item.content.hash.toBaseEncodedString('base58btc')
+    if (CID.asCID(item.content.hash)) {
+      item.content.hash = item.content.hash.toString(base58btc)
     }
 
     item.content.artwork = item.content.artwork.map((a) => {
-      return CID.isCID(a) ? a.toBaseEncodedString('base58btc') : a
+      return CID.asCID(a) ? a.toString(base58btc) : a
     })
   }
 

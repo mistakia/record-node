@@ -24,7 +24,7 @@ router.get('/:cid([a-zA-Z0-9]{46})', async (req, res) => {
     const { record } = req.app.locals
 
     if (localOnly) {
-      const haveLocally = await record._ipfs.repo.has(new CID(cid))
+      const haveLocally = await record._ipfs.repo.has(CID.parse(cid))
       if (!haveLocally) {
         return res.status(204).send(null)
       }

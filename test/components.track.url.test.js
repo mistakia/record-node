@@ -15,7 +15,7 @@ describe('record.components.track', function () {
 
   describe('record.components.track.addTrackFromUrl', function () {
     let tracks
-    const urlpath1 = 'https://soundcloud.com/asa-moto101/kifesh?in=deewee-2/sets/asa-moto-playtime-deewee030'
+    const urlpath1 = 'https://soundcloud.com/asa-moto101/kifesh?in=deewee/sets/asa-moto-playtime-deewee030'
     const urlpath2 = 'https://www.youtube.com/watch?v=a7jdHdR-oF8'
 
     describe('add', function () {
@@ -28,7 +28,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(tracks[0].contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
+        assert.strictEqual(tracks[0].contentCID, 'zBwWX8QhBrfmAWNnasSTfCYP4hJ8TsCc9qxJrrGS791E9TrMTQTWrRF26dCraDwj7ndb54aBzRRq4Ae6Mh6qoJDXM98ZY')
       })
 
       it('audio file hash', function () {
@@ -112,7 +112,7 @@ describe('record.components.track', function () {
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track[0].contentCID, 'zBwWX9K3D55gieRxaF2iDSCSoKxLfuDjL7fGytKp9hFM6RumJbQrEkcoyjCaoVAzD9vkcH5uzEJLjX6ePd33ng7bfc6ij')
+        assert.strictEqual(track[0].contentCID, 'zBwWX8QhBrfmAWNnasSTfCYP4hJ8TsCc9qxJrrGS791E9TrMTQTWrRF26dCraDwj7ndb54aBzRRq4Ae6Mh6qoJDXM98ZY')
       })
 
       it('audio file hash', function () {

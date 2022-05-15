@@ -242,7 +242,7 @@ describe('record.components.track.add', function () {
         assert.strictEqual(entry.op, 'PUT')
         assert.strictEqual(entry.clock, 4)
         assert.strictEqual(entry.key, 'bc48ea541d77cf4957e4081d61a771f7f18fc72753cc5c55cae0c8ed76e7109b')
-        assert.strictEqual(entry.cid, 'zBwWX7RGxWSQV43w8JB7abwsV1j5HqGZL8BYbTqRTh8CZBe9D68foYWk4xjXr9ChF9zNgXWejTk89c5Sa3ho2iYdb45WN')
+        assert.strictEqual(entry.cid, 'zBwWX8iEu7Xjo5JpBDWQHfu4EuoSVJNqyDk3oPH2bBstP5ewkrcjy974Hp1m2fKbS4dg1LeSW2U32LYcoEZX8RcHzLWxD')
       })
 
       it('tracks index', async () => {
@@ -257,13 +257,13 @@ describe('record.components.track.add', function () {
         assert.strictEqual(track.albumartist, null)
         assert.strictEqual(track.album, null)
         assert.strictEqual(track.remixer, null)
-        assert.strictEqual(track.bpm, null)
+        assert.strictEqual(track.bpm, 124)
         assert.strictEqual(track.duration, 361.97877551020406)
         assert.strictEqual(track.bitrate, 320000)
       })
 
       it('contentCID', function () {
-        assert.strictEqual(track.contentCID, 'zBwWX7RGxWSQV43w8JB7abwsV1j5HqGZL8BYbTqRTh8CZBe9D68foYWk4xjXr9ChF9zNgXWejTk89c5Sa3ho2iYdb45WN')
+        assert.strictEqual(track.contentCID, 'zBwWX8iEu7Xjo5JpBDWQHfu4EuoSVJNqyDk3oPH2bBstP5ewkrcjy974Hp1m2fKbS4dg1LeSW2U32LYcoEZX8RcHzLWxD')
       })
 
       it('audio file hash', function () {

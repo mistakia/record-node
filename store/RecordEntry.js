@@ -1,5 +1,6 @@
 const { sha256 } = require('../utils')
 const { CID } = require('ipfs-http-client')
+const { base58btc } = require('multiformats/bases/base58')
 
 class Entry {
   constructor () {
@@ -15,8 +16,8 @@ class Entry {
       ...this._entry
     }
 
-    const cid = await ipfs.dag.put(content, { format: 'dag-cbor', hashAlg: 'sha3-512' })
-    this._entry.content = cid.toBaseEncodedString('base58btc')
+    const cid = await ipfs.dag.put(content, { storeCodec: 'dag-cbor', hashAlg: 'sha3-512' })
+    this._entry.content = cid.toString(base58btc)
     await ipfs.pin.add(cid.toString(), { recursive: false })
 
     return this._entry
@@ -35,13 +36,13 @@ class TrackEntry extends Entry {
       tags
     }
 
-    if (content.hash && !CID.isCID(content.hash)) {
-      content.hash = new CID(content.hash)
+    if (content.hash) {
+      content.hash = CID.asCID(content.hash) || CID.parse(content.hash)
     }
 
     if (content.artwork && content.artwork.length) {
       content.artwork = content.artwork.map((a) => {
-        return CID.isCID(a) ? a : new CID(a)
+        return CID.asCID(a) || CID.parse(a)
       })
     }
 

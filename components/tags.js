@@ -1,3 +1,5 @@
+const { CID } = require('ipfs-http-client')
+
 module.exports = function tags (self) {
   return {
     list: async (addresses = []) => {
@@ -44,6 +46,7 @@ module.exports = function tags (self) {
       }
       tags.push(tag)
 
+      cid = CID.asCID(cid) || CID.parse(cid)
       const dagNode = await self._ipfs.dag.get(cid)
       const content = dagNode.value
       const log = self.log.mine()
@@ -86,7 +89,7 @@ module.exports = function tags (self) {
       }
 
       const { cid } = tracks[0]
-      const dagNode = await self._ipfs.dag.get(cid)
+      const dagNode = await self._ipfs.dag.get(CID.asCID(cid) || CID.parse(cid))
       const content = dagNode.value
       const log = self.log.mine()
       const entry = await log.tracks.put(content, tags)
