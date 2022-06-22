@@ -47,7 +47,7 @@
     "orbit-db-store": "mistakia/orbit-db-store#proto/record",
     "p-queue": "^6.3.0",
     "record-resolver": "mistakia/record-resolver#499873d",
-    "sqlite3": "5.0.0"
+    "sqlite3": "5.0.3"
   },
   "devDependencies": {
     "expose-gc": "^1.0.0",
