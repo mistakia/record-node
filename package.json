@@ -10,6 +10,7 @@
     "benchmark": "node --inspect --expose-gc benchmark/index.js -r --grep baseline",
     "benchmark:stress": "node --inspect --expose-gc benchmark/index.js -r --grep stress",
     "lint": "standard '**/*.js'",
+    "verify": "yarn lint",
     "lint:fix": "standard --fix '**/*.js'",
     "test": "NODE_ENV=test TEST=all mocha --exit",
     "start": "node --trace-warnings bin/cli.js"
