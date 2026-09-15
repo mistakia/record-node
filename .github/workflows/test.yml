@@ -1,6 +1,13 @@
 name: Test
 
-on: push
+on:
+  push:
+  # Manual re-runs. The workflow was found manually disabled with only a stale
+  # failed run behind it (2025-12-13, logs long since 410'd), which is how a
+  # master that has shipped five CI-hardening commits since still reads red.
+  # workflow_dispatch is what keeps a re-enabled Test workflow re-runnable
+  # without a throwaway push.
+  workflow_dispatch:
 
 permissions:
   contents: read
