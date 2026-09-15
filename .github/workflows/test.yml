@@ -80,13 +80,16 @@ jobs:
         run: |
           yarn install --frozen-lockfile --network-timeout 300000
 
-      - uses: FedericoCarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install chromaprint
+      # ffmpeg comes from brew alongside chromaprint rather than from
+      # FedericoCarboni/setup-ffmpeg. That action asserts `only x64 is
+      # supported` and `macos-latest` has been arm64 since macos-14, so the
+      # pinned v3.1 aborts the job before a single test runs. brew serves
+      # whichever architecture the runner is, needs no token, and drops a
+      # third-party action from the supply chain -- the direction the rest of
+      # this workflow's pinning already goes.
+      - name: Install ffmpeg & chromaprint
         run: |
-          brew install chromaprint
+          brew install ffmpeg chromaprint
 
       - name: Test & Lint
         run: |
