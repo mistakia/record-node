@@ -12,7 +12,7 @@
     "lint": "standard '**/*.js'",
     "verify": "yarn lint",
     "lint:fix": "standard --fix '**/*.js'",
-    "test": "NODE_ENV=test TEST=all mocha --exit",
+    "test": "NODE_ENV=test TEST=all NODE_OPTIONS=--no-experimental-fetch mocha --exit",
     "start": "node --trace-warnings bin/cli.js"
   },
   "author": "",

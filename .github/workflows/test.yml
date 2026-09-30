@@ -28,6 +28,19 @@ jobs:
         run: |
           yarn install --frozen-lockfile --network-timeout 300000
 
+      # .yarnrc ignore-scripts skips every native build and binary download;
+      # this runs the install step of only the packages the suite loads.
+      - name: Build allowlisted native deps and binaries
+        run: cli/build-allowlisted-deps.sh
+
+      # The downloaded youtube-dl is `#!/usr/bin/env python`; make sure a bare
+      # `python` resolves whether or not the runner image ships one.
+      - name: Put python on PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$(command -v python3)" "$HOME/.local/bin/python"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install ffmpeg & chromaprint
         run: |
           sudo apt-get install software-properties-common
@@ -79,6 +92,15 @@ jobs:
       - name: Yarn install
         run: |
           yarn install --frozen-lockfile --network-timeout 300000
+
+      - name: Build allowlisted native deps and binaries
+        run: cli/build-allowlisted-deps.sh
+
+      - name: Put python on PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$(command -v python3)" "$HOME/.local/bin/python"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # ffmpeg comes from brew alongside chromaprint rather than from
       # FedericoCarboni/setup-ffmpeg. That action asserts `only x64 is
