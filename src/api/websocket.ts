@@ -3,7 +3,9 @@
 // no state beyond the open clients; a reconnecting client reads current
 // state over REST. The client offers the subprotocols record and
 // bearer.<token>; the upgrade authenticates from the second and selects the
-// first, so the token is never echoed back.
+// first, so the token is never echoed back. An offer without record is
+// refused, since the node would otherwise select no subprotocol; a client
+// offering none, as a loopback client without a token may, is accepted.
 
 import type { IncomingMessage, Server } from 'node:http'
 import type { Duplex } from 'node:stream'
@@ -52,6 +54,11 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
     // A WebSocket handshake carries no CORS check, so the origin rule is applied here.
     if (!origin_allowed(cors_origins, req.headers.origin)) {
       refuse_upgrade(socket, '403 Forbidden')
+      return
+    }
+    const offered = offered_subprotocols(req)
+    if (offered.length > 0 && !offered.includes(WS_SUBPROTOCOL)) {
+      refuse_upgrade(socket, '400 Bad Request')
       return
     }
     if (authenticate !== undefined && !(await authenticate(subprotocol_token(req)))) {

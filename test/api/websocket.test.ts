@@ -86,6 +86,8 @@ describe('api: websocket', () => {
         const status = await refused_status(refused)
         expect(status === 401 || status === 'error').toBe(true)
       }
+      // A valid token offered without record would select no subprotocol.
+      expect(await refused_status(new WebSocket(url(), ['bearer.good']))).toBe(400)
       const { socket } = await connect(url(), ['record', 'bearer.good'])
       // The token is never echoed back: the node selects record.
       expect(socket.protocol).toBe('record')
