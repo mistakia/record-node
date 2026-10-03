@@ -1,0 +1,18 @@
+// The package entry for in-process embedding (record-app): the peer, the API
+// server factory, and the configuration loader.
+
+export { create_peer, start_peer, stop_peer, OWN_LIBRARY_NAME } from '#peer/peer.ts'
+export type { CreatePeerOptions, Peer } from '#peer/peer.ts'
+export { DEFAULT_PEER_CONFIG, TOOL_PINS } from '#peer/config.ts'
+export type { PeerConfig } from '#peer/config.ts'
+export { as_api_resolver, create_resolver } from '#peer/resolver.ts'
+export type { ResolveUrl } from '#peer/resolver.ts'
+export { create_api_server, stop_api_server } from '#api/index.ts'
+export type { ApiServer, ApiServerOptions } from '#api/index.ts'
+export { load_config } from './config.ts'
+export type { NodeConfig } from './config.ts'
+export { PeerError } from '#types/peer.ts'
+export type * from '#types/peer.ts'
+export { ProtocolError } from '#types/errors.ts'
+export { IngestError } from '#types/ingest.ts'
+export type { ImportEventPayloads, IngestedTrack } from '#types/ingest.ts'

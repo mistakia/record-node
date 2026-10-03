@@ -10,6 +10,7 @@ export type IngestErrorCode =
   | 'empty_fingerprint'
   | 'invalid_duration'
   | 'non_audio_stream'
+  | 'download_failed'
 
 export class IngestError extends Error {
   readonly code: IngestErrorCode

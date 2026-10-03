@@ -1,5 +1,6 @@
 // Access-control chain and append verification (§3.5), against
-// src/access-control and src/oplog. Pinning stubs wait for the library lifecycle.
+// src/access-control and src/oplog; chain pinning against the library
+// lifecycle in src/peer.
 
 import { describe, expect, test } from 'bun:test'
 
@@ -14,6 +15,7 @@ import { create_oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { append_track, open_test_library, sign_raw, track_put } from '#test/helpers/library.ts'
 import { create_memory_block_store } from '#test/helpers/memory-block-store.ts'
+import { open_library_manager, pinned, write_chain } from '#test/helpers/library-manager.ts'
 import type { BlockStore } from '#types/library.ts'
 import { ac_chain_vector } from './vectors.ts'
 
@@ -68,8 +70,31 @@ describe('ac-chain', () => {
     expect(chain.cids).toEqual(cids)
   })
 
-  test.todo('§3.5.1 [MUST] all three chain objects are pinned when a library loads', () => {})
-  test.todo('§3.5.1 [MUST] chain objects are not unpinned while the library is in use', () => {})
+  test('§3.5.1 [MUST] all three chain objects are pinned when a library loads', async () => {
+    const { content_store, manager } = open_library_manager()
+    const { address, cids } = await write_chain({ content_store, name: 'library', writer })
+    const chain_cids = [cids.manifest, cids.wrapper, cids.write_list]
+    expect(await pinned(content_store, chain_cids)).toEqual([false, false, false])
+    const handle = await manager.open_library(address)
+    expect(await pinned(content_store, chain_cids)).toEqual([true, true, true])
+    expect([...handle.pins.keys()]).toEqual(chain_cids)
+  })
+
+  test('§3.5.1 [MUST] chain objects are not unpinned while the library is in use', async () => {
+    const { content_store, manager } = open_library_manager()
+    // Same writer: the two chains share the wrapper and write-list objects.
+    const in_use = await manager.create_library({ name: 'in-use', type: 'recordstore', write_keys: [writer.public_key] })
+    const other = await manager.create_library({ name: 'other', type: 'listens', write_keys: [writer.public_key] })
+    expect(other.chain.cids.write_list).toBe(in_use.chain.cids.write_list)
+    expect(other.chain.cids.wrapper).toBe(in_use.chain.cids.wrapper)
+    const chain_cids = [in_use.chain.cids.manifest, in_use.chain.cids.wrapper, in_use.chain.cids.write_list]
+    // Closing stops replication only, and unlinking a library that shares
+    // objects leaves the shared ones pinned.
+    await manager.close_library(in_use.chain.address)
+    await manager.unlink_library(other.chain.address)
+    expect(await pinned(content_store, chain_cids)).toEqual([true, true, true])
+    expect(await content_store.is_pinned(other.chain.cids.manifest)).toBe(false)
+  })
 
   test('§3.5.1 [MUST] a manifest that fails to decode or has the wrong field set rejects the library', async () => {
     const block_store = create_memory_block_store()

@@ -1,7 +1,8 @@
 // Fingerprinting, tag stripping, metadata, ingest, and listens (§6). Ingest
 // rules run src/ingest against fpcalc and ffmpeg on audio derived from the F7
 // FLAC; track-id and listens rules run against src/entry and src/oplog. URL
-// ingest (§6.4.2) lands with the record-resolver rebuild and stays pending.
+// ingest (§6.4.2) resolves record-resolver's recorded fixtures through its
+// fake yt-dlp, and downloads by transcoding the F7 audio.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -18,6 +19,7 @@ import { compute_fingerprint, FPCALC_ARGS } from '#ingest/fingerprint.ts'
 import { extract_metadata } from '#ingest/metadata.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
+import { ingest_resolved_entry } from '#ingest/pipeline-url.ts'
 import { run_tool } from '#ingest/subprocess.ts'
 import { probe_stream_kinds } from '#ingest/tag-strip.ts'
 import { verify_toolchain } from '#ingest/toolchain.ts'
@@ -37,6 +39,7 @@ import {
   toolchain
 } from '#test/helpers/ingest.ts'
 import { open_test_library } from '#test/helpers/library.ts'
+import { fixture_download, fixture_resolver, YOUTUBE_FIXTURE, YOUTUBE_STREAM_URL, YOUTUBE_URL } from '#test/helpers/resolver.ts'
 import { audio_pipeline_vector as f7 } from './vectors.ts'
 
 const writer = generate_key_pair()
@@ -260,7 +263,50 @@ describe('content-processing', () => {
     expect(target.oplog.entries.size).toBe(0)
   })
 
-  test.todo('§6.4.2 [MUST] the resolver url field is stripped before persistence', () => {})
+  test('§6.4.2 [MUST] the resolver url field is stripped before persistence', async () => {
+    const [entry, ...rest] = await fixture_resolver(YOUTUBE_FIXTURE)(YOUTUBE_URL)
+    expect(rest).toHaveLength(0)
+    expect(entry?.url).toBe(YOUTUBE_STREAM_URL)
+    const target = await open_ingest_target()
+    const download = fixture_download()
+    const track = await ingest_resolved_entry({
+      entry: entry as NonNullable<typeof entry>,
+      target,
+      toolchain,
+      find_by_source: () => undefined,
+      download
+    })
+    expect(download.urls).toEqual([YOUTUBE_STREAM_URL])
+    const content = await stored_content({ target, cid: track.content_cid })
+    expect(content.resolver).toEqual([{ extractor: 'youtube', id: 'iODdvJGpfIA', ...pick_resolver_fields(entry) }])
+    for (const field of ['url', 'ext', 'http_headers']) expect(content.resolver[0]).not.toHaveProperty(field)
+    // Neither the content payload nor the signed entry carries the stream url.
+    const entry_bytes = target.oplog.entries.get(track.entry_hash)?.bytes as Uint8Array
+    const content_bytes = await target.content_store.get(track.content_cid) as Uint8Array
+    for (const bytes of [entry_bytes, content_bytes]) expect(Buffer.from(bytes).includes(YOUTUBE_STREAM_URL)).toBe(false)
+  })
+
+  test('§6.4.2 [check] a source already in the library returns its track without a download', async () => {
+    const [entry] = await fixture_resolver(YOUTUBE_FIXTURE)(YOUTUBE_URL)
+    const target = await open_ingest_target()
+    const download = fixture_download()
+    const first = await ingest_resolved_entry({ entry: entry as NonNullable<typeof entry>, target, toolchain, find_by_source: () => undefined, download })
+    const sources: Array<{ extractor: string, id: string }> = []
+    const again = await ingest_resolved_entry({
+      entry: entry as NonNullable<typeof entry>,
+      target,
+      toolchain,
+      find_by_source: (source) => {
+        sources.push(source)
+        return { ...first, existing: true }
+      },
+      download
+    })
+    expect(sources).toEqual([{ extractor: 'youtube', id: 'iODdvJGpfIA', ...pick_resolver_fields(entry) }])
+    expect(again).toEqual({ ...first, existing: true })
+    expect(download.urls).toHaveLength(1)
+    expect(target.oplog.entries.size).toBe(1)
+  })
 
   test('§6.4.3 [MUST] CID ingest validates the §2.4.1 required fields before accepting', async () => {
     const { content } = await ingest(f7.fixture_path)
@@ -309,4 +355,11 @@ async function zero_length_wav (): Promise<string> {
   bytes.writeUInt32LE(0, data + 4)
   writeFileSync(path, bytes)
   return path
+}
+
+// The optional §2.4.2 fields of a resolved entry, as the strip keeps them.
+function pick_resolver_fields (entry: object | undefined): Record<string, unknown> {
+  const fields = ['fulltitle', 'thumbnail', 'artist', 'alt_title', 'upload_date', 'webpage_url', 'duration']
+  const record = { ...entry } as Record<string, unknown>
+  return Object.fromEntries(fields.filter((field) => record[field] !== undefined).map((field) => [field, record[field]]))
 }

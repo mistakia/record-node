@@ -412,3 +412,16 @@ export const get_about = ({ db, library_address }: { db: DatabaseSync, library_a
     avatar: nullable_text(row.avatar)
   }
 }
+
+// The track a library holds under a source pointer (§2.4.2), the §6.4.2
+// step 2 cache lookup.
+export const find_track_by_source = ({ db, library_address, extractor, id }: {
+  db: DatabaseSync
+  library_address: string
+  extractor: string
+  id: string
+}): string | undefined => {
+  const row = db.prepare('SELECT track_id FROM resolvers WHERE library_address = ? AND extractor = ? AND id = ? LIMIT 1')
+    .get(library_address, extractor, id) as Row | undefined
+  return row === undefined ? undefined : String(row.track_id)
+}

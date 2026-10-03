@@ -7,28 +7,92 @@
   "engines": {
     "node": ">=22"
   },
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "record-node": "./dist/cli.js"
+  },
   "imports": {
-    "#encoding/*": "./src/encoding/*",
-    "#identity/*": "./src/identity/*",
-    "#access-control/*": "./src/access-control/*",
-    "#entry/*": "./src/entry/*",
-    "#oplog/*": "./src/oplog/*",
-    "#fabric/*": "./src/fabric/*",
-    "#adapter/*": "./src/adapter/*",
-    "#replication/*": "./src/replication/*",
-    "#ingest/*": "./src/ingest/*",
-    "#query-db/*": "./src/query-db/*",
-    "#peer/*": "./src/peer/*",
-    "#api/*": "./src/api/*",
-    "#types/*": "./src/types/*",
+    "#encoding/*.ts": {
+      "bun": "./src/encoding/*.ts",
+      "types": "./dist/encoding/*.d.ts",
+      "default": "./dist/encoding/*.js"
+    },
+    "#identity/*.ts": {
+      "bun": "./src/identity/*.ts",
+      "types": "./dist/identity/*.d.ts",
+      "default": "./dist/identity/*.js"
+    },
+    "#access-control/*.ts": {
+      "bun": "./src/access-control/*.ts",
+      "types": "./dist/access-control/*.d.ts",
+      "default": "./dist/access-control/*.js"
+    },
+    "#entry/*.ts": {
+      "bun": "./src/entry/*.ts",
+      "types": "./dist/entry/*.d.ts",
+      "default": "./dist/entry/*.js"
+    },
+    "#oplog/*.ts": {
+      "bun": "./src/oplog/*.ts",
+      "types": "./dist/oplog/*.d.ts",
+      "default": "./dist/oplog/*.js"
+    },
+    "#fabric/*.ts": {
+      "bun": "./src/fabric/*.ts",
+      "types": "./dist/fabric/*.d.ts",
+      "default": "./dist/fabric/*.js"
+    },
+    "#adapter/*.ts": {
+      "bun": "./src/adapter/*.ts",
+      "types": "./dist/adapter/*.d.ts",
+      "default": "./dist/adapter/*.js"
+    },
+    "#replication/*.ts": {
+      "bun": "./src/replication/*.ts",
+      "types": "./dist/replication/*.d.ts",
+      "default": "./dist/replication/*.js"
+    },
+    "#ingest/*.ts": {
+      "bun": "./src/ingest/*.ts",
+      "types": "./dist/ingest/*.d.ts",
+      "default": "./dist/ingest/*.js"
+    },
+    "#query-db/*.ts": {
+      "bun": "./src/query-db/*.ts",
+      "types": "./dist/query-db/*.d.ts",
+      "default": "./dist/query-db/*.js"
+    },
+    "#peer/*.ts": {
+      "bun": "./src/peer/*.ts",
+      "types": "./dist/peer/*.d.ts",
+      "default": "./dist/peer/*.js"
+    },
+    "#api/*.ts": {
+      "bun": "./src/api/*.ts",
+      "types": "./dist/api/*.d.ts",
+      "default": "./dist/api/*.js"
+    },
+    "#types/*.ts": {
+      "bun": "./src/types/*.ts",
+      "types": "./dist/types/*.d.ts",
+      "default": "./dist/types/*.js"
+    },
     "#test/*": "./test/*"
   },
   "scripts": {
+    "build": "sh cli/build-dist.sh",
     "test": "bun test",
     "test:conformance": "bun test test/conformance",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint .",
-    "verify": "bun run lint && bun run typecheck"
+    "check:dist": "sh cli/check-dist.sh",
+    "verify": "bun run lint && bun run typecheck && bun run check:dist"
   },
   "dependencies": {
     "@helia/utils": "3.0.5",
@@ -38,16 +102,20 @@
     "@noble/hashes": "2.0.1",
     "ajv": "8.20.0",
     "blockstore-core": "7.0.1",
+    "blockstore-fs": "4.0.1",
     "datastore-core": "12.0.1",
+    "datastore-fs": "12.0.1",
     "express": "5.2.1",
     "express-openapi-validator": "5.6.2",
     "file-type": "22.1.1",
     "helia": "7.1.15",
+    "ipfs-unixfs": "13.1.2",
     "ipfs-unixfs-importer": "17.1.1",
     "morgan": "1.12.1",
     "multer": "2.4.0",
     "multiformats": "13.4.0",
     "music-metadata": "11.16.1",
+    "record-resolver": "github:mistakia/record-resolver#fac2811ad1ddc53ad3e3447b9954152e1fe2dfcb",
     "swagger-ui-express": "5.0.1",
     "ws": "8.21.3",
     "yaml": "2.9.1"

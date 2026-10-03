@@ -20,9 +20,10 @@ const error_summary = (error: unknown): { code: string, message: string } => {
 }
 
 // ingest_file is the bound single-file pipeline, for example ingest_local_file
-// with the target library and toolchain applied. Files run one at a time.
+// with the target library and toolchain applied. Files run one at a time, and
+// each call gets the file's position in its batch.
 export const create_importer = ({ ingest_file }: {
-  ingest_file: (file_path: string) => Promise<IngestedTrack>
+  ingest_file: (file_path: string, index: number) => Promise<IngestedTrack>
 }): Importer => {
   const handlers = new Map<ImportEventType, Set<ImportEventHandler<never>>>()
 
@@ -49,7 +50,7 @@ export const create_importer = ({ ingest_file }: {
       const completed = index + 1
       const remaining = file_count - completed
       try {
-        const track = await ingest_file(file_path)
+        const track = await ingest_file(file_path, index)
         track_count += 1
         emit('import:processed-file', { import_id, file_path, track, completed, remaining })
       } catch (error) {

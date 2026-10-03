@@ -80,7 +80,8 @@ const send_error = (res: Response, { status, code, message, details }: {
 const PEER_ERRORS = {
   not_found: { status: 404, code: 'NOT_FOUND' },
   conflict: { status: 409, code: 'CONFLICT' },
-  forbidden: { status: 403, code: 'FORBIDDEN' }
+  forbidden: { status: 403, code: 'FORBIDDEN' },
+  invalid: { status: 400, code: 'VALIDATION_ERROR' }
 } as const
 
 // express-openapi-validator errors carry an HTTP status and per-path errors.

@@ -1,0 +1,1140 @@
+openapi: 3.1.0
+info:
+  title: record-node HTTP API
+  version: 1.0.0
+  summary: HTTP + WebSocket API for the rebuilt record-node peer.
+  description: |
+    OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
+    contract for the rebuild; legacy record-node shapes informed
+    requirements-gathering but are not preserved for compatibility. See
+    `record-node-api-server.md` for the task plan, and protocol spec
+    §1–§6 (this same directory) for data-model authority.
+
+    Design conventions:
+    - All response and request field names use `snake_case`.
+    - Error envelope is structured: `{error: {code, message, details?}}`.
+    - Pagination is offset/limit with bounded defaults.
+    - Track, Library, and Settings responses are flat API-layer shapes;
+      protocol-layer payloads (dag-cbor objects per spec §2.4) are NOT
+      passed through verbatim. Clients consume the enumerated API fields.
+    - Replication status is normalized to `{progress, total}`; OrbitDB
+      internals are not exposed.
+
+    WebSocket bridge schemas are in the top-level `x-websocket-events`
+    extension at the bottom of this document.
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development (default).
+
+tags:
+  - name: tracks
+  - name: tags
+  - name: libraries
+  - name: about
+  - name: listens
+  - name: peers
+  - name: settings
+  - name: identity
+  - name: import
+  - name: audio
+  - name: resolve
+
+paths:
+  /tracks:
+    get:
+      tags: [tracks]
+      summary: List tracks (paginated, filterable, sortable).
+      parameters:
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+        - name: library_addresses
+          in: query
+          description: Filter by one or more library addresses.
+          schema:
+            type: array
+            items: { type: string }
+          style: form
+          explode: true
+        - name: tags
+          in: query
+          description: Filter by tag labels. All supplied tags must match (AND semantics).
+          schema:
+            type: array
+            items: { type: string }
+          style: form
+          explode: true
+        - name: query
+          in: query
+          description: Full-text search across title, artist, album, remixer.
+          schema: { type: string }
+        - name: shuffle
+          in: query
+          description: Randomize result order (overrides sort).
+          schema: { type: boolean, default: false }
+        - name: sort
+          in: query
+          description: Sort field. Whitelisted to prevent injection.
+          schema:
+            type: string
+            enum: [title, artist, album, bpm, duration, added_at]
+            default: added_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    post:
+      tags: [tracks]
+      summary: Adopt an existing track by content CID.
+      description: |
+        Adds a track that already exists in the content network (known by
+        CID) to the requestor's own library. For URL ingest use
+        `POST /import/url`; for file upload use `POST /import/file`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_cid]
+              properties:
+                content_cid: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /tracks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Track id (sha256 of the AcoustID fingerprint, lowercase hex).
+        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    delete:
+      tags: [tracks]
+      summary: Remove a track from the requestor's own library.
+      responses:
+        '204':
+          description: Removed.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /tags:
+    get:
+      tags: [tags]
+      summary: List tags with occurrence counts.
+      parameters:
+        - name: library_addresses
+          in: query
+          description: Optional filter by library addresses.
+          schema:
+            type: array
+            items: { type: string }
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TagCount' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    post:
+      tags: [tags]
+      summary: Attach a tag to a track in the requestor's own library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id, tag]
+              properties:
+                track_id: { type: string }
+                tag:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+      responses:
+        '200':
+          description: OK. Returns the updated track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    delete:
+      tags: [tags]
+      summary: Detach a tag from a track in the requestor's own library.
+      parameters:
+        - name: track_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: tag
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK. Returns the updated track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries:
+    get:
+      tags: [libraries]
+      summary: List all locally-known libraries.
+      description: |
+        Union of libraries linked from the requestor's own library and
+        libraries cached from peer discovery.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Library' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    post:
+      tags: [libraries]
+      summary: Link a library to the requestor's own library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [library_address]
+              properties:
+                library_address:
+                  type: string
+                  description: Full library address to link.
+                alias:
+                  type: [string, 'null']
+                  description: Optional display alias stored with the link entry.
+                  maxLength: 128
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Library' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [libraries]
+      summary: Fetch metadata for a single library.
+      description: |
+        Connects to the library if not already connected, then returns
+        full metadata. Progress is reported via the
+        `library:replicate-progress` WebSocket event while the initial
+        sync is in flight.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Library' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    delete:
+      tags: [libraries]
+      summary: Unlink and drop a library.
+      description: |
+        Unlinks the library, drops the local replica, and unpins any
+        content held uniquely by this library. There is no "unlink only"
+        variant; unlink always implies drop.
+      responses:
+        '204':
+          description: Unlinked.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/connect:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    post:
+      tags: [libraries]
+      summary: Resume replication for a library.
+      description: |
+        Returns immediately; progress is delivered via the
+        `library:replicate-progress` WebSocket event.
+      responses:
+        '202':
+          description: Accepted. Replication will resume asynchronously.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/disconnect:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    post:
+      tags: [libraries]
+      summary: Pause replication for a library.
+      responses:
+        '202':
+          description: Accepted. Replication will pause asynchronously.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/about:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [about]
+      summary: Get the profile for a library.
+      description: |
+        Profile-only projection of the library. For full library metadata
+        including replication status, use `GET /libraries/:address`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/About' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [about]
+      summary: Update the profile for a library.
+      description: |
+        Returns 403 if the caller does not own the target library. Any
+        subset of mutable fields may be supplied; omitted fields remain
+        unchanged. Per protocol spec §2.6, `avatar` MUST be a
+        content-addressed CID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: [string, 'null'], maxLength: 128 }
+                bio: { type: [string, 'null'], maxLength: 1024 }
+                location: { type: [string, 'null'], maxLength: 128 }
+                avatar:
+                  type: [string, 'null']
+                  description: CID of an image blob.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/About' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listens:
+    get:
+      tags: [listens]
+      summary: Paginated listen history.
+      description: |
+        Returns tracks enriched with listen counts and timestamps,
+        ordered by most-recent-listen descending.
+      parameters:
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackList' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+    post:
+      tags: [listens]
+      summary: Record a listen event.
+      description: |
+        Server assigns the timestamp. Per protocol spec §2.7, listen
+        entries are `{trackId, address, timestamp}`; the `address` is the
+        library address the track was played from (may differ from the
+        recording library if the listener is attributing a remote track).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id, library_address]
+              properties:
+                track_id: { type: string }
+                library_address:
+                  type: string
+                  description: Library address the track was played from.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListenCount' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /peers:
+    get:
+      tags: [peers]
+      summary: List currently-connected libp2p peers.
+      description: |
+        Returns libp2p peers — not peer libraries. To fetch library
+        metadata for a discovered peer, use `GET /libraries/:address`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Peer' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Node info, bandwidth counters, and storage stats.
+      description: |
+        Read-only node-info envelope. Named `settings` for continuity with
+        the task plan; there are no mutable server settings over HTTP.
+        The chrome extension uses this only as a `peer_id` health check.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/export:
+    get:
+      tags: [identity]
+      summary: Export the node's identity keypair.
+      description: |
+        Returns the libp2p marshaled keypair in hex form. Both fields are
+        the libp2p proto-encoded marshal (includes the key-type header).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityExport' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/import:
+    post:
+      tags: [identity]
+      summary: Import a keypair or generate a new one.
+      description: |
+        If `private_key` is omitted, generates a new keypair. If supplied,
+        must be the libp2p marshaled form (hex). Restarts the node's
+        identity; existing libraries on disk are orphaned until the
+        matching private key is imported.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                private_key:
+                  type: string
+                  description: Hex-encoded libp2p marshaled private key.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, public_key, own_library_address]
+                properties:
+                  id:
+                    type: string
+                    description: sha256 of the public key.
+                  public_key: { type: string }
+                  own_library_address: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /import/file:
+    post:
+      tags: [import]
+      summary: Ingest one or more audio files via multipart upload.
+      description: |
+        Files are buffered to a temp directory and fed to the protocol-v1
+        ingest pipeline via `import_blob(path)`. Returns an `import_id`
+        immediately; progress is delivered via `import:*` WebSocket
+        events.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '202':
+          description: Accepted. Ingest started asynchronously.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportAck' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /import/url:
+    post:
+      tags: [import]
+      summary: Ingest a track from a resolver URL.
+      description: |
+        Resolves the URL via the resolver plugin, downloads, and feeds the
+        result to the protocol-v1 ingest pipeline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        '202':
+          description: Accepted. Ingest started asynchronously.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportAck' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /audio/{cid}:
+    parameters:
+      - name: cid
+        in: path
+        required: true
+        description: |
+          CID of the audio blob (`content.hash`). Accepts any valid
+          CID string: CIDv1, as written under the spec §5.5.1 import
+          profile, or legacy CIDv0 (`Qm...`).
+        schema: { type: string }
+    head:
+      tags: [audio]
+      summary: Check local availability of an audio blob.
+      description: |
+        Returns 200 if the CID is present in the local content store,
+        404 otherwise. Side-effect-free; use this for UI pre-checks
+        before committing to a streaming GET.
+      responses:
+        '200':
+          description: Locally available.
+        '404':
+          description: Not in the local content store.
+    get:
+      tags: [audio]
+      summary: Stream audio content by CID.
+      description: |
+        MIME type is detected from the first 4100 bytes via file-type.
+        Supports RFC 7233 Range requests (206 Partial Content). No
+        side-effects — pinning is handled when a track is adopted into
+        the requestor's own library, not when its audio is streamed.
+      parameters:
+        - in: header
+          name: Range
+          description: Optional byte range, e.g. `bytes=0-1023`.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Full content stream.
+          headers:
+            Content-Type:
+              schema: { type: string }
+            Content-Length:
+              schema: { type: integer }
+            Accept-Ranges:
+              schema: { type: string, example: bytes }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '206':
+          description: Partial content stream.
+          headers:
+            Content-Type:
+              schema: { type: string }
+            Content-Length:
+              schema: { type: integer }
+            Content-Range:
+              schema: { type: string, example: 'bytes 0-1023/204800' }
+            Accept-Ranges:
+              schema: { type: string, example: bytes }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /resolve:
+    get:
+      tags: [resolve]
+      summary: Preview track metadata for a URL without downloading.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string, format: uri }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolverEntry' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  parameters:
+    Offset:
+      name: offset
+      in: query
+      description: Pagination offset. Default 0.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      description: Maximum results per page. Default 100, max 500.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    LibraryAddress:
+      name: address
+      in: path
+      required: true
+      description: Full library address, e.g. `/record/<manifest-cid>/<name>`.
+      schema: { type: string }
+
+  responses:
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Caller is not authorized to perform this operation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Operation conflicts with existing state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Unhandled exception.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      description: Structured error envelope. All non-2xx responses use this shape.
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - NOT_FOUND
+                - CONFLICT
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - INTERNAL_ERROR
+            message:
+              type: string
+              description: Human-readable message suitable for UI display.
+            details:
+              type: array
+              description: Optional structured per-field errors (validation).
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    TrackList:
+      type: object
+      required: [items, total]
+      description: |
+        Paginated list wrapper. `total` is the unpaginated match count
+        (for UI page counts); `items.length` reflects the current page.
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Track' }
+        total: { type: integer }
+
+    Track:
+      type: object
+      description: |
+        API-layer Track shape. Enumerated fields are flattened from the
+        protocol-layer dag-cbor content payload (spec §2.4.1); the raw
+        content object is intentionally NOT passed through.
+      required:
+        - id
+        - content_cid
+        - audio_cid
+        - audio_size_bytes
+        - tags
+        - listen_count
+        - have_track
+      properties:
+        id:
+          type: string
+          description: sha256 of the AcoustID fingerprint (lowercase hex).
+        content_cid:
+          type: string
+          description: Base58btc CID of the dag-cbor content payload.
+        audio_cid:
+          type: string
+          description: CID of the tag-stripped audio blob (from `content.hash`).
+        audio_size_bytes:
+          type: integer
+          description: Size of the audio blob (from `content.size`).
+        title: { type: [string, 'null'] }
+        artist: { type: [string, 'null'] }
+        artists:
+          type: array
+          items: { type: string }
+        album: { type: [string, 'null'] }
+        album_artist: { type: [string, 'null'] }
+        remixer: { type: [string, 'null'] }
+        genre:
+          type: array
+          items: { type: string }
+        bpm: { type: [number, 'null'] }
+        duration_seconds: { type: [number, 'null'] }
+        bitrate: { type: [number, 'null'] }
+        codec: { type: [string, 'null'] }
+        sample_rate: { type: [number, 'null'] }
+        lossless: { type: [boolean, 'null'] }
+        artwork:
+          type: array
+          description: CIDs of album-art blobs.
+          items: { type: string }
+        resolvers:
+          type: array
+          description: External source pointers per protocol spec §2.4.2.
+          items: { $ref: '#/components/schemas/ResolverEntry' }
+        tags:
+          type: array
+          description: Library-scoped tag labels attached to this track.
+          items: { $ref: '#/components/schemas/TrackTag' }
+        listen_count:
+          type: integer
+          description: Total listens recorded for this track across all libraries.
+        listen_timestamps_ms:
+          type: array
+          description: Unix milliseconds of each listen. May be omitted on list endpoints for payload weight.
+          items: { type: integer }
+        have_track:
+          type: boolean
+          description: Whether the track exists in the requestor's own library.
+        added_at_ms:
+          type: integer
+          description: First-seen timestamp (unix milliseconds) in the requestor's index.
+
+    TrackTag:
+      type: object
+      required: [library_address, tag]
+      properties:
+        library_address:
+          type: string
+          description: Library address that applied the tag.
+        tag: { type: string }
+
+    TagCount:
+      type: object
+      required: [tag, count]
+      properties:
+        tag: { type: string }
+        count:
+          type: integer
+          description: Number of tracks carrying this tag in the filtered address set.
+
+    Library:
+      type: object
+      description: |
+        Library metadata. Flat API-layer shape — no protocol-level
+        passthrough, no spread-source merging. Replaces the legacy
+        `logs.get` `extend(about, peerEntry, entry, myEntry, {...})`
+        pattern with an enumerated contract.
+      required:
+        - id
+        - address
+        - track_count
+        - linked_library_count
+        - length
+        - replication_status
+        - is_replicating
+        - is_loading_index
+        - is_processing_index
+        - is_linked
+        - is_own
+        - peer_ids
+      properties:
+        id:
+          type: string
+          description: sha256 of the library address.
+        address: { type: string }
+        name: { type: [string, 'null'] }
+        bio: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        avatar:
+          type: [string, 'null']
+          description: CID of the library's avatar image (protocol spec §2.6).
+        alias:
+          type: [string, 'null']
+          description: |
+            Display alias from the link entry in the requestor's library.
+            Null when not linked or when no alias was provided.
+        track_count: { type: integer }
+        linked_library_count: { type: integer }
+        length:
+          type: integer
+          description: Oplog length (count of live entries).
+        replication_status:
+          $ref: '#/components/schemas/ReplicationStatus'
+        is_replicating: { type: boolean }
+        is_loading_index: { type: boolean }
+        is_processing_index: { type: boolean }
+        is_linked:
+          type: boolean
+          description: Whether the requestor's own library links to this one.
+        is_own:
+          type: boolean
+          description: Whether this library IS the requestor's own library.
+        peer_ids:
+          type: array
+          description: libp2p peer ids currently subscribed to this library's pubsub topic.
+          items: { type: string }
+
+    ReplicationStatus:
+      type: object
+      required: [progress, total]
+      description: |
+        Normalized replication progress. Same shape as the
+        `library:replicate-progress` WebSocket event payload.
+      properties:
+        progress:
+          type: integer
+          description: Count of entries synced so far.
+        total:
+          type: integer
+          description: Total entries expected in the current sync window.
+
+    About:
+      type: object
+      required: [library_address]
+      description: Profile-only projection of a library.
+      properties:
+        library_address: { type: string }
+        name: { type: [string, 'null'] }
+        bio: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        avatar: { type: [string, 'null'] }
+
+    ListenCount:
+      type: object
+      required: [track_id, count]
+      properties:
+        track_id: { type: string }
+        count: { type: integer }
+        timestamps_ms:
+          type: array
+          items: { type: integer }
+
+    Peer:
+      type: object
+      required: [peer_id, multiaddrs]
+      properties:
+        peer_id: { type: string }
+        multiaddrs:
+          type: array
+          items: { type: string }
+        library_addresses:
+          type: array
+          description: Library addresses advertised by this peer.
+          items: { type: string }
+        connected_at_ms:
+          type: integer
+          description: Unix milliseconds when the peer connection was established.
+
+    Settings:
+      type: object
+      required: [peer_id]
+      description: |
+        Node info. `peer_id` is the only guaranteed field; everything
+        else is optional and may be omitted when unavailable.
+      properties:
+        peer_id:
+          type: string
+          description: libp2p peer id of the node.
+        addresses:
+          type: array
+          description: libp2p multiaddrs the node is listening on.
+          items: { type: string }
+        version:
+          type: string
+          description: record-node build version.
+        bandwidth:
+          type: object
+          description: |
+            Bandwidth counters. Values are decimal-encoded strings
+            because the underlying counters are unbounded integers.
+          properties:
+            total_in_bytes: { type: string }
+            total_out_bytes: { type: string }
+            rate_in_bytes_per_sec: { type: string }
+            rate_out_bytes_per_sec: { type: string }
+        storage:
+          type: object
+          properties:
+            used_bytes: { type: integer }
+            max_bytes: { type: integer }
+            object_count: { type: integer }
+
+    IdentityExport:
+      type: object
+      required: [public_key, private_key]
+      description: |
+        Hex-encoded libp2p marshaled keypair. Both fields include the
+        key-type header so `private_key` round-trips through
+        `POST /identity/import`.
+      properties:
+        public_key: { type: string }
+        private_key: { type: string }
+
+    ImportAck:
+      type: object
+      required: [import_id]
+      properties:
+        import_id:
+          type: string
+          format: uuid
+          description: Identifier for tracking progress via `import:*` WebSocket events.
+        file_count:
+          type: integer
+          description: Number of files accepted (multipart only).
+
+    ResolverEntry:
+      type: object
+      description: |
+        Canonical shape per protocol spec §2.4.2. `(extractor, id)` MUST
+        uniquely identify an external source pointer. Streaming `url`
+        fields MUST NOT be persisted (spec §2.4.2).
+      required: [extractor, id]
+      properties:
+        extractor: { type: string }
+        id: { type: string }
+        fulltitle: { type: string }
+        thumbnail: { type: string }
+        artist: { type: string }
+        alt_title: { type: string }
+        upload_date: { type: string }
+        webpage_url: { type: string }
+        duration: { type: number }
+
+# ---------------------------------------------------------------------------
+# WebSocket event bridge
+# ---------------------------------------------------------------------------
+#
+# Endpoint: WebSocket upgrade at `/api/ws`; JWT in `token` query param.
+# Messages are JSON `{ type, payload }`. All payload field names use
+# snake_case. If AsyncAPI becomes the preferred format these can migrate
+# to a sibling document without touching the HTTP surface.
+
+x-websocket-events:
+  endpoint:
+    upgrade_path: /api/ws
+    auth:
+      type: jwt
+      location: query
+      param: token
+      local_mode: noop-passthrough
+  message_format:
+    type: object
+    required: [type, payload]
+    properties:
+      type: { type: string }
+      payload: { type: object }
+  events:
+    track:added:
+      description: Track was added to a library.
+      payload:
+        library_address: { type: string }
+        track: { $ref: '#/components/schemas/Track' }
+
+    track:removed:
+      description: Track was removed from a library.
+      payload:
+        library_address: { type: string }
+        track_id: { type: string }
+
+    library:linked:
+      payload:
+        library_address: { type: string }
+        about: { $ref: '#/components/schemas/About' }
+
+    library:unlinked:
+      payload:
+        library_address: { type: string }
+
+    library:connected:
+      payload:
+        library_address: { type: string }
+
+    library:disconnected:
+      payload:
+        library_address: { type: string }
+
+    library:loading:
+      payload:
+        library: { $ref: '#/components/schemas/Library' }
+
+    library:loaded:
+      payload:
+        library: { $ref: '#/components/schemas/Library' }
+
+    library:replicated:
+      description: A batch of entries finished replicating.
+      payload:
+        library_address: { type: string }
+        length:
+          type: integer
+          description: Oplog length after the batch.
+
+    library:replicate-progress:
+      description: Replication progress update during an in-flight sync.
+      payload:
+        library_address: { type: string }
+        progress: { type: integer }
+        total: { type: integer }
+
+    library:index-updated:
+      description: Library index finished processing a batch of new entries.
+      payload:
+        library_address: { type: string }
+        track_count: { type: integer }
+        linked_library_count: { type: integer }
+        is_processing_index: { type: boolean }
+        processing_count:
+          type: integer
+          description: Count of entries still being processed (0 when idle).
+
+    library:peer-joined:
+      payload:
+        library_address: { type: string }
+        peer_id: { type: string }
+
+    library:peer-left:
+      payload:
+        library_address: { type: string }
+        peer_id: { type: string }
+
+    peer:joined:
+      description: A libp2p peer joined the record pubsub topic.
+      payload:
+        peer_id: { type: string }
+        peer_count: { type: integer }
+
+    peer:left:
+      payload:
+        peer_id: { type: string }
+        peer_count: { type: integer }
+
+    import:starting:
+      payload:
+        import_id: { type: string, format: uuid }
+        source:
+          type: string
+          enum: [file, url]
+        file_count: { type: integer }
+
+    import:processed-file:
+      payload:
+        import_id: { type: string, format: uuid }
+        file_path:
+          type: string
+          description: Temp-buffered path (for multipart) or original URL (for url import).
+        track: { $ref: '#/components/schemas/Track' }
+        completed: { type: integer }
+        remaining: { type: integer }
+
+    import:error:
+      description: A single file in the import batch failed. The import continues.
+      payload:
+        import_id: { type: string, format: uuid }
+        file_path: { type: string }
+        error: { $ref: '#/components/schemas/Error' }
+
+    import:finished:
+      description: All files in the import batch have been processed.
+      payload:
+        import_id: { type: string, format: uuid }
+        track_count: { type: integer }
+        error_count: { type: integer }

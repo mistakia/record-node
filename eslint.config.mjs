@@ -3,6 +3,8 @@ import neostandard from 'neostandard'
 export default [
   // Vendored byte-identical from repository/active/base; lint it there.
   { ignores: ['cli/check-lockfile-age.mjs'] },
+  // Build output, checked against src/ by check:dist instead.
+  { ignores: ['dist/', '.dist-check/'] },
   ...neostandard({ ts: true }),
   {
     // Project convention is snake_case for variables and functions.

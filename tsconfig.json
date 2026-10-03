@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "lib": ["ESNext"],
     "types": ["bun"],
+    "customConditions": ["bun"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

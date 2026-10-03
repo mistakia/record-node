@@ -1,5 +1,7 @@
 // The peer surface the HTTP and WebSocket API consumes (src/api/). Peer
 // assembly (src/peer/) implements it; the API holds no protocol logic.
+
+import type { ImportEventPayloads } from './ingest.ts'
 //
 // Values crossing it are the API-layer shapes of record-docs
 // spec/7-http-api.yaml (components.schemas), mirrored here for the compiler
@@ -150,19 +152,21 @@ export interface TrackQuery {
   order: 'asc' | 'desc'
 }
 
-// Ingest progress. The ingest stage owns this contract (src/types/ingest.ts);
-// until it lands this is the local stand-in, with the same event names and
-// the ImportAck shape.
+// Ingest progress as the import:* WebSocket events of 7-http-api.yaml. The
+// ingest contract (src/types/ingest.ts) is the source: starting and finished
+// pass through, while processed-file carries the indexed API Track and error
+// carries the spec's Error envelope. file_count is reported for multipart
+// imports only.
 export interface ImportAck {
   import_id: string
   file_count?: number
 }
 
 export type ImportEvent =
-  | { type: 'import:starting', payload: { import_id: string, source: 'file' | 'url', file_count: number } }
+  | { type: 'import:starting', payload: ImportEventPayloads['import:starting'] }
   | { type: 'import:processed-file', payload: { import_id: string, file_path: string, track: Track, completed: number, remaining: number } }
   | { type: 'import:error', payload: { import_id: string, file_path: string, error: { error: { code: string, message: string } } } }
-  | { type: 'import:finished', payload: { import_id: string, track_count: number, error_count: number } }
+  | { type: 'import:finished', payload: ImportEventPayloads['import:finished'] }
 
 // Every other x-websocket-events type. Peer assembly maps oplog, pubsub,
 // replicator, and library-lifecycle callbacks onto these.
@@ -178,8 +182,10 @@ export type LibraryEventType =
 export type PeerEvent = ImportEvent | { type: LibraryEventType, payload: Record<string, unknown> }
 
 // Domain failures a route maps to a status. A ProtocolError from the peer is
-// the caller's input failing a protocol rule, and maps to 400.
-export type PeerErrorCode = 'not_found' | 'conflict' | 'forbidden'
+// the caller's input failing a protocol rule, and maps to 400, as does
+// invalid: input the peer refuses outside the protocol, such as a URL the
+// resolver cannot handle.
+export type PeerErrorCode = 'not_found' | 'conflict' | 'forbidden' | 'invalid'
 
 export class PeerError extends Error {
   readonly code: PeerErrorCode

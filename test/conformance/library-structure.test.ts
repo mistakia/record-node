@@ -1,6 +1,6 @@
 // Entry version, pinning, and query database (§4.1.1, §4.6, §4.7).
-// §4.1.1 runs against src/entry and src/oplog, and §4.7 against src/query-db.
-// Pinning waits for the library lifecycle.
+// §4.1.1 runs against src/entry and src/oplog, §4.6 against the library
+// lifecycle in src/peer, and §4.7 against src/query-db.
 
 import { describe, expect, test } from 'bun:test'
 
@@ -14,6 +14,7 @@ import { create_projector } from '#query-db/projector.ts'
 import { rebuild_query_db } from '#query-db/rebuild.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { append_track, blocks_of, open_test_library } from '#test/helpers/library.ts'
+import { append_stored_track, open_library_manager, pinned, write_chain } from '#test/helpers/library-manager.ts'
 import {
   add_link,
   add_track,
@@ -37,10 +38,57 @@ describe('library-structure', () => {
     expect(decode_signed_entry(bytes).entry.v).toBe(2)
     expect(() => decode_signed_entry(encode_canonical({ ...entry, v: 1 }))).toThrow('entry v must be 2')
   })
-  test.todo('§4.6 [MUST] AC chain objects are pinned for each opened library', () => {})
-  test.todo('§4.6 [MUST] unlink unpins the AC chain objects', () => {})
-  test.todo('§4.6 [MUST] unlink unpins entry objects only this library held', () => {})
-  test.todo('§4.6 [MUST] unlink unpins content no other linked library references and keeps shared content', () => {})
+  test('§4.6 [MUST] AC chain objects are pinned for each opened library', async () => {
+    const { content_store, manager } = open_library_manager()
+    const chains = [await write_chain({ content_store, name: 'one', writer: generate_key_pair() }), await write_chain({ content_store, name: 'two', writer: generate_key_pair() })]
+    const cids = chains.flatMap(({ cids }) => [cids.manifest, cids.wrapper, cids.write_list])
+    expect(await pinned(content_store, cids)).toEqual(cids.map(() => false))
+    for (const { address } of chains) await manager.open_library(address)
+    expect(await pinned(content_store, cids)).toEqual(cids.map(() => true))
+  })
+
+  test('§4.6 [MUST] unlink unpins the AC chain objects', async () => {
+    const { content_store, manager } = open_library_manager()
+    const kept = await manager.create_library({ name: 'kept', type: 'recordstore', write_keys: [generate_key_pair().public_key] })
+    const gone = await manager.create_library({ name: 'gone', type: 'recordstore', write_keys: [generate_key_pair().public_key] })
+    const chain_cids = ({ chain: { cids } }: typeof kept) => [cids.manifest, cids.wrapper, cids.write_list]
+    await manager.unlink_library(gone.chain.address)
+    expect(await pinned(content_store, chain_cids(gone))).toEqual([false, false, false])
+    expect(await pinned(content_store, chain_cids(kept))).toEqual([true, true, true])
+    expect(manager.get(gone.chain.address)).toBeUndefined()
+  })
+
+  test('§4.6 [MUST] unlink unpins entry objects only this library held', async () => {
+    const { content_store, manager, db } = open_library_manager()
+    const writer = generate_key_pair()
+    const [kept, gone] = [await manager.create_library({ name: 'kept', type: 'recordstore', write_keys: [writer.public_key] }),
+      await manager.create_library({ name: 'gone', type: 'recordstore', write_keys: [writer.public_key] })]
+    const write = async (library_address: string, fingerprint: string) =>
+      await append_stored_track({ manager, content_store, library_address, key_pair: writer, fingerprint, audio: fingerprint })
+    const kept_entry = (await write(kept.chain.address, 'AQAA-kept')).entry_hash
+    const gone_entries = [(await write(gone.chain.address, 'AQAA-gone-1')).entry_hash, (await write(gone.chain.address, 'AQAA-gone-2')).entry_hash]
+    expect(await pinned(content_store, [kept_entry, ...gone_entries])).toEqual([true, true, true])
+    await manager.unlink_library(gone.chain.address)
+    expect(await pinned(content_store, gone_entries)).toEqual([false, false])
+    expect(await pinned(content_store, [kept_entry])).toEqual([true])
+    // The index forgets the unlinked library too (§4.7).
+    expect(db.prepare('SELECT DISTINCT library_address FROM entries').all()).toEqual([{ library_address: kept.chain.address }])
+  })
+
+  test('§4.6 [MUST] unlink unpins content no other linked library references and keeps shared content', async () => {
+    const { content_store, manager } = open_library_manager()
+    const writer = generate_key_pair()
+    const [kept, gone] = [await manager.create_library({ name: 'kept', type: 'recordstore', write_keys: [writer.public_key] }),
+      await manager.create_library({ name: 'gone', type: 'recordstore', write_keys: [writer.public_key] })]
+    const write = async (library_address: string, fingerprint: string) =>
+      await append_stored_track({ manager, content_store, library_address, key_pair: writer, fingerprint, audio: `audio of ${fingerprint}` })
+    const shared = await write(kept.chain.address, 'AQAA-shared')
+    expect(await write(gone.chain.address, 'AQAA-shared')).toMatchObject({ content_cid: shared.content_cid, audio_cid: shared.audio_cid })
+    const unique = await write(gone.chain.address, 'AQAA-unique')
+    await manager.unlink_library(gone.chain.address)
+    expect(await pinned(content_store, [shared.content_cid, shared.audio_cid])).toEqual([true, true])
+    expect(await pinned(content_store, [unique.content_cid, unique.audio_cid])).toEqual([false, false])
+  })
 
   test('§4.7 [MUST] the query database is fully derivable from the oplog', async () => {
     const writer = generate_key_pair()
