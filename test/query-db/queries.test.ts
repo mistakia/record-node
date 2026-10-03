@@ -57,7 +57,9 @@ describe('query-db list_tracks', () => {
     expect(ids(items)).toEqual(['delta', 'gamma', 'beta', 'alpha'].map(id_of))
     const gamma = items.find(({ id }) => id === id_of('gamma'))
     expect(gamma).toMatchObject({ title: 'Gamma', library_address: own, have_track: true, listen_count: 1 })
-    expect(gamma?.tags).toEqual([{ library_address: own, tag: 'deep' }, { library_address: friend, tag: 'house' }].sort((a, b) => a.library_address.localeCompare(b.library_address)))
+    expect(gamma?.tags).toEqual([{ library_address: own, tag: 'deep' }, { library_address: friend, tag: 'house' }]
+      // Byte order, as SQLite orders the rows; localeCompare folds case.
+      .sort((a, b) => (a.library_address < b.library_address ? -1 : a.library_address > b.library_address ? 1 : 0)))
     expect(items.find(({ id }) => id === id_of('delta'))?.have_track).toBe(false)
     expect(gamma?.listen_timestamps_ms).toBeUndefined()
   })
