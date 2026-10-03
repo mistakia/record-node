@@ -19,12 +19,13 @@ export const YOUTUBE_FIXTURE = 'youtube-video'
 export const YOUTUBE_STREAM_URL = 'https://media.invalid/youtube/iODdvJGpfIA.m4a'
 
 // Resolves through the real record-resolver against the fake yt-dlp, which
-// replays the named fixture whatever the URL.
+// replays the named fixture whatever the URL. Every host resolves to one
+// public address, so the destination check needs no DNS.
 export const fixture_resolver = (fixture: string): ResolveUrl => async (url) => {
   const saved = process.env.FAKE_YTDLP_FIXTURE
   process.env.FAKE_YTDLP_FIXTURE = fixture
   try {
-    return await resolve_url(url, { binary_path: FAKE_YTDLP })
+    return await resolve_url(url, { binary_path: FAKE_YTDLP, lookup: async () => [{ address: '93.184.215.14', family: 4 }] })
   } finally {
     if (saved === undefined) Reflect.deleteProperty(process.env, 'FAKE_YTDLP_FIXTURE')
     else process.env.FAKE_YTDLP_FIXTURE = saved

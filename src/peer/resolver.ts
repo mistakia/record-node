@@ -7,7 +7,7 @@ import { PeerError, type Resolver } from '#types/peer.ts'
 
 export type ResolveUrl = (url: string) => Promise<readonly ResolvedEntry[]>
 
-const INPUT_ERRORS: ReadonlySet<ResolverErrorCode> = new Set(['MISSING_URL', 'INVALID_URL', 'UNSUPPORTED_URL'])
+const INPUT_ERRORS: ReadonlySet<ResolverErrorCode> = new Set(['MISSING_URL', 'INVALID_URL', 'BLOCKED_DESTINATION', 'UNSUPPORTED_URL'])
 
 export const create_resolver = ({ ytdlp_path }: { ytdlp_path?: string | undefined } = {}): ResolveUrl => async (url) =>
   await resolve_url(url, ytdlp_path === undefined ? {} : { binary_path: ytdlp_path })

@@ -6,9 +6,9 @@ import { mkdtempSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { download_to_file } from '#ingest/download.ts'
 import { data_paths } from '#peer/config.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
+import { create_resolver, refuse_input_errors } from '#peer/resolver.ts'
 import { audio_pipeline_vector as f7 } from '#test/conformance/vectors.ts'
 import { preflight_bypassed } from '#test/helpers/ingest.ts'
 import type { PeerEvent, TrackQuery } from '#types/peer.ts'
@@ -125,15 +125,11 @@ describe('peer', () => {
   })
 })
 
-describe('download', () => {
-  test('a refused or broken download is download_failed', async () => {
-    const server = Bun.serve({ port: 0, fetch: () => new Response('gone', { status: 410 }) })
-    try {
-      const output_path = join(mkdtempSync(join(tmpdir(), 'record-download-test-')), 'a.m4a')
-      await expect(download_to_file({ url: `http://127.0.0.1:${server.port}/a.m4a`, output_path })).rejects.toMatchObject({ code: 'download_failed' })
-      await expect(download_to_file({ url: 'http://127.0.0.1:1/a.m4a', output_path })).rejects.toMatchObject({ code: 'download_failed' })
-    } finally {
-      await server.stop(true)
+describe('resolver', () => {
+  test('a url naming a non-public host is the caller\'s error, refused before yt-dlp runs', async () => {
+    const resolve = refuse_input_errors(create_resolver({ ytdlp_path: '/nonexistent/yt-dlp' }))
+    for (const url of ['http://127.0.0.1:5001/api/v0/id', 'http://localhost/', 'http://169.254.169.254/latest/meta-data/']) {
+      await expect(resolve(url)).rejects.toMatchObject({ code: 'invalid' })
     }
   })
 })
