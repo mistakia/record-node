@@ -1,8 +1,18 @@
 // Fingerprinting, tag stripping, metadata, ingest, and listens (§6).
-// Pending stubs, one per normative requirement, named by spec section. Each
-// later stage turns its stubs into passing tests.
+// Track-id and listens rules run against src/entry and src/oplog; everything
+// that needs fpcalc, ffmpeg, metadata extraction, or ingest stays pending.
 
-import { describe, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
+
+import { build_del_operation } from '#entry/operations.ts'
+import { compute_track_id } from '#entry/id.ts'
+import { generate_key_pair } from '#identity/key-pair.ts'
+import { append_entry } from '#oplog/dag.ts'
+import { append_listen } from '#oplog/listens.ts'
+import { open_test_library } from '#test/helpers/library.ts'
+
+const writer = generate_key_pair()
+const TRACK_ID = compute_track_id('AQADtEmSaImS')
 
 describe('content-processing', () => {
   test.todo('§6.1.1 [MUST] fingerprints come from Chromaprint', () => {})
@@ -26,10 +36,24 @@ describe('content-processing', () => {
   test.todo('§6.3.3 [MUST] a file with no artwork yields an empty artwork array', () => {})
   test.todo('§6.3.4 [MUST] artwork is not embedded in the tag-stripped audio', () => {})
   test.todo('§6.4.1 [MUST] ingest is rejected on an empty fingerprint, fingerprinter error, or no decodable audio', () => {})
-  test.todo('§6.4.1 [MUST] sha256("") is never used as a fallback track id', () => {})
+  test('§6.4.1 [MUST] sha256("") is never used as a fallback track id', () => {
+    expect(() => compute_track_id('')).toThrow('an empty fingerprint has no track id')
+  })
   test.todo('§6.4.1 [MUST] ingest is rejected when duration is 0 or unknown or the decoded sample count is zero', () => {})
   test.todo('§6.4.2 [MUST] the resolver url field is stripped before persistence', () => {})
   test.todo('§6.4.3 [MUST] CID ingest validates the §2.4.1 required fields before accepting', () => {})
-  test.todo('§6.5 [MUST] a listen write without trackId is rejected', () => {})
-  test.todo('§6.5 [MUST] listen entries cannot be deleted', () => {})
+  test('§6.5 [MUST] a listen write without trackId is rejected', async () => {
+    const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
+    expect(() => append_listen({ oplog, track_id: '', address: oplog.chain.address, key_pair: writer })).toThrow('requires trackId')
+    const listen = append_listen({ oplog, track_id: TRACK_ID, address: oplog.chain.address, key_pair: writer, timestamp: 1 })
+    expect(listen.operation).toEqual({ trackId: TRACK_ID, address: oplog.chain.address, timestamp: 1 })
+  })
+
+  test('§6.5 [MUST] listen entries cannot be deleted', async () => {
+    const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
+    append_listen({ oplog, track_id: TRACK_ID, address: oplog.chain.address, key_pair: writer })
+    expect(() => append_entry({ oplog, key_pair: writer, payload: build_del_operation({ key: TRACK_ID, type: 'track' }) }))
+      .toThrow('accepts only listen writes')
+    expect(oplog.entries.size).toBe(1)
+  })
 })

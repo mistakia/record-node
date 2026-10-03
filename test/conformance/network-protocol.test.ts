@@ -1,15 +1,35 @@
 // Discovery, announcements, heads exchange, merge, disconnect, and profile (§5).
-// Pending stubs, one per normative requirement, named by spec section. Each
-// later stage turns its stubs into passing tests.
+// The F6 message vectors run against src/replication/messages.ts and
+// src/entry; the network behaviour lands with the replication stage.
 
-import { describe, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
+
+import { compute_about_id } from '#entry/id.ts'
+import { assert_signed_entry_shape } from '#entry/signed.ts'
+import { build_loaded_about_entry, encode_heads_message } from '#replication/messages.ts'
+import { content_cid_of } from '#test/helpers/library.ts'
+import { heads_message_vector, loaded_about_entry_vector, NETWORK_MESSAGE_SIZE_BOUND, signed_entry_vector } from './vectors.ts'
 
 describe('network-protocol', () => {
   test.todo('§5.2 [MUST] the peer bootstraps from any one discovery mechanism alone', () => {})
   test.todo('§5.2 [MUST] content-network native discovery is supported', () => {})
   test.todo('§5.3.1 [MUST] peers publish and subscribe to topic RECORD, bytes 52 45 43 4f 52 44', () => {})
   test.todo('§5.3.1 [MUST] a library topic too long for the pubsub runtime surfaces an error instead of truncating or hashing', () => {})
-  test.todo('§5.3.2 [vector] F6 LoadedAboutEntry inlines the about payload and serialises to 1060 bytes', () => {})
+  test('§5.3.2 [vector] F6 LoadedAboutEntry inlines the about payload and serialises to 1060 bytes', () => {
+    const { message } = loaded_about_entry_vector
+    const about_content = message.payload.value.content
+    expect<string>(message.payload.key).toBe(compute_about_id(about_content.address))
+    // The signed entry carries the about content CID; the announcement inlines the payload.
+    const { hash, payload, ...fields } = message
+    const entry = assert_signed_entry_shape({
+      ...fields,
+      payload: { ...payload, value: { ...payload.value, content: content_cid_of(about_content) } }
+    })
+    const loaded = build_loaded_about_entry({ hash, entry, about_content })
+    const json = JSON.stringify(loaded)
+    expect(Buffer.byteLength(json)).toBe(loaded_about_entry_vector.json_byte_length)
+    expect(json).toBe(JSON.stringify(message))
+  })
   test.todo('§5.3.2 [MUST] announcements are JSON-encoded and published via pubsub', () => {})
   test.todo('§5.3.2 [MUST] an announced about entry is authenticated only after re-fetching the canonical entry by hash', () => {})
   test.todo('§5.3.2 [MUST] announcements over 256 KiB of JSON are not sent', () => {})
@@ -18,7 +38,12 @@ describe('network-protocol', () => {
   test.todo('§5.3.3 [MUST] at most one announcement per RECORD peer-join per 5 seconds per target peer', () => {})
   test.todo('§5.3.3 [MUST] library state changes are not re-announced on RECORD', () => {})
   test.todo('§5.3.3 [MUST] a missing announcement is not taken to mean the library does not exist', () => {})
-  test.todo('§5.4.1 [vector] the single-entry heads message is the 122-byte spec JSON', () => {})
+  test('§5.4.1 [vector] the single-entry heads message is the 122-byte spec JSON', () => {
+    const json = encode_heads_message({ heads: [signed_entry_vector.entry_hash] })
+    expect(json).toBe(heads_message_vector.json)
+    expect(Buffer.byteLength(json)).toBe(heads_message_vector.json_byte_length)
+    expect(Buffer.byteLength(json)).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)
+  })
   test.todo('§5.4.1 [MUST] each heads element is the base58btc CID of a current head', () => {})
   test.todo('§5.4.1 [MUST] heads are published on first subscribing to the library topic', () => {})
   test.todo('§5.4.1 [MUST] heads are published when a new peer joins the topic', () => {})

@@ -6,7 +6,7 @@ The spec in [record-docs](https://github.com/mistakia/record-docs) (`spec/`, cha
 
 ## Status
 
-Scaffold and conformance suite only. Every normative requirement in spec chapters 1-7 has a pending test under `test/conformance/`, named by section; each implementation stage turns its stubs into passing tests. The fixture vectors (F0-F6) are ported in `test/conformance/vectors.ts` and self-checked against the libraries the fixture generators use.
+Protocol core in place: canonical encoding, identity and signing, access control, entries, and the oplog with its CRDT merge, all in-process. Every normative requirement in spec chapters 1-7 has a test under `test/conformance/`, named by section. The core's tests pass. Tests that need storage, the query database, fpcalc/ffmpeg, the network, or the HTTP API stay pending until their stage lands. The fixture vectors (F0-F6) are ported in `test/conformance/vectors.ts`, which is self-checked against the generator libraries and exercised against `src/` by the section tests.
 
 The pre-v1 implementation (orbit-db / ipfs-log) is tagged `legacy-v0`. It is reference material, not a conformance target.
 
