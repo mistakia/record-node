@@ -78,6 +78,8 @@ export const resolve_peer_config = (config = {}) => {
 export const data_paths = (data_dir) => ({
     blocks: join(data_dir, 'blocks'),
     datastore: join(data_dir, 'datastore'),
+    // Pin counts (#fabric/pin-index.ts), derived and refilled at open.
+    pins: join(data_dir, 'pins.sqlite'),
     identity: join(data_dir, 'identity.key'),
     libraries: join(data_dir, 'libraries.json'),
     // The persisted query index (§4.7): reopened across restarts so the library

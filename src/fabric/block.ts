@@ -61,23 +61,30 @@ const links_of = ({ cid, bytes }: { cid: CID, bytes: Uint8Array }): CID[] => {
   }
 }
 
-// The CID and, when recursive, every block under it, each once. Rejects with
-// content_unavailable when a block is not stored.
-export const walk_blocks = async ({ cid, recursive, read }: {
+// The CID and, when recursive, every block under it, each once, root first.
+// Rejects with content_unavailable when a block is not stored. Only blocks
+// whose links are needed are read; the rest, a blob's raw leaves among them,
+// are checked with has, so a walk never reads the audio back.
+export const walk_blocks = async ({ cid, recursive, read, has }: {
   cid: CID
   recursive: boolean
   read: (cid: CID) => Promise<Uint8Array | undefined>
+  has: (cid: CID) => Promise<boolean>
 }): Promise<CID[]> => {
   const visited = new Map<string, CID>()
   const visit = async (next: CID) => {
     const key = format_cid(next)
     if (visited.has(key)) return
-    const bytes = await read(next)
-    if (bytes === undefined) throw new ProtocolError('content_unavailable', `block not stored: ${key}`)
-    visited.set(key, next)
-    if (recursive) {
-      for (const link of links_of({ cid: next, bytes })) await visit(link)
+    const missing = () => new ProtocolError('content_unavailable', `block not stored: ${key}`)
+    if (!recursive || next.code === RAW_CODE) {
+      if (!(await has(next))) throw missing()
+      visited.set(key, next)
+      return
     }
+    const bytes = await read(next)
+    if (bytes === undefined) throw missing()
+    visited.set(key, next)
+    for (const link of links_of({ cid: next, bytes })) await visit(link)
   }
   await visit(cid)
   return [...visited.values()]

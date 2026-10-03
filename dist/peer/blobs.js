@@ -182,7 +182,20 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
     };
     const live_tracks = (library_address) => [...libraries.get(library_address)?.oplog.current.values() ?? []].filter((entry) => is_put(entry.operation) && entry.operation.value.type === 'track');
     return {
-        entries: keep_library_blobs,
+        // Tracked with the fetches, so settled waits for its holds; none starts once stopped.
+        entries: async (library_address, entries) => {
+            if (stopped)
+                return;
+            const keeping = keep_library_blobs(library_address, entries);
+            const tracked = keeping.catch(() => { });
+            in_flight.add(tracked);
+            try {
+                await keeping;
+            }
+            finally {
+                in_flight.delete(tracked);
+            }
+        },
         policy_changed: async (library_address) => {
             const handle = libraries.get(library_address);
             if (handle === undefined)

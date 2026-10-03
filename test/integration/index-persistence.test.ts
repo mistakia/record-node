@@ -97,9 +97,9 @@ describe('query index persistence', () => {
     const data_dir = mkdtempSync(join(tmpdir(), 'record-index-delta-'))
     const first = await reopen(data_dir)
     const a = await append_track(first, 'AQAA-delta-a')
+    await drop_content(first, a.content_cid)
     await stop_peer(first)
     running.splice(0)
-    await drop_content(first, a.content_cid)
 
     const second = await reopen(data_dir)
     expect(title_of(second, a.track_id)).toBe('Title AQAA-delta-a')

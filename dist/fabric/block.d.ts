@@ -7,10 +7,11 @@ export declare const verify_block: ({ cid, bytes }: {
     cid: CID;
     bytes: Uint8Array;
 }) => void;
-export declare const walk_blocks: ({ cid, recursive, read }: {
+export declare const walk_blocks: ({ cid, recursive, read, has }: {
     cid: CID;
     recursive: boolean;
     read: (cid: CID) => Promise<Uint8Array | undefined>;
+    has: (cid: CID) => Promise<boolean>;
 }) => Promise<CID[]>;
 export declare const collect_bytes: (source: Uint8Array | Iterable<Uint8Array> | AsyncIterable<Uint8Array>) => Promise<Uint8Array>;
 type BlockSink = Parameters<typeof importer>[1];

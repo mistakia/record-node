@@ -185,7 +185,7 @@ const stop_context = async (context) => {
     await context.blobs.settled();
     await context.libraries.settled();
     await context.libraries.pins_settled();
-    await context.store.helia.stop();
+    await context.store.stop();
     context.db.close();
     context.lock?.release();
     context.identity = undefined;

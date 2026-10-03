@@ -27,6 +27,7 @@ export declare const resolve_peer_config: (config?: Partial<PeerConfig>) => Peer
 export declare const data_paths: (data_dir: string) => {
     blocks: string;
     datastore: string;
+    pins: string;
     identity: string;
     libraries: string;
     index: string;

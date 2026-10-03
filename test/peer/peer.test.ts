@@ -2,7 +2,7 @@
 // removal, and identity import.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ResolverError } from 'record-resolver'
@@ -13,6 +13,7 @@ import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
 import { create_resolver, refuse_input_errors } from '#peer/resolver.ts'
 import { audio_pipeline_vector as f7 } from '#test/conformance/vectors.ts'
 import { preflight_bypassed } from '#test/helpers/ingest.ts'
+import { wait_until } from '#test/helpers/network.ts'
 import type { PeerEvent, TrackQuery } from '#types/peer.ts'
 
 const QUERY: TrackQuery = { offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' }
@@ -51,6 +52,20 @@ describe('peer', () => {
     expect(items).toEqual([expect.objectContaining({ id: f7.track_id, tags: [{ library_address: own_address, tag: 'kept' }], listen_count: 1 })])
     expect((await second.get_audio(f7.audio_cid))?.length).toBe(items[0]?.audio_size_bytes)
     expect(await second.content_store.is_pinned(f7.audio_cid)).toBe(true)
+  })
+
+  test('pins are counted in the pin index, and Helia pin records left by an older version are deleted', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-peer-test-'))
+    const { datastore, pins } = data_paths(data_dir)
+    for (const name of ['pin', 'pinned-block']) {
+      mkdirSync(join(datastore, name), { recursive: true })
+      for (let index = 0; index < 3; index++) writeFileSync(join(datastore, name, `old-${index}.data`), 'old')
+    }
+    const peer = await start(data_dir)
+    await peer.ingest_file(f7.fixture_path)
+    expect(await peer.content_store.is_pinned(f7.audio_cid)).toBe(true)
+    expect(existsSync(pins)).toBe(true)
+    await wait_until(async () => ['pin', 'pinned-block'].every((name) => !existsSync(join(datastore, name))))
   })
 
   test('§2.4.3 a metadata update supersedes the content with corrected tags, keeping the audio and labels', async () => {

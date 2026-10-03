@@ -109,6 +109,19 @@ describe.each(backends)('%s ContentStore', (_name, open) => {
     expect(await store.has(multi_block_vector.cid)).toBe(true)
   })
 
+  test('an eviction racing a pin never leaves a pinned block missing', async () => {
+    for (const evict_first of [true, false]) {
+      const leaf = await raw_block(new TextEncoder().encode(`raced ${evict_first}`))
+      const root = await dag_pb_node([leaf.cid])
+      for (const block of [leaf, root]) await store.put(block.cid, block.bytes)
+      const pin = async () => { await store.pin(root.cid, { recursive: true }).catch(() => {}) }
+      const evict = async () => { await store.evict(leaf.cid) }
+      await Promise.all(evict_first ? [evict(), pin()] : [pin(), evict()])
+      if (await store.is_pinned(leaf.cid)) expect(await store.has(leaf.cid)).toBe(true)
+      else expect(await store.is_pinned(root.cid)).toBe(false)
+    }
+  })
+
   test('a direct pin covers the block alone', async () => {
     const leaf = await raw_block(new Uint8Array([1]))
     const root = await dag_pb_node([leaf.cid])

@@ -6,6 +6,7 @@ export interface PeerStore {
     readonly helia: Helia;
     readonly content_store: ContentStore;
     readonly network: Network | undefined;
+    readonly stop: () => Promise<void>;
 }
 export declare const open_peer_store: ({ data_dir, network }: {
     data_dir: string | undefined;

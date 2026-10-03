@@ -42,7 +42,7 @@ export interface BlobKeeper {
   retained: () => ReadonlySet<string>
   // A peer joined or replication resumed: retry what is waiting.
   retry: () => void
-  // Resolves once no fetch is in flight.
+  // Resolves once no fetch or hold is in flight.
   settled: () => Promise<void>
   stop: () => void
 }
@@ -218,7 +218,18 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }: {
     [...libraries.get(library_address)?.oplog.current.values() ?? []].filter((entry) => is_put(entry.operation) && entry.operation.value.type === 'track')
 
   return {
-    entries: keep_library_blobs,
+    // Tracked with the fetches, so settled waits for its holds; none starts once stopped.
+    entries: async (library_address, entries) => {
+      if (stopped) return
+      const keeping = keep_library_blobs(library_address, entries)
+      const tracked = keeping.catch(() => {})
+      in_flight.add(tracked)
+      try {
+        await keeping
+      } finally {
+        in_flight.delete(tracked)
+      }
+    },
     policy_changed: async (library_address) => {
       const handle = libraries.get(library_address)
       if (handle === undefined) return
