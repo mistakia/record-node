@@ -6,7 +6,7 @@ The spec in [record-docs](https://github.com/mistakia/record-docs) (`spec/`, cha
 
 ## Status
 
-A single peer is complete: protocol core (canonical encoding, identity and signing, access control, entries, the oplog and its CRDT merge), the content store (in-memory for tests, Helia with the spec section 5.5.1 import profile), content processing (fpcalc, ffmpeg, metadata, and the local, URL, and CID ingest pipelines), the derived query database, peer assembly with library lifecycle and pinning, and the HTTP and WebSocket API served from `7-http-api.yaml`. Every normative requirement in spec chapters 1-7 has a test under `test/conformance/`, named by section. All pass except the section 5 network and replication tests, which land with the replication stage. The fixture vectors (F0-F7) are ported in `test/conformance/vectors.ts`.
+The v1 peer is complete: protocol core (canonical encoding, identity and signing, access control, entries, the oplog and its CRDT merge), the content store (in-memory for tests, Helia with the spec section 5.5.1 import profile), content processing (fpcalc, ffmpeg, metadata, and the local, URL, and CID ingest pipelines), the derived query database, peer assembly with library lifecycle and pinning, the HTTP and WebSocket API served from `7-http-api.yaml`, and replication over the section 5.5.1 libp2p profile (gossipsub, the Record pre-shared key, bitswap, with bootstrap, mDNS, and DHT discovery): RECORD announcements, heads exchange, bounded fetch traversal, merge, and pause and resume. Every normative requirement in spec chapters 1-7 has a test under `test/conformance/`, named by section, and all of them pass. The fixture vectors (F0-F7) are ported in `test/conformance/vectors.ts`.
 
 The pre-v1 implementation (orbit-db / ipfs-log) is tagged `legacy-v0`. It is reference material, not a conformance target.
 
@@ -19,7 +19,7 @@ src/
   access-control/   AC chain creation, resolution, membership
   entry/            unsigned and signed entries, PUT/DEL operations
   oplog/            append-only DAG, heads, Lamport clock, merge, current state
-  fabric/           ContentStore and PubSub interfaces
+  fabric/           ContentStore, PubSub, and Network interfaces
   adapter/          libp2p (spec section 5.5.1) and in-memory backends
   replication/      announcement, heads exchange, traversal, merge orchestration
   ingest/           fingerprint, tag strip, metadata, artwork, pipelines
@@ -31,7 +31,8 @@ src/
   cli.ts            headless entry point
 test/
   conformance/      spec vectors and one test per normative requirement
-  integration/      the single-peer stage gate, end to end over HTTP
+  integration/      one peer end to end over HTTP, and peers replicating over
+                    the in-memory network and real libp2p on loopback
 dist/               committed Node build of src/
 ```
 
@@ -57,7 +58,7 @@ Headless, serving the API on `http://127.0.0.1:3000/api`:
 record-node [--port <n>] [--data-dir <dir>] [--config <file>]
 ```
 
-The data directory defaults to `~/.record`. A JSON config file (`--config` or `RECORD_CONFIG`) may set `port`, `host`, `data_dir`, `ffmpeg_path`, `fpcalc_path`, `ytdlp_path`, and the tuning fields of `src/peer/config.ts`. Ingest requires ffmpeg 7.1.1 and fpcalc 1.5.1, the versions the spec's F7 vectors were produced with; on any other version the peer runs with ingest disabled. URL ingest resolves through [record-resolver](https://github.com/mistakia/record-resolver), which needs its pinned yt-dlp.
+The data directory defaults to `~/.record`. A JSON config file (`--config` or `RECORD_CONFIG`) may set `port`, `host`, `data_dir`, `ffmpeg_path`, `fpcalc_path`, `ytdlp_path`, `network`, and the tuning fields of `src/peer/config.ts`. `network` is `false` for a peer that never connects, or an object whose omitted fields keep their defaults: `listen` (multiaddrs, default `["/ip4/0.0.0.0/tcp/0"]`), `bootstrap` (multiaddrs with a `/p2p/` peer id, default none), `mdns` and `dht` (default `true`). The heads and announcement intervals refuse values below the spec's 1000 ms and 5 s. Ingest requires ffmpeg 7.1.1 and fpcalc 1.5.1, the versions the spec's F7 vectors were produced with; on any other version the peer runs with ingest disabled. URL ingest resolves through [record-resolver](https://github.com/mistakia/record-resolver), which needs its pinned yt-dlp.
 
 ## Development
 
@@ -66,7 +67,7 @@ Requires [bun](https://bun.com) 1.4, plus `fpcalc` (Chromaprint) 1.5.1 and `ffmp
 ```sh
 bun install --ignore-scripts
 bun run verify          # lint, typecheck, and check dist/ is current
-bun test                # full suite, offline
+bun test                # full suite; network tests stay on loopback
 bun run test:conformance
 bun run build           # rebuild dist/ after changing src/
 sh test/smoke/git-dependency.sh   # install HEAD as a git dependency and run it under Node

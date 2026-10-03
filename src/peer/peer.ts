@@ -1,11 +1,12 @@
-// The peer: identity, content store, libraries, query index, and ingest
-// wired together behind the ApiPeer surface. The replication stage adds the
-// §5.5.1 network to start_peer and stop_peer.
+// The peer: identity, content store, libraries, query index, ingest, and
+// replication over the §5.5.1 network, wired together behind the ApiPeer
+// surface.
 
 import { readFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 
 import type { ContentStore } from '#fabric/content-store.ts'
+import type { Network } from '#fabric/network.ts'
 import { download_to_file, type Download } from '#ingest/download.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
 import { verify_toolchain } from '#ingest/toolchain.ts'
@@ -15,7 +16,7 @@ import { list_linked_libraries } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
 import type { ApiPeer } from '#types/peer.ts'
-import { create_library_methods, finish_pending_unlinks, try_open_library } from './api-libraries.ts'
+import { create_library_methods, describe_library, finish_pending_unlinks, try_open_library } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
 import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
 import { drain_queues, ingest_into_own, require_identity, require_toolchain, serialise_write, type PeerContext, type PeerIdentity } from './context.ts'
@@ -25,6 +26,7 @@ import { create_file_importer, import_url } from './imports.ts'
 import { create_library_manager } from './library.ts'
 import { LISTENS_LIBRARY_NAME } from './listens.ts'
 import { project_entry_events } from './notify.ts'
+import { create_peer_replication } from './replication.ts'
 import { create_resolver, refuse_input_errors, type ResolveUrl } from './resolver.ts'
 import { create_file_state_store, create_memory_state_store } from './state.ts'
 import { open_peer_store } from './store.ts'
@@ -49,6 +51,9 @@ export interface CreatePeerOptions {
   // URL resolution and download for §6.4.2; record-resolver and fetch by default.
   resolve?: ResolveUrl
   download?: Download
+  // Joins another network in place of the configured libp2p one, such as the
+  // in-memory test network.
+  network?: (input: { content_store: ContentStore }) => Network
 }
 
 // The own recordstore and listens libraries follow from the key, so the same
@@ -66,10 +71,10 @@ const open_identity = async (context: PeerContext, key_pair: KeyPair): Promise<P
   return identity
 }
 
-export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file }: CreatePeerOptions = {}): Promise<Peer> => {
+export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network }: CreatePeerOptions = {}): Promise<Peer> => {
   const config = resolve_peer_config(overrides)
   const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir)
-  const store = await open_peer_store({ data_dir: config.data_dir })
+  const store = await open_peer_store({ data_dir: config.data_dir, network: join_network === undefined ? config.network : false })
   const db = open_query_db()
   const events = create_event_bus()
   const content_store = store.content_store
@@ -77,7 +82,10 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     content_store,
     projector: create_projector({ db, read_content: content_store.get }),
     state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
-    on_entries: (input) => { project_entry_events({ context, ...input }) }
+    on_entries: (input) => {
+      project_entry_events({ context, ...input })
+      context.replication?.heads_changed(input.library_address)
+    }
   })
   const context: PeerContext = {
     config,
@@ -88,11 +96,16 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     events,
     resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
     download,
+    replication: undefined,
     identity: undefined,
     toolchain: undefined,
     writes: Promise.resolve(),
     ingests: Promise.resolve(),
     stopping: false
+  }
+  const network = join_network?.({ content_store }) ?? store.network
+  if (network !== undefined) {
+    context.replication = create_peer_replication({ context, network, describe_library: (address) => describe_library(context, address) })
   }
   const file_importer = create_file_importer(context)
 
@@ -107,8 +120,14 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     ...create_track_methods(context),
     ...create_library_methods(context),
 
-    list_peers: async () => [],
-    get_settings: async () => ({ peer_id: peer_id_of(require_identity(context).key_pair), addresses: [], version: VERSION }),
+    list_peers: async () => context.replication?.list_peers() ?? [],
+    // The libp2p peer id when networked; a networkless peer reports the one
+    // its identity key would have.
+    get_settings: async () => ({
+      peer_id: network?.peer_id ?? peer_id_of(require_identity(context).key_pair),
+      addresses: network?.addresses() ?? [],
+      version: VERSION
+    }),
     export_identity: async () => {
       const { key_pair } = require_identity(context)
       return { public_key: marshal_public_key(key_pair), private_key: marshal_private_key(key_pair) }
@@ -119,6 +138,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
       const key_pair = private_key === undefined ? generate_key_pair() : unmarshal_private_key(private_key)
       if (paths !== undefined) await save_key_pair({ path: paths.identity, key_pair })
       context.identity = await open_identity(context, key_pair)
+      await context.replication?.sync()
       return { id: identity_id_of(key_pair), public_key: marshal_public_key(key_pair), own_library_address: context.identity.own_address }
     }),
 
@@ -128,9 +148,9 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   }
 }
 
-// Checks the toolchain, opens the own libraries and everything they link, and
-// finishes any unlink a crash cut short. A toolchain refusal disables ingest
-// and leaves the rest of the peer up.
+// Checks the toolchain, opens the own libraries and everything they link,
+// finishes any unlink a crash cut short, and starts replicating. A toolchain
+// refusal disables ingest and leaves the rest of the peer up.
 export const start_peer = async (peer: Peer): Promise<void> => {
   const { context } = peer
   if (context.stopping) throw new Error('a stopped peer does not start again; create a new one')
@@ -141,16 +161,18 @@ export const start_peer = async (peer: Peer): Promise<void> => {
   const key_pair = await load_key_pair({ path: data_dir === undefined ? undefined : data_paths(data_dir).identity })
   context.identity = await open_identity(context, key_pair)
   await serialise_write(context, async () => { await finish_pending_unlinks(context) })
+  await context.replication?.start()
 }
 
-// Refuses new work, lets queued writes, ingests, and index updates finish,
-// then closes the store and index. A stopped peer does not start again.
+// Refuses new work, stops replicating once in-flight merges land, lets queued
+// writes, ingests, and index updates finish, then closes the network, store,
+// and index. A stopped peer does not start again.
 export const stop_peer = async (peer: Peer): Promise<void> => {
   const { context } = peer
   context.stopping = true
+  await context.replication?.stop()
   await drain_queues(context)
   await context.libraries.settled()
-  for (const { chain } of context.libraries.list()) await context.libraries.close_library(chain.address)
   await context.store.helia.stop()
   context.db.close()
   context.identity = undefined

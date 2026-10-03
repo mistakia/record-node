@@ -1,4 +1,4 @@
-// The single-peer stage gate: one peer creates its library, ingests the F7
+// One peer end to end, with no network: it creates its library, ingests the F7
 // file, queries it, and serves 7-http-api.yaml with response validation on,
 // so every response below has passed the spec's schema. Events arrive over
 // /api/ws and are checked against x-websocket-events.
@@ -49,7 +49,7 @@ const finished = async (import_id: string): Promise<PeerEvent[]> => {
 
 beforeAll(async () => {
   peer = await create_peer({
-    config: { allow_toolchain_mismatch: preflight_bypassed },
+    config: { allow_toolchain_mismatch: preflight_bypassed, network: false },
     resolve: fixture_resolver(YOUTUBE_FIXTURE),
     download: fixture_download()
   })

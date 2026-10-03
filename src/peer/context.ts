@@ -12,6 +12,7 @@ import type { IngestedTrack } from '#types/ingest.ts'
 import type { PeerConfig } from './config.ts'
 import type { EventBus } from './events.ts'
 import type { LibraryManager } from './library.ts'
+import type { PeerReplication } from './replication.ts'
 import type { ResolveUrl } from './resolver.ts'
 import type { PeerStore } from './store.ts'
 
@@ -30,6 +31,8 @@ export interface PeerContext {
   readonly events: EventBus
   readonly resolve: ResolveUrl
   readonly download: Download
+  // Set when the peer has a network; a networkless peer only opens libraries.
+  replication: PeerReplication | undefined
   // Set by start_peer, and replaced by an identity import.
   identity: PeerIdentity | undefined
   // The startup toolchain check: a failure refuses ingest, not the peer.

@@ -1,3 +1,4 @@
+import { type NetworkConfig } from '#adapter/libp2p/config.ts';
 export declare const TOOL_PINS: Readonly<{
     ffmpeg_version: "7.1.1";
     fpcalc_version: "1.5.1";
@@ -13,7 +14,10 @@ export interface PeerConfig {
     readonly traversal_timeout_ms: number;
     readonly heads_interval_ms: number;
     readonly announce_interval_ms: number;
+    readonly network: NetworkConfig | false;
 }
+export declare const HEADS_INTERVAL_FLOOR_MS = 1000;
+export declare const ANNOUNCE_INTERVAL_FLOOR_MS = 5000;
 export declare const DEFAULT_PEER_CONFIG: PeerConfig;
 export declare const resolve_peer_config: (config?: Partial<PeerConfig>) => PeerConfig;
 export declare const data_paths: (data_dir: string) => {

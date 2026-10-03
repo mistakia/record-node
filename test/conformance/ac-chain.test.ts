@@ -88,9 +88,7 @@ describe('ac-chain', () => {
     expect(other.chain.cids.write_list).toBe(in_use.chain.cids.write_list)
     expect(other.chain.cids.wrapper).toBe(in_use.chain.cids.wrapper)
     const chain_cids = [in_use.chain.cids.manifest, in_use.chain.cids.wrapper, in_use.chain.cids.write_list]
-    // Closing stops replication only, and unlinking a library that shares
-    // objects leaves the shared ones pinned.
-    await manager.close_library(in_use.chain.address)
+    // Unlinking a library that shares objects leaves the shared ones pinned.
     await manager.unlink_library(other.chain.address)
     expect(await pinned(content_store, chain_cids)).toEqual([true, true, true])
     expect(await content_store.is_pinned(other.chain.cids.manifest)).toBe(false)

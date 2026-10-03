@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ContentStore } from '#fabric/content-store.ts';
+import type { Network } from '#fabric/network.ts';
 import { type Download } from '#ingest/download.ts';
 import type { IngestedTrack } from '#types/ingest.ts';
 import type { ApiPeer } from '#types/peer.ts';
@@ -19,7 +20,10 @@ export interface CreatePeerOptions {
     config?: Partial<PeerConfig>;
     resolve?: ResolveUrl;
     download?: Download;
+    network?: (input: {
+        content_store: ContentStore;
+    }) => Network;
 }
-export declare const create_peer: ({ config: overrides, resolve, download }?: CreatePeerOptions) => Promise<Peer>;
+export declare const create_peer: ({ config: overrides, resolve, download, network: join_network }?: CreatePeerOptions) => Promise<Peer>;
 export declare const start_peer: (peer: Peer) => Promise<void>;
 export declare const stop_peer: (peer: Peer) => Promise<void>;

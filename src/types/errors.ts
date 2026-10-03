@@ -21,6 +21,7 @@ export type ProtocolErrorCode =
   | 'invalid_signature'
   | 'unauthorised_writer'
   | 'duplicate_entry'
+  | 'topic_too_long'
 
 export class ProtocolError extends Error {
   readonly code: ProtocolErrorCode

@@ -12,7 +12,6 @@ export interface LibraryHandle {
     readonly chain: ResolvedAcChain;
     readonly oplog: Oplog;
     readonly pins: PinSet;
-    open: boolean;
 }
 export interface LibraryManager {
     create_library: (input: {
@@ -21,7 +20,6 @@ export interface LibraryManager {
         write_keys: readonly string[];
     }) => Promise<LibraryHandle>;
     open_library: (library_address: string) => Promise<LibraryHandle>;
-    close_library: (library_address: string) => Promise<void>;
     begin_unlink: (library_address: string) => Promise<void>;
     unlink_library: (library_address: string) => Promise<void>;
     pending_unlinks: () => Promise<string[]>;
@@ -40,6 +38,10 @@ export interface LibraryManager {
         library_address: string;
         blocks: readonly Uint8Array[];
     }) => Promise<MergeResult>;
+    reindex: (input: {
+        library_address: string;
+        entries: readonly VerifiedEntry[];
+    }) => Promise<void>;
     settled: () => Promise<void>;
 }
 export declare const create_library_manager: ({ content_store, projector, state_store, on_entries }: {

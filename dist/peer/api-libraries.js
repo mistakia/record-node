@@ -26,8 +26,8 @@ const own_oplog = (context) => {
         throw new Error('the own library is not open');
     return oplog;
 };
-// A linked library opens once its AC chain is in the local store; until the
-// replication stage fetches it, an unopenable one stays linked and loading.
+// A linked library opens once its AC chain is in the local store; until then
+// an unopenable one stays linked and loading.
 export const try_open_library = async (context, address) => {
     try {
         await context.libraries.open_library(address);
@@ -37,12 +37,21 @@ export const try_open_library = async (context, address) => {
             throw error;
     }
 };
+// With a network, replication opens the library, fetching its chain from
+// peers when need be, and starts or resumes replicating it.
+const connect_address = async (context, address) => {
+    if (context.replication === undefined)
+        await try_open_library(context, address);
+    else
+        await context.replication.connect(address);
+};
 // §4.6, restartable: the marker is on disk before anything changes, then the
 // DEL ends the link and the manager releases what only this library held,
 // clearing the marker last. Every step is idempotent.
 const unlink_address = async (context, address) => {
     const { key_pair, own_address } = require_identity(context);
     await context.libraries.begin_unlink(address);
+    await context.replication?.unlink(address);
     if (get_live_entry({ oplog: own_oplog(context), key: compute_log_id(address) }) !== undefined) {
         const payload = build_del_operation({ key: compute_log_id(address), type: 'log' });
         await context.libraries.append({ library_address: own_address, payload, key_pair });
@@ -57,7 +66,18 @@ export const finish_pending_unlinks = async (context) => {
         await unlink_address(context, address);
     }
 };
-const describe_library = (context, address) => {
+// The replicator's counters; without one, every entry the oplog holds is all
+// there is.
+const replication_of = (context, address) => {
+    const replicator = context.replication?.get(address);
+    if (replicator === undefined) {
+        const length = context.libraries.get(address)?.oplog.entries.size ?? 0;
+        return { status: { progress: length, total: length }, is_replicating: false, peer_ids: [] };
+    }
+    const status = replicator.status();
+    return { status, is_replicating: replicator.state() === 'running' && status.progress < status.total, peer_ids: replicator.peer_ids() };
+};
+export const describe_library = (context, address) => {
     const own_address = require_identity(context).own_address;
     const is_own = address === own_address;
     const link = is_own ? undefined : list_linked_libraries({ db: context.db, library_address: own_address }).find((linked) => linked.address === address);
@@ -70,7 +90,8 @@ const describe_library = (context, address) => {
         alias: link?.alias ?? null,
         is_own,
         is_linked: link !== undefined,
-        is_loading: context.libraries.get(address) === undefined
+        is_loading: context.libraries.get(address) === undefined,
+        replication: replication_of(context, address)
     });
 };
 const require_library = (context, address) => {
@@ -93,7 +114,7 @@ export const create_library_methods = (context) => ({
             const content_cid = await store_payload(context, alias === null ? { address } : { address, alias });
             const envelope = build_log_envelope({ id: compute_log_id(address), content_cid });
             await context.libraries.append({ library_address: own_address, payload: build_put_operation({ envelope }), key_pair });
-            await try_open_library(context, address);
+            await connect_address(context, address);
         });
         const about = get_about({ db: context.db, library_address: address });
         context.events.emit({ type: 'library:linked', payload: { library_address: address, ...(about === undefined ? {} : { about: to_api_about(about) }) } });
@@ -108,17 +129,14 @@ export const create_library_methods = (context) => ({
         });
         context.events.emit({ type: 'library:unlinked', payload: { library_address: address } });
     },
-    // Replication starts and stops here in the next stage; a single peer only
-    // opens or closes the library.
+    // Connect starts or resumes replication; disconnect pauses it and leaves
+    // the oplog open (§5.4.4).
     connect_library: async (address) => {
-        await serialise_write(context, async () => { await try_open_library(context, address); });
+        await serialise_write(context, async () => { await connect_address(context, address); });
         context.events.emit({ type: 'library:connected', payload: { library_address: address } });
     },
     disconnect_library: async (address) => {
-        await serialise_write(context, async () => {
-            if (context.libraries.get(address) !== undefined)
-                await context.libraries.close_library(address);
-        });
+        await serialise_write(context, async () => { context.replication?.pause(address); });
         context.events.emit({ type: 'library:disconnected', payload: { library_address: address } });
     },
     get_about: async (address) => {

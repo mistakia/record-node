@@ -17,7 +17,7 @@ const QUERY: TrackQuery = { offset: 0, limit: 10, shuffle: false, sort: 'added_a
 const running: Peer[] = []
 
 const start = async (data_dir?: string): Promise<Peer> => {
-  const peer = await create_peer({ config: { allow_toolchain_mismatch: preflight_bypassed, ...(data_dir === undefined ? {} : { data_dir }) } })
+  const peer = await create_peer({ config: { allow_toolchain_mismatch: preflight_bypassed, network: false, ...(data_dir === undefined ? {} : { data_dir }) } })
   await start_peer(peer)
   running.push(peer)
   return peer

@@ -4,6 +4,7 @@
 // library still holds; the store's pins themselves do not count references.
 import { create_ac_chain } from '#access-control/create.ts';
 import { resolve_ac_chain } from '#access-control/resolve.ts';
+import { is_operation } from '#entry/operations.ts';
 import { append_entry, create_oplog } from '#oplog/dag.ts';
 import { merge_entries } from '#oplog/merge.ts';
 import { PeerError } from '#types/peer.ts';
@@ -38,12 +39,10 @@ export const create_library_manager = ({ content_store, projector, state_store, 
     // gets an oplog. Its objects are pinned before any entry is loaded.
     const open_library = async (library_address) => {
         const existing = libraries.get(library_address);
-        if (existing !== undefined) {
-            existing.open = true;
+        if (existing !== undefined)
             return existing;
-        }
         const chain = await resolve_ac_chain({ library_address, block_store: content_store });
-        const handle = { chain, oplog: create_oplog({ chain }), pins: new Map(), open: true };
+        const handle = { chain, oplog: create_oplog({ chain }), pins: new Map() };
         await pin_into({ content_store, pins: handle.pins, items: chain_pins(chain) });
         const heads = (await state_store.load()).heads.get(library_address) ?? [];
         merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) });
@@ -59,9 +58,6 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             return await open_library(address);
         },
         open_library,
-        close_library: async (library_address) => {
-            require_library(library_address).open = false;
-        },
         begin_unlink: async (library_address) => {
             await state_store.set_unlinking({ library_address, unlinking: true });
         },
@@ -98,6 +94,15 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             if (result.merged.length > 0)
                 await register({ library_address, entries: result.merged });
             return result;
+        },
+        reindex: async ({ library_address, entries }) => {
+            const handle = require_library(library_address);
+            await pin_entries(handle, entries);
+            const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : []);
+            const projected = projector.project_keys({ oplog: handle.oplog, keys });
+            indexing = projected.catch(() => { });
+            await projected;
+            on_entries?.({ library_address, entries });
         },
         settled: async () => { await indexing; }
     };

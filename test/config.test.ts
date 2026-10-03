@@ -35,4 +35,18 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ allow_toolchain_mismatch: 'false' }) })).rejects.toThrow('allow_toolchain_mismatch')
     await expect(load_config({ config_path: config_file({ ffmpeg_path: 7 }) })).rejects.toThrow('ffmpeg_path')
   })
+
+  test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
+    await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
+    await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')
+  })
+
+  test('fills a partial network config from the §5.5.1 defaults, or turns the network off', async () => {
+    const { peer } = await load_config({ config_path: config_file({ network: { mdns: false, bootstrap: ['/ip4/10.0.0.1/tcp/4001/p2p/12D3KooW'] } }) })
+    expect(peer.network).toEqual({ listen: ['/ip4/0.0.0.0/tcp/0'], bootstrap: ['/ip4/10.0.0.1/tcp/4001/p2p/12D3KooW'], mdns: false, dht: true })
+    expect((await load_config({ config_path: config_file({ network: false }) })).peer.network).toBe(false)
+    await expect(load_config({ config_path: config_file({ network: { mdns: 'yes' } }) })).rejects.toThrow('network.mdns')
+    await expect(load_config({ config_path: config_file({ network: { listen: '/ip4/0.0.0.0/tcp/0' } }) })).rejects.toThrow('network.listen')
+    await expect(load_config({ config_path: config_file({ network: { psk: 'x' } }) })).rejects.toThrow('network has unknown keys: psk')
+  })
 })

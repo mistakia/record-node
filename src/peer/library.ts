@@ -5,6 +5,7 @@
 
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain, type ResolvedAcChain } from '#access-control/resolve.ts'
+import { is_operation } from '#entry/operations.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
@@ -21,14 +22,11 @@ export interface LibraryHandle {
   readonly chain: ResolvedAcChain
   readonly oplog: Oplog
   readonly pins: PinSet
-  // A closed library keeps its oplog and pins; only replication stops.
-  open: boolean
 }
 
 export interface LibraryManager {
   create_library: (input: { name: string, type: LibraryType, write_keys: readonly string[] }) => Promise<LibraryHandle>
   open_library: (library_address: string) => Promise<LibraryHandle>
-  close_library: (library_address: string) => Promise<void>
   // An unlink runs in two calls: begin_unlink persists the marker, then
   // unlink_library releases what the library held, its heads, and its index
   // rows, and clears the marker last. A crash in between leaves the marker,
@@ -42,8 +40,11 @@ export interface LibraryManager {
   append: (input: { library_address: string, payload: unknown, key_pair: KeyPair }) => Promise<VerifiedEntry>
   // Stores, pins, and indexes entries already in the oplog (an ingest PUT).
   register: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => Promise<void>
-  // Remote entry blocks (§4.5), for the replication stage.
+  // Remote entry blocks (§4.5), as replication fetched them.
   merge: (input: { library_address: string, blocks: readonly Uint8Array[] }) => Promise<MergeResult>
+  // Pins and re-indexes entries whose content payload reached the store
+  // after the entry itself.
+  reindex: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => Promise<void>
   // Waits for queued index writes.
   settled: () => Promise<void>
 }
@@ -85,12 +86,9 @@ export const create_library_manager = ({ content_store, projector, state_store, 
   // gets an oplog. Its objects are pinned before any entry is loaded.
   const open_library = async (library_address: string): Promise<LibraryHandle> => {
     const existing = libraries.get(library_address)
-    if (existing !== undefined) {
-      existing.open = true
-      return existing
-    }
+    if (existing !== undefined) return existing
     const chain = await resolve_ac_chain({ library_address, block_store: content_store })
-    const handle: LibraryHandle = { chain, oplog: create_oplog({ chain }), pins: new Map(), open: true }
+    const handle: LibraryHandle = { chain, oplog: create_oplog({ chain }), pins: new Map() }
     await pin_into({ content_store, pins: handle.pins, items: chain_pins(chain) })
     const heads = (await state_store.load()).heads.get(library_address) ?? []
     merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) })
@@ -107,9 +105,6 @@ export const create_library_manager = ({ content_store, projector, state_store, 
       return await open_library(address)
     },
     open_library,
-    close_library: async (library_address) => {
-      require_library(library_address).open = false
-    },
     begin_unlink: async (library_address) => {
       await state_store.set_unlinking({ library_address, unlinking: true })
     },
@@ -144,6 +139,15 @@ export const create_library_manager = ({ content_store, projector, state_store, 
       const result = merge_entries({ oplog, blocks })
       if (result.merged.length > 0) await register({ library_address, entries: result.merged })
       return result
+    },
+    reindex: async ({ library_address, entries }) => {
+      const handle = require_library(library_address)
+      await pin_entries(handle, entries)
+      const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : [])
+      const projected = projector.project_keys({ oplog: handle.oplog, keys })
+      indexing = projected.catch(() => {})
+      await projected
+      on_entries?.({ library_address, entries })
     },
     settled: async () => { await indexing }
   }

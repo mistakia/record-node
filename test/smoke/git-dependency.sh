@@ -1,8 +1,9 @@
 #!/bin/sh
 # Installs record-node the way record-app does, as a git dependency with
 # install scripts off, into a scratch project, then runs it under plain Node:
-# import the package, create a peer, ingest the F7 file. Proves the committed
-# dist/ and its # aliases load from node_modules with no build step.
+# import the package, ingest the F7 file on one peer, and replicate it to a
+# second over libp2p on loopback. Proves the committed dist/ and its # aliases
+# load from node_modules with no build step.
 #
 #   sh test/smoke/git-dependency.sh [<commit>]   (default HEAD; must be committed)
 #

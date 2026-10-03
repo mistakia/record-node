@@ -1,7 +1,6 @@
 // Reading a library's oplog back out of the local content store: walk from
 // the persisted heads along next and refs, collecting each entry block once.
-// Verification is the merge's job; a block missing locally is skipped, and
-// the replication stage fetches it.
+// Verification is the merge's job, and a block missing locally is skipped.
 import { decode_signed_entry } from '#entry/signed.ts';
 import { ProtocolError } from '#types/errors.ts';
 export const load_entry_blocks = async ({ heads, content_store }) => {

@@ -2,7 +2,7 @@
 
 import { compute_log_id } from '#entry/id.ts'
 import type { About as AboutRow, LibrarySummary, TrackResolver, TrackRow } from '#query-db/queries.ts'
-import type { About, Library, ResolverEntry, Track } from '#types/peer.ts'
+import type { About, Library, ReplicationStatus, ResolverEntry, Track } from '#types/peer.ts'
 
 // The query index keeps duration_seconds; the API ResolverEntry is §2.4.2's
 // own shape, with duration.
@@ -22,7 +22,13 @@ export const to_api_tracks = (rows: readonly TrackRow[]): Track[] =>
 
 export const to_api_about = (row: AboutRow): About => ({ ...row })
 
-export const to_api_library = ({ address, summary, about, alias, is_own, is_linked, is_loading }: {
+export interface LibraryReplication {
+  readonly status: ReplicationStatus
+  readonly is_replicating: boolean
+  readonly peer_ids: string[]
+}
+
+export const to_api_library = ({ address, summary, about, alias, is_own, is_linked, is_loading, replication }: {
   address: string
   summary: LibrarySummary
   about: AboutRow | undefined
@@ -31,6 +37,7 @@ export const to_api_library = ({ address, summary, about, alias, is_own, is_link
   is_linked: boolean
   // Linked, but its AC chain is not in the local store yet.
   is_loading: boolean
+  replication: LibraryReplication
 }): Library => ({
   id: compute_log_id(address),
   address,
@@ -40,12 +47,11 @@ export const to_api_library = ({ address, summary, about, alias, is_own, is_link
   avatar: about?.avatar ?? null,
   alias,
   ...summary,
-  // Replication is the next stage: a single peer has nothing in flight.
-  replication_status: { progress: summary.length, total: summary.length },
-  is_replicating: false,
+  replication_status: replication.status,
+  is_replicating: replication.is_replicating,
   is_loading_index: is_loading,
   is_processing_index: false,
   is_linked,
   is_own,
-  peer_ids: []
+  peer_ids: replication.peer_ids
 })

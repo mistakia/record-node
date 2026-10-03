@@ -23,7 +23,7 @@ afterEach(async () => {
 })
 
 const start = async (options: Parameters<typeof create_peer>[0] = {}): Promise<Peer> => {
-  const peer = await create_peer({ ...options, config: { allow_toolchain_mismatch: preflight_bypassed, ...options.config } })
+  const peer = await create_peer({ ...options, config: { allow_toolchain_mismatch: preflight_bypassed, network: false, ...options.config } })
   await start_peer(peer)
   running.push(peer)
   return peer

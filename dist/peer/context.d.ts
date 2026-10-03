@@ -8,6 +8,7 @@ import type { IngestedTrack } from '#types/ingest.ts';
 import type { PeerConfig } from './config.ts';
 import type { EventBus } from './events.ts';
 import type { LibraryManager } from './library.ts';
+import type { PeerReplication } from './replication.ts';
 import type { ResolveUrl } from './resolver.ts';
 import type { PeerStore } from './store.ts';
 export interface PeerIdentity {
@@ -24,6 +25,7 @@ export interface PeerContext {
     readonly events: EventBus;
     readonly resolve: ResolveUrl;
     readonly download: Download;
+    replication: PeerReplication | undefined;
     identity: PeerIdentity | undefined;
     toolchain: Promise<Toolchain> | undefined;
     writes: Promise<unknown>;
