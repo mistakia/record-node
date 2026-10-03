@@ -10,6 +10,7 @@ import { preSharedKey } from '@libp2p/pnet'
 import { utf8ToBytes } from '@noble/hashes/utils.js'
 import { createLibp2p } from 'libp2p'
 
+import { dials_drained } from '#adapter/libp2p/network.ts'
 import { create_libp2p_options, RECORD_SWARM_KEY, type NetworkedHelia } from '#adapter/libp2p/node.ts'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { create_memory_network } from '#adapter/memory/network.ts'
@@ -81,6 +82,8 @@ describe('network-protocol', () => {
     } finally {
       nodes.forEach((node, index) => { node.removeEventListener('peer:discovery', listeners[index] as never) })
       await Promise.allSettled(dials)
+      // libp2p dials a discovered peer on its own too; those drain as well.
+      for (const node of nodes) await dials_drained(node)
       for (const node of nodes) await node.stop()
     }
   })

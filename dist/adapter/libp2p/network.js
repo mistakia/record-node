@@ -32,6 +32,18 @@ export const create_libp2p_network = ({ helia }) => {
             return [...by_peer.values()].map(peer_of);
         },
         addresses: () => libp2p.getMultiaddrs().map(String),
-        close: async () => { pubsub.close(); }
+        // Stopping libp2p aborts every dial still queued, and an aborted TCP dial
+        // can surface as an uncaught AbortError, so the queue drains first, for
+        // at most DIAL_DRAIN_MS.
+        close: async () => {
+            pubsub.close();
+            await dials_drained(libp2p);
+        }
     };
+};
+const DIAL_DRAIN_MS = 3000;
+export const dials_drained = async (libp2p, timeout_ms = DIAL_DRAIN_MS) => {
+    const deadline = Date.now() + timeout_ms;
+    while (libp2p.getDialQueue().length > 0 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 25));
 };
