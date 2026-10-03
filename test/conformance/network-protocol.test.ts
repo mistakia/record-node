@@ -67,11 +67,20 @@ describe('network-protocol', () => {
       ...create_libp2p_options(LOOPBACK),
       peerDiscovery: [mdns({ serviceTag: service_tag, interval: 500 })]
     } as unknown as Parameters<typeof createLibp2p>[0])))
+    // Every discovery dials; stopping a node with a dial still in flight
+    // aborts its socket, so the dials stop and settle before the nodes do.
+    const dials: Array<Promise<unknown>> = []
+    const listeners = nodes.map((node) => {
+      const listener = ({ detail }: CustomEvent<{ id: Parameters<Libp2p['dial']>[0] }>) => { dials.push(node.dial(detail.id).catch(() => {})) }
+      node.addEventListener('peer:discovery', listener as never)
+      return listener
+    })
     try {
       const [first, second] = nodes as [Libp2p, Libp2p]
-      for (const node of nodes) node.addEventListener('peer:discovery', ({ detail }) => { node.dial(detail.id).catch(() => {}) })
       await wait_until(() => first.getConnections(second.peerId).length > 0 && second.getConnections(first.peerId).length > 0)
     } finally {
+      nodes.forEach((node, index) => { node.removeEventListener('peer:discovery', listeners[index] as never) })
+      await Promise.allSettled(dials)
       for (const node of nodes) await node.stop()
     }
   })
