@@ -161,6 +161,11 @@ const stored_version = (db: DatabaseSync): string | undefined => {
 const open = (path: string): DatabaseSync => {
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
+  // The index is derived (§4.7): a crash may lose its last transactions, but
+  // never tear one, and rows and heads marker commit together, so the next
+  // open finds the marker behind the oplog and re-projects. So no commit
+  // waits on an fsync, which costs ingest dearly on a slow disk.
+  db.exec('PRAGMA synchronous = NORMAL')
   if (stored_version(db) !== String(SCHEMA_VERSION)) {
     // An older or unreadable schema: drop every table and start over. The
     // next library open finds no marker and rebuilds the index by replay.
