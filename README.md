@@ -38,11 +38,11 @@ dist/               committed Node build of src/
 
 Cross-directory imports use the `#` aliases in `package.json` (for example `#encoding/cid.ts`).
 
-The shipped core is Node-compatible: record-app embeds it in-process under Electron and nodejs-mobile, so no Bun-only API appears outside the tests; the build compiles `src/` against Node types alone.
+The shipped core is Node-compatible: record-app runs it under Node, on desktop as a child process spawned through Electron's utilityProcess (spec §8.3.1), so no Bun-only API appears outside the tests; the build compiles `src/` against Node types alone.
 
 ## Usage
 
-As a library, the way record-app embeds it:
+As a library, the way record-app's node process loads it:
 
 ```js
 import { create_api_server, create_peer, start_peer } from 'record-node'

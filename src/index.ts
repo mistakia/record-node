@@ -1,5 +1,5 @@
-// The package entry for in-process embedding (record-app): the peer, the API
-// server factory, and the configuration loader.
+// The package entry for a host process such as record-app's node child process
+// (spec §8.3.1): the peer, the API server factory, and the configuration loader.
 
 export { create_peer, start_peer, stop_peer, OWN_LIBRARY_NAME } from '#peer/peer.ts'
 export type { CreatePeerOptions, Peer } from '#peer/peer.ts'

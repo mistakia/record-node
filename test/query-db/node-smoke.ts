@@ -1,5 +1,5 @@
 // Node smoke run of the query database: `node test/query-db/node-smoke.ts`.
-// record-app embeds the node in-process under Node, so node:sqlite, the
+// record-app runs the node as a Node child process (spec §8.3.1), so node:sqlite, the
 // projector, and rebuild must run there as well as under Bun. Exits nonzero
 // when incremental and rebuilt rows differ.
 
