@@ -19,6 +19,9 @@ cp "$repo/test/smoke/git-dependency.mjs" "$project/smoke.mjs"
 # npm, since bun takes no git+file dependency. --before is the repo's 7-day
 # release-age floor (bunfig.toml) for every package the install resolves.
 before=$(node -e 'console.log(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())')
+# npm rewrites GitHub dependencies to ssh, and a CI runner has no key, so
+# this install's git calls fetch over https.
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='url.https://github.com/.insteadOf' GIT_CONFIG_VALUE_0='ssh://git@github.com/'
 cd "$project"
 npm install --ignore-scripts --no-audit --no-fund --before "$before" "git+file://$repo#$commit"
 test -f node_modules/record-node/dist/index.js
