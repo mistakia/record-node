@@ -15,7 +15,8 @@ import { compute_cid_string, is_cid_string } from '#encoding/cid.ts'
 import { build_del_operation } from '#entry/operations.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
-import { compute_fingerprint, FPCALC_ARGS } from '#ingest/fingerprint.ts'
+import { decoded_duration } from '#ingest/duration.ts'
+import { compute_fingerprint, FPCALC_ARGS, is_degenerate_fingerprint } from '#ingest/fingerprint.ts'
 import { extract_metadata } from '#ingest/metadata.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
@@ -202,10 +203,8 @@ describe('content-processing', () => {
     expect(content.tags).not.toContainKey('title')
     expect(content.tags).not.toContainKey('bpm')
     for (const value of [...Object.values(content.tags), ...Object.values(content.audio)]) expect(value).not.toBe(0)
-    expect(content.audio.duration).toBe(5)
+    expect(content.audio.duration).toBe(f7.duration_seconds)
     expect(Number.isInteger(content.audio.bitrate)).toBe(true)
-    const unknown = await extract_metadata({ file_path: await zero_length_wav(), fingerprint: f7.fingerprint }).catch((error: unknown) => error)
-    expect((unknown as IngestError).code).toBe('invalid_duration')
   })
 
   test('§6.3.3 [MUST] each artwork element is a CID', async () => {
@@ -254,13 +253,50 @@ describe('content-processing', () => {
     expect(() => compute_track_id('')).toThrow('an empty fingerprint has no track id')
   })
 
-  test('§6.4.1 [MUST] ingest is rejected when duration is 0 or unknown or the decoded sample count is zero', async () => {
+  test('§6.4.1 [MUST] the stored duration is the decoded duration, not the container\'s', async () => {
     const file_path = await zero_length_wav()
-    // fpcalc decodes the samples; the metadata library cannot size them.
+    // The header claims no samples; fpcalc and the decoder read them anyway.
     expect(await compute_fingerprint({ file_path, toolchain })).toBe(f7.fingerprint)
+    expect((await extract_metadata({ file_path, fingerprint: f7.fingerprint })).audio).not.toContainKey('duration')
+    const { content } = await ingest(file_path)
+    expect(content.audio.duration).toBe(f7.duration_seconds)
+  })
+
+  test('§6.4.1 [MUST] ingest is rejected when the decoded sample count is zero', async () => {
+    const empty = join(dir, 'empty.wav')
+    await run_tool({ command: toolchain.ffmpeg_path, args: ['-nostdin', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-t', '0', empty] })
+    expect((await rejection(() => decoded_duration({ file_path: empty, toolchain }))).code).toBe('invalid_duration')
+  })
+
+  test('§6.4.1 [MUST] ingest is rejected when the fingerprint is degenerate (§6.1.6)', async () => {
+    const tone = await make_silence({ dir, seconds: 10 })
+    expect(is_degenerate_fingerprint(await compute_fingerprint({ file_path: tone, toolchain }))).toBe(true)
     const target = await open_ingest_target()
-    expect((await rejection(() => ingest_local_file({ file_path, target, toolchain }))).code).toBe('invalid_duration')
+    expect((await rejection(() => ingest_local_file({ file_path: tone, target, toolchain }))).code).toBe('degenerate_fingerprint')
     expect(target.oplog.entries.size).toBe(0)
+  })
+
+  test('§6.4.1 [MUST] an ingest whose decoded duration differs by more than 30 s from the entry with its id is refused', async () => {
+    // One rising signal at three lengths: past fpcalc's 120 s window they
+    // share a fingerprint, and so a track id.
+    const signal = async (seconds: number) => {
+      const path = join(dir, `long-${seconds}s.flac`)
+      await run_tool({
+        command: toolchain.ffmpeg_path,
+        args: ['-nostdin', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `aevalsrc=exprs='0.4*sin(2*PI*(110*t+3*t*t))':s=11025:d=${seconds}`, '-c:a', 'flac', path]
+      })
+      return path
+    }
+    const [mix, near, far] = await Promise.all([signal(130), signal(150), signal(170)])
+    const target = await open_ingest_target()
+    const first = await ingest_local_file({ file_path: mix, target, toolchain })
+    expect(compute_track_id(await compute_fingerprint({ file_path: far, toolchain }))).toBe(first.track_id)
+    // Within 30 s it is the same recording: the existing entry, nothing appended.
+    expect(await ingest_local_file({ file_path: near, target, toolchain })).toEqual({ ...first, existing: true })
+    const refused = await rejection(() => ingest_local_file({ file_path: far, target, toolchain }))
+    expect(refused.code).toBe('track_id_collision')
+    expect(refused.message).toContain(first.entry_hash)
+    expect(target.oplog.entries.size).toBe(1)
   })
 
   test('§6.4.2 [MUST] the resolver url field is stripped before persistence', async () => {
@@ -346,7 +382,7 @@ describe('content-processing', () => {
 })
 
 // The F7 audio as WAV with its data-chunk size zeroed: decoders read to end of
-// file, but the declared length, and so the duration, is unknown.
+// file, but the declared length, and so the container duration, is unknown.
 async function zero_length_wav (): Promise<string> {
   const path = join(dir, 'zero-length.wav')
   await run_tool({ command: toolchain.ffmpeg_path, args: ['-nostdin', '-loglevel', 'error', '-y', '-i', f7.fixture_path, path] })

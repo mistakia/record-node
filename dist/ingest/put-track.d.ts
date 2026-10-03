@@ -11,6 +11,10 @@ export declare const find_existing_track: ({ oplog, track_id }: {
     oplog: Oplog;
     track_id: string;
 }) => IngestedTrack | undefined;
+export declare const stored_track_duration: ({ content_store, content_cid }: {
+    content_store: ContentStore;
+    content_cid: string;
+}) => Promise<number | undefined>;
 export declare const put_track: ({ target, content, tags, timestamp }: {
     target: TrackTarget;
     content: Record<string, unknown>;

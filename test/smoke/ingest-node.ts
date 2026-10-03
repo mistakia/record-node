@@ -10,8 +10,8 @@ import { create_importer } from '#ingest/import.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
 import { open_ingest_target, toolchain } from '#test/helpers/ingest.ts'
 
-const FIXTURE = fileURLToPath(new URL('../fixtures/audio/sine-sweep-5s.flac', import.meta.url))
-const F7_TRACK_ID = '20599ccf9f5efb8cc1d6e2ae464471f6f8fab82066a42579b07024d7673b1005'
+const FIXTURE = fileURLToPath(new URL('../fixtures/audio/chirp-10s.flac', import.meta.url))
+const F7_TRACK_ID = '13f92b74d4d33accd2424b87914fbc6d087b7557fb2166330756bdcddcd8b6db'
 
 const target = await open_ingest_target()
 const importer = create_importer({ ingest_file: (file_path) => ingest_local_file({ file_path, target, toolchain }) })

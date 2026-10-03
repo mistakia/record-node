@@ -1,4 +1,6 @@
-// Chromaprint fingerprinting through fpcalc (§6.1).
+// Chromaprint fingerprinting through fpcalc (§6.1), and the decode of a
+// fingerprint string into its subfingerprint values for the §6.1.6
+// degeneracy rule.
 import { IngestError } from '#types/ingest.ts';
 import { run_tool } from "./subprocess.js";
 // Algorithm 2 is requested explicitly whatever the tool default, and nothing
@@ -33,4 +35,66 @@ export const compute_fingerprint = async ({ file_path, toolchain }) => {
     if (fingerprint.length === 0)
         throw new IngestError('empty_fingerprint', `fpcalc produced an empty fingerprint for ${file_path}`);
     return fingerprint;
+};
+const base64url_bytes = (fingerprint) => Uint8Array.from(Buffer.from(fingerprint.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+// Chromaprint's compressed format: an algorithm byte, a 24-bit big-endian
+// value count, 3-bit packed deltas between the set bits of each value's XOR
+// with its predecessor (0 ends a value, 7 defers to the next 5-bit
+// exception), then the exceptions.
+export const decode_fingerprint = (fingerprint) => {
+    const bytes = base64url_bytes(fingerprint);
+    if (bytes.length < 4)
+        throw new IngestError('tool_failed', 'fingerprint is shorter than its header');
+    const [algorithm = 0, b1 = 0, b2 = 0, b3 = 0] = bytes;
+    const count = (b1 << 16) | (b2 << 8) | b3;
+    const body = bytes.subarray(4);
+    const read = (position, width) => {
+        let value = 0;
+        for (let bit = 0; bit < width; bit++)
+            value |= (((body[(position + bit) >> 3] ?? 0) >> ((position + bit) & 7)) & 1) << bit;
+        return value;
+    };
+    const normal = [];
+    let position = 0;
+    for (let ends = 0; ends < count;) {
+        if (position + 3 > body.length * 8)
+            throw new IngestError('tool_failed', 'fingerprint is truncated');
+        const value = read(position, 3);
+        position += 3;
+        normal.push(value);
+        if (value === 0)
+            ends++;
+    }
+    let exception = Math.ceil(position / 8) * 8;
+    const values = [];
+    let previous = 0;
+    let xor = 0;
+    let last_bit = 0;
+    for (let delta of normal) {
+        if (delta === 7) {
+            delta += read(exception, 5);
+            exception += 5;
+        }
+        if (delta === 0) {
+            previous = (previous ^ xor) >>> 0;
+            values.push(previous);
+            xor = 0;
+            last_bit = 0;
+        }
+        else {
+            last_bit += delta;
+            xor = (xor | (1 << (last_bit - 1))) >>> 0;
+        }
+    }
+    return { algorithm, values };
+};
+// §6.1.6: empty, or one value filling at least 19 in 20 positions, as a
+// silent or steady-tone window yields.
+export const is_degenerate_fingerprint = (fingerprint) => {
+    const { values } = decode_fingerprint(fingerprint);
+    const counts = new Map();
+    for (const value of values)
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+    const most_common = Math.max(0, ...counts.values());
+    return values.length === 0 || 20 * most_common >= 19 * values.length;
 };

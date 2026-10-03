@@ -57,7 +57,6 @@ const map_tags = ({ common, fingerprint }: { common: IAudioMetadata['common'], f
 })
 
 const map_audio = (format: IAudioMetadata['format']) => present_fields({
-  duration: positive(format.duration),
   bitrate: positive_integer(format.bitrate),
   codec: format.codec,
   container: format.container,
@@ -70,8 +69,8 @@ const map_audio = (format: IAudioMetadata['format']) => present_fields({
   trackInfo: format.trackInfo === undefined ? undefined : format.trackInfo.map(without_undefined)
 })
 
-// Rejects when the duration is 0 or unknown, or the sample count is zero
-// (§6.4.1 step 4). The fingerprint becomes tags.acoustid_fingerprint (§6.3.1).
+// The fingerprint becomes tags.acoustid_fingerprint (§6.3.1). The duration
+// written is the decoded one (duration.ts), never the container's.
 export const extract_metadata = async ({ file_path, fingerprint }: {
   file_path: string
   fingerprint: string
@@ -83,10 +82,6 @@ export const extract_metadata = async ({ file_path, fingerprint }: {
     throw new IngestError('no_audio', `cannot read audio metadata from ${file_path}: ${(error as Error).message}`)
   }
   const { common, format } = metadata
-  if (positive(format.duration) === undefined) {
-    throw new IngestError('invalid_duration', `${file_path} reports a duration of ${String(format.duration)}`)
-  }
-  if (format.numberOfSamples === 0) throw new IngestError('invalid_duration', `${file_path} has zero decoded samples`)
   const pictures = (common.picture ?? []).map(({ format: picture_format, data }) => ({ format: picture_format, data }))
   return { tags: map_tags({ common, fingerprint }), audio: map_audio(format), pictures }
 }

@@ -32,16 +32,16 @@ export const fixture_resolver = (fixture: string): ResolveUrl => async (url) => 
   }
 }
 
-// Writes a 5 s tone to output_path, encoded for the extension the pipeline
-// chose from the entry's ext. The tone is not the F7 sweep, so it ingests as
-// its own track.
+// Writes a 5 s rising tone to output_path, encoded for the extension the
+// pipeline chose from the entry's ext. It is not the F7 chirp, so it ingests
+// as its own track, and it rises, so its fingerprint is not degenerate.
 export const fixture_download = (): Download & { urls: string[] } => {
   const urls: string[] = []
   const download = async ({ url, output_path }: Parameters<Download>[0]) => {
     urls.push(url)
     const { exit_code, stderr } = await run_tool({
       command: toolchain.ffmpeg_path,
-      args: ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=660:duration=5:sample_rate=44100', output_path]
+      args: ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', "aevalsrc=exprs='0.5*sin(2*PI*(660*t+90*t*t))':s=44100:d=5", output_path]
     })
     if (exit_code !== 0) throw new Error(`fixture download failed: ${stderr}`)
   }

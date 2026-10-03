@@ -1,4 +1,4 @@
-export type IngestErrorCode = 'toolchain_unavailable' | 'toolchain_mismatch' | 'tool_failed' | 'no_audio' | 'empty_fingerprint' | 'invalid_duration' | 'non_audio_stream' | 'download_failed';
+export type IngestErrorCode = 'toolchain_unavailable' | 'toolchain_mismatch' | 'tool_failed' | 'no_audio' | 'empty_fingerprint' | 'degenerate_fingerprint' | 'track_id_collision' | 'invalid_duration' | 'non_audio_stream' | 'download_failed';
 export declare class IngestError extends Error {
     readonly code: IngestErrorCode;
     constructor(code: IngestErrorCode, message: string);

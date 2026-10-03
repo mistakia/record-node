@@ -1,5 +1,5 @@
 // F7 (§6.1.5, §6.2.4, §6.4.1) end to end through src/ingest: the toolchain
-// preflight, the sine-sweep regeneration, fingerprint, track id, tag strip,
+// preflight, the chirp regeneration, fingerprint, track id, tag strip,
 // and the audio CID on both store backends.
 //
 // The regeneration check compares decoded samples, not file bytes: the FLAC
@@ -35,11 +35,11 @@ import {
 } from '#test/helpers/ingest.ts'
 import { audio_pipeline_vector as f7 } from './vectors.ts'
 
-// The generator's synthesis flags (gen-audio-pipeline-smoke.mjs SINE_FLAGS).
-const SINE_ARGS = [
+// The generator's synthesis flags (gen-audio-pipeline-smoke.mjs SOURCE_FLAGS).
+const CHIRP_ARGS = [
   '-y', '-hide_banner', '-nostdin', '-loglevel', 'error',
-  '-f', 'lavfi', '-i', 'sine=frequency=440:duration=5:sample_rate=44100',
-  '-bitexact', '-c:a', 'flac', '-map_metadata', '-1'
+  '-f', 'lavfi', '-i', "aevalsrc=exprs='0.4*sin(2*PI*(220*t+55*t*t))+0.2*sin(2*PI*(330*t+30*t*t))':s=44100:d=10",
+  '-sample_fmt', 's16', '-bitexact', '-c:a', 'flac', '-map_metadata', '-1'
 ]
 
 // sha256 of the decoded 16-bit PCM, read from a file ffmpeg writes.
@@ -60,9 +60,9 @@ describe('F7 audio pipeline', () => {
     expect(toolchain_on_pin).toBe(true)
   })
 
-  test.skipIf(!toolchain_on_pin)('the pinned ffmpeg regenerates the samples of the committed sine sweep', async () => {
-    const regenerated = join(scratch_dir(), 'sine.flac')
-    const { exit_code, stderr } = await run_tool({ command: toolchain.ffmpeg_path, args: [...SINE_ARGS, regenerated] })
+  test.skipIf(!toolchain_on_pin)('the pinned ffmpeg regenerates the samples of the committed chirp', async () => {
+    const regenerated = join(scratch_dir(), 'chirp.flac')
+    const { exit_code, stderr } = await run_tool({ command: toolchain.ffmpeg_path, args: [...CHIRP_ARGS, regenerated] })
     expect(stderr).toBe('')
     expect(exit_code).toBe(0)
     const committed = await decoded_sample_digest(f7.fixture_path)
@@ -92,7 +92,7 @@ describe('F7 audio pipeline', () => {
     const track = await ingest_local_file({ file_path: f7.fixture_path, target, toolchain, timestamp: 1 })
     expect(track).toMatchObject({ track_id: f7.track_id, existing: false })
     const content = await stored_content({ target, cid: track.content_cid })
-    expect(content).toMatchObject({ hash: f7.audio_cid, size: 68127, artwork: [], resolver: [] })
+    expect(content).toMatchObject({ hash: f7.audio_cid, size: 156783, artwork: [], resolver: [] })
     for (const cid of [f7.audio_cid, track.content_cid, track.entry_hash]) {
       expect(await target.content_store.is_pinned(cid)).toBe(true)
     }

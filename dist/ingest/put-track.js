@@ -16,6 +16,15 @@ export const find_existing_track = ({ oplog, track_id }) => {
     const live = get_live_entry({ oplog, key: track_id });
     return live === undefined ? undefined : describe_entry({ entry: live, existing: true });
 };
+// The existing entry's stored content.audio.duration, read as written, or
+// undefined when it is absent, null, or its content is not stored locally.
+export const stored_track_duration = async ({ content_store, content_cid }) => {
+    const bytes = await content_store.get(content_cid);
+    if (bytes === undefined)
+        return undefined;
+    const audio = validate_track_content(decode_payload(bytes)).audio;
+    return typeof audio.duration === 'number' ? audio.duration : undefined;
+};
 // The content is validated against §2.4.1 before anything is stored.
 export const put_track = async ({ target, content, tags, timestamp }) => {
     const { oplog, key_pair, content_store } = target;

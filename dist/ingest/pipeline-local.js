@@ -5,21 +5,40 @@ import { extname, join } from 'node:path';
 import { compute_track_id } from '#entry/id.ts';
 import { IngestError } from '#types/ingest.ts';
 import { upload_artwork } from "./artwork.js";
-import { compute_fingerprint } from "./fingerprint.js";
+import { decoded_duration } from "./duration.js";
+import { compute_fingerprint, is_degenerate_fingerprint } from "./fingerprint.js";
 import { extract_metadata } from "./metadata.js";
-import { find_existing_track, put_track } from "./put-track.js";
+import { find_existing_track, put_track, stored_track_duration } from "./put-track.js";
 import { strip_tags } from "./tag-strip.js";
+// Durations within this many seconds count as one recording (§6.4.1 step 3).
+export const COLLISION_TOLERANCE_SECONDS = 30;
 export const ingest_local_file = async ({ file_path, target, toolchain, resolver = [], tags, timestamp }) => {
     const { content_store } = target;
-    // 1-2: fingerprint the original file, never the stripped copy.
+    // 1-2: fingerprint the original file, never the stripped copy, and refuse
+    // a degenerate one, which silence or a steady tone yields (§6.1.6).
     const fingerprint = await compute_fingerprint({ file_path, toolchain });
+    if (is_degenerate_fingerprint(fingerprint)) {
+        throw new IngestError('degenerate_fingerprint', `${file_path} fingerprints to a degenerate value, as a silent or steady-tone opening does`);
+    }
     const track_id = compute_track_id(fingerprint);
-    // 3: an existing live entry wins.
+    // 3: an existing live entry wins, unless its stored duration shows it is a
+    // different recording that shares the opening.
     const existing = find_existing_track({ oplog: target.oplog, track_id });
-    if (existing !== undefined)
+    if (existing !== undefined) {
+        const stored = await stored_track_duration({ content_store, content_cid: existing.content_cid });
+        if (stored === undefined)
+            return existing;
+        const duration = await decoded_duration({ file_path, toolchain });
+        if (Math.abs(duration - stored) > COLLISION_TOLERANCE_SECONDS) {
+            throw new IngestError('track_id_collision', `${file_path} (${duration.toFixed(1)} s) shares track id ${track_id} with entry ${existing.entry_hash} (${stored} s)`);
+        }
         return existing;
-    // 4-5: metadata, with artwork split out.
-    const { tags: content_tags, audio, pictures } = await extract_metadata({ file_path, fingerprint });
+    }
+    // 4-5: metadata, with artwork split out, and the decoded duration stored
+    // in place of the container's.
+    const metadata = await extract_metadata({ file_path, fingerprint });
+    const { tags: content_tags, pictures } = metadata;
+    const audio = { ...metadata.audio, duration: await decoded_duration({ file_path, toolchain }) };
     // The stripped copy keeps the source extension, which selects the container.
     const extension = extname(file_path);
     if (extension === '')

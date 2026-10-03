@@ -74,7 +74,7 @@ describe('single peer', () => {
 
   test('ingests the F7 file uploaded to /import/file and serves it back', async () => {
     const form = new FormData()
-    form.append('files', new Blob([readFileSync(f7.fixture_path)]), 'sine-sweep-5s.flac')
+    form.append('files', new Blob([readFileSync(f7.fixture_path)]), 'chirp-10s.flac')
     const response = await fetch(url('/import/file'), { method: 'POST', body: form })
     expect(response.status).toBe(202)
     const { import_id } = await response.json() as { import_id: string }
@@ -84,7 +84,7 @@ describe('single peer', () => {
 
     const { items, total } = await get_json<TrackList>('/tracks')
     expect(total).toBe(1)
-    expect(items[0]).toMatchObject({ id: f7.track_id, audio_cid: f7.audio_cid, have_track: true, duration_seconds: 5 })
+    expect(items[0]).toMatchObject({ id: f7.track_id, audio_cid: f7.audio_cid, have_track: true, duration_seconds: f7.duration_seconds })
     const audio = await fetch(url(`/audio/${f7.audio_cid}`))
     expect(audio.status).toBe(200)
     expect((await audio.arrayBuffer()).byteLength).toBe((items[0] as Track).audio_size_bytes)

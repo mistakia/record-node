@@ -8,6 +8,8 @@ export type IngestErrorCode =
   | 'tool_failed'
   | 'no_audio'
   | 'empty_fingerprint'
+  | 'degenerate_fingerprint'
+  | 'track_id_collision'
   | 'invalid_duration'
   | 'non_audio_stream'
   | 'download_failed'
