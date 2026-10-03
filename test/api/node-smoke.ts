@@ -1,5 +1,5 @@
-// Node smoke run of the API server: record-app embeds the node in-process
-// under Node, so the API must run there, not only under Bun. Exercises the
+// Node smoke run of the API server: record-app runs the node as a Node child
+// process (spec §8.3.1), so the API must run there, not only under Bun. Exercises the
 // validated JSON path, a multipart upload through multer, a Range read, and a
 // WebSocket event. Run with `node test/api/node-smoke.ts` (Node 22.18+).
 

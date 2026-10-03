@@ -62,7 +62,8 @@ jobs:
       - name: Test
         run: bun test
 
-      # record-app embeds the node in-process, so the ingest path must run
+      # record-app runs the node under Node, as a child process spawned through
+      # Electron's utilityProcess (spec §8.3.1), so the ingest path must run
       # under Node as well as Bun.
       - name: Install Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
