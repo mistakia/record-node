@@ -18,7 +18,7 @@ import type { ApiPeer } from '#types/peer.ts'
 import { try_open_library, create_library_methods } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
 import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
-import { ingest_into_own, require_identity, require_toolchain, serialise_write, type PeerContext, type PeerIdentity } from './context.ts'
+import { drain_queues, ingest_into_own, require_identity, require_toolchain, serialise_write, type PeerContext, type PeerIdentity } from './context.ts'
 import { create_event_bus } from './events.ts'
 import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key, peer_id_of, save_key_pair, unmarshal_private_key } from './identity.ts'
 import { create_file_importer, import_url } from './imports.ts'
@@ -90,7 +90,9 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     download,
     identity: undefined,
     toolchain: undefined,
-    writes: Promise.resolve()
+    writes: Promise.resolve(),
+    ingests: Promise.resolve(),
+    stopping: false
   }
   const file_importer = create_file_importer(context)
 
@@ -100,10 +102,8 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     db,
     context,
     identity: () => require_identity(context),
-    ingest_file: async (file_path) => {
-      const toolchain = await require_toolchain(context)
-      return await ingest_into_own(context, async (target) => await ingest_local_file({ file_path, target, toolchain }))
-    },
+    ingest_file: async (file_path) => await ingest_into_own(context, async (target) =>
+      await ingest_local_file({ file_path, target, toolchain: await require_toolchain(context) })),
     ...create_track_methods(context),
     ...create_library_methods(context),
 
@@ -132,6 +132,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
 // A toolchain refusal disables ingest and leaves the rest of the peer up.
 export const start_peer = async (peer: Peer): Promise<void> => {
   const { context } = peer
+  if (context.stopping) throw new Error('a stopped peer does not start again; create a new one')
   if (context.identity !== undefined) return
   const { ffmpeg_path, fpcalc_path, allow_toolchain_mismatch, data_dir } = context.config
   context.toolchain = verify_toolchain({ ffmpeg_path, fpcalc_path, allow_version_mismatch: allow_toolchain_mismatch })
@@ -140,10 +141,12 @@ export const start_peer = async (peer: Peer): Promise<void> => {
   context.identity = await open_identity(context, key_pair)
 }
 
-// Lets queued writes and index updates finish, then closes the store and index.
+// Refuses new work, lets queued writes, ingests, and index updates finish,
+// then closes the store and index. A stopped peer does not start again.
 export const stop_peer = async (peer: Peer): Promise<void> => {
   const { context } = peer
-  await context.writes
+  context.stopping = true
+  await drain_queues(context)
   await context.libraries.settled()
   for (const { chain } of context.libraries.list()) await context.libraries.close_library(chain.address)
   await context.store.helia.stop()

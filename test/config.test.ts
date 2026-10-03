@@ -31,5 +31,8 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ prot: 1 }) })).rejects.toThrow('unknown keys: prot')
     await expect(load_config({ config_path: config_file({ traversal_concurrency: 0 }) })).rejects.toThrow('traversal_concurrency')
     await expect(load_config({ env: {}, port: 'eighty' })).rejects.toThrow('port must be')
+    // A string is never a boolean: "false" must not unpin the toolchain.
+    await expect(load_config({ config_path: config_file({ allow_toolchain_mismatch: 'false' }) })).rejects.toThrow('allow_toolchain_mismatch')
+    await expect(load_config({ config_path: config_file({ ffmpeg_path: 7 }) })).rejects.toThrow('ffmpeg_path')
   })
 })

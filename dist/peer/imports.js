@@ -58,8 +58,7 @@ export const create_file_importer = (context) => {
     const importer = create_importer({
         ingest_file: async (file_path) => await failures.ingest(async () => {
             try {
-                const toolchain = await require_toolchain(context);
-                return await ingest_into_own(context, async (target) => await ingest_local_file({ file_path, target, toolchain }));
+                return await ingest_into_own(context, async (target) => await ingest_local_file({ file_path, target, toolchain: await require_toolchain(context) }));
             }
             finally {
                 await rm(file_path, { force: true });
@@ -85,11 +84,10 @@ export const import_url = async (context, url) => {
     const failures = classify_failures();
     const importer = create_importer({
         ingest_file: async (_url, index) => await failures.ingest(async () => {
-            const toolchain = await require_toolchain(context);
             return await ingest_into_own(context, async (target) => await ingest_resolved_entry({
                 entry: entries[index],
                 target,
-                toolchain,
+                toolchain: await require_toolchain(context),
                 find_by_source: find_by_source(context),
                 download: context.download
             }));

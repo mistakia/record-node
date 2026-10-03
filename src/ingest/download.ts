@@ -23,7 +23,12 @@ export const download_to_file: Download = async ({ url, headers = {}, output_pat
     throw new IngestError('download_failed', `download of the resolved audio failed: ${(error as Error).message}`)
   }
   if (!response.ok || response.body === null) {
+    await response.body?.cancel()
     throw new IngestError('download_failed', `download of the resolved audio answered ${response.status}`)
   }
-  await pipeline(Readable.fromWeb(response.body as ReadableStream<Uint8Array>), createWriteStream(output_path))
+  try {
+    await pipeline(Readable.fromWeb(response.body as ReadableStream<Uint8Array>), createWriteStream(output_path))
+  } catch (error) {
+    throw new IngestError('download_failed', `download of the resolved audio broke off: ${(error as Error).message}`)
+  }
 }

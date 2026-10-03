@@ -103,9 +103,10 @@ export declare const list_tags: ({ db, library_addresses }: {
     db: DatabaseSync;
     library_addresses?: readonly string[];
 }) => TagCount[];
-export declare const get_listen_count: ({ db, track_id }: {
+export declare const get_listen_count: ({ db, track_id, listens_addresses }: {
     db: DatabaseSync;
     track_id: string;
+    listens_addresses?: readonly string[];
 }) => ListenCount;
 export declare const list_listens: ({ db, own_library_address, listens_addresses, offset, limit }: {
     db: DatabaseSync;

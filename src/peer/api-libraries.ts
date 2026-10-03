@@ -78,8 +78,8 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
       const content_cid = await store_payload(context, alias === null ? { address } : { address, alias })
       const envelope = build_log_envelope({ id: compute_log_id(address), content_cid })
       await context.libraries.append({ library_address: own_address, payload: build_put_operation({ envelope }), key_pair })
+      await try_open_library(context, address)
     })
-    await try_open_library(context, address)
     const about = get_about({ db: context.db, library_address: address })
     context.events.emit({ type: 'library:linked', payload: { library_address: address, ...(about === undefined ? {} : { about: to_api_about(about) }) } })
     return require_library(context, address)
@@ -102,11 +102,13 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
   // Replication starts and stops here in the next stage; a single peer only
   // opens or closes the library.
   connect_library: async (address) => {
-    await try_open_library(context, address)
+    await serialise_write(context, async () => { await try_open_library(context, address) })
     context.events.emit({ type: 'library:connected', payload: { library_address: address } })
   },
   disconnect_library: async (address) => {
-    if (context.libraries.get(address) !== undefined) await context.libraries.close_library(address)
+    await serialise_write(context, async () => {
+      if (context.libraries.get(address) !== undefined) await context.libraries.close_library(address)
+    })
     context.events.emit({ type: 'library:disconnected', payload: { library_address: address } })
   },
 
@@ -152,6 +154,6 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
       const { key_pair, listens_address } = require_identity(context)
       await record_listen({ libraries: context.libraries, listens_address, key_pair, track_id, address: library_address })
     })
-    return get_listen_count({ db: context.db, track_id })
+    return get_listen_count({ db: context.db, track_id, listens_addresses: [require_identity(context).listens_address] })
   }
 })

@@ -165,10 +165,14 @@ export const list_tags = ({ db, library_addresses }) => {
     GROUP BY tag ORDER BY count DESC, tag ASC`).all(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {});
     return rows.map((row) => ({ tag: String(row.tag), count: Number(row.count) }));
 };
-// The response for POST /listens.
-export const get_listen_count = ({ db, track_id }) => {
-    const timestamps_ms = db.prepare('SELECT timestamp FROM listens WHERE track_id = ? ORDER BY timestamp DESC, entry_hash')
-        .all(track_id).map((row) => Number(row.timestamp));
+// The response for POST /listens. listens_addresses narrows to the given
+// listens libraries.
+export const get_listen_count = ({ db, track_id, listens_addresses }) => {
+    const scoped = listens_addresses !== undefined;
+    const timestamps_ms = db.prepare(`
+    SELECT timestamp FROM listens WHERE track_id = :track_id
+    ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:listens_addresses))' : ''}
+    ORDER BY timestamp DESC, entry_hash`).all({ track_id, ...(scoped ? { listens_addresses: JSON.stringify(listens_addresses) } : {}) }).map((row) => Number(row.timestamp));
     return { track_id, count: timestamps_ms.length, timestamps_ms };
 };
 // GET /listens: listened tracks by most recent listen, newest first.

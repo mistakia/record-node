@@ -34,9 +34,16 @@ export interface PeerContext {
   identity: PeerIdentity | undefined
   // The startup toolchain check: a failure refuses ingest, not the peer.
   toolchain: Promise<Toolchain> | undefined
-  // Every write to a local library runs through here, one at a time, so a
-  // read-then-append (dedup, relabel) never interleaves with another.
+  // Library lifecycle and metadata writes run through here, one at a time,
+  // so a read-then-append or an open never interleaves with an unlink.
   writes: Promise<unknown>
+  // Ingests queue separately, one at a time, so their step-3 dedup check
+  // stays atomic while a long download or tool run never blocks a tag,
+  // listen, or link. An append itself is synchronous, so the two queues never
+  // interleave inside one.
+  ingests: Promise<unknown>
+  // Set by stop_peer: new work is refused, queued work still runs.
+  stopping: boolean
 }
 
 export const require_identity = (context: PeerContext): PeerIdentity => {
@@ -44,10 +51,36 @@ export const require_identity = (context: PeerContext): PeerIdentity => {
   return context.identity
 }
 
-export const serialise_write = <T>(context: PeerContext, job: () => Promise<T>): Promise<T> => {
-  const run = context.writes.then(job)
-  context.writes = run.catch(() => {})
+const enqueue = <T>(tail: Promise<unknown>, job: () => Promise<T>): { run: Promise<T>, tail: Promise<unknown> } => {
+  const run = tail.then(job)
+  return { run, tail: run.catch(() => {}) }
+}
+
+const refuse_when_stopping = (context: PeerContext): void => {
+  if (context.stopping) throw new Error('the peer is stopping')
+}
+
+export const serialise_write = async <T>(context: PeerContext, job: () => Promise<T>): Promise<T> => {
+  refuse_when_stopping(context)
+  const { run, tail } = enqueue(context.writes, job)
+  context.writes = tail
   return run
+}
+
+const serialise_ingest = async <T>(context: PeerContext, job: () => Promise<T>): Promise<T> => {
+  refuse_when_stopping(context)
+  const { run, tail } = enqueue(context.ingests, job)
+  context.ingests = tail
+  return run
+}
+
+// Waits until both queues are empty, including work queued while waiting.
+export const drain_queues = async (context: PeerContext): Promise<void> => {
+  for (;;) {
+    const { writes, ingests } = context
+    await Promise.all([writes, ingests])
+    if (writes === context.writes && ingests === context.ingests) return
+  }
 }
 
 export const require_toolchain = async (context: PeerContext): Promise<Toolchain> => {
@@ -65,7 +98,7 @@ export const visible_addresses = (context: PeerContext): string[] =>
 
 // Runs one ingest pipeline against the own library and indexes a new entry.
 export const ingest_into_own = (context: PeerContext, run: (target: TrackTarget) => Promise<IngestedTrack>): Promise<IngestedTrack> =>
-  serialise_write(context, async () => {
+  serialise_ingest(context, async () => {
     const { key_pair, own_address } = require_identity(context)
     const handle = context.libraries.get(own_address)
     if (handle === undefined) throw new Error('the own library is not open')

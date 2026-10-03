@@ -6,6 +6,7 @@ import { mkdtempSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { download_to_file } from '#ingest/download.ts'
 import { data_paths } from '#peer/config.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
 import { audio_pipeline_vector as f7 } from '#test/conformance/vectors.ts'
@@ -94,5 +95,45 @@ describe('peer', () => {
     expect(await peer.import_identity({ private_key })).toMatchObject({ own_library_address: old_address })
     expect((await peer.list_tracks(QUERY)).total).toBe(1)
     await expect(peer.import_identity({ private_key: 'zz' })).rejects.toMatchObject({ code: 'invalid_private_key' })
+  })
+
+  test("a listen count covers the current identity's listens only", async () => {
+    const peer = await start()
+    await peer.record_listen({ track_id: f7.track_id, library_address: peer.identity().own_address })
+    await peer.import_identity({})
+    expect(await peer.record_listen({ track_id: f7.track_id, library_address: peer.identity().own_address }))
+      .toMatchObject({ track_id: f7.track_id, count: 1 })
+  })
+
+  test('only a complete local UnixFS file is audio; other blocks are absent, not errors', async () => {
+    const peer = await start()
+    const track = await peer.ingest_file(f7.fixture_path)
+    for (const cid of [track.content_cid, track.entry_hash]) {
+      expect(await peer.has_audio(cid)).toBe(false)
+      expect(await peer.get_audio(cid)).toBeUndefined()
+    }
+    expect(await peer.has_audio(f7.audio_cid)).toBe(true)
+  })
+
+  test('stop drains queued ingests and refuses a restart', async () => {
+    const peer = await start()
+    const ingest = peer.ingest_file(f7.fixture_path)
+    await stop(peer)
+    expect(await ingest).toMatchObject({ track_id: f7.track_id })
+    await expect(peer.ingest_file(f7.fixture_path)).rejects.toThrow('stopping')
+    await expect(start_peer(peer)).rejects.toThrow('does not start again')
+  })
+})
+
+describe('download', () => {
+  test('a refused or broken download is download_failed', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response('gone', { status: 410 }) })
+    try {
+      const output_path = join(mkdtempSync(join(tmpdir(), 'record-download-test-')), 'a.m4a')
+      await expect(download_to_file({ url: `http://127.0.0.1:${server.port}/a.m4a`, output_path })).rejects.toMatchObject({ code: 'download_failed' })
+      await expect(download_to_file({ url: 'http://127.0.0.1:1/a.m4a', output_path })).rejects.toMatchObject({ code: 'download_failed' })
+    } finally {
+      await server.stop(true)
+    }
   })
 })

@@ -27,9 +27,12 @@ export interface PeerContext {
     identity: PeerIdentity | undefined;
     toolchain: Promise<Toolchain> | undefined;
     writes: Promise<unknown>;
+    ingests: Promise<unknown>;
+    stopping: boolean;
 }
 export declare const require_identity: (context: PeerContext) => PeerIdentity;
 export declare const serialise_write: <T>(context: PeerContext, job: () => Promise<T>) => Promise<T>;
+export declare const drain_queues: (context: PeerContext) => Promise<void>;
 export declare const require_toolchain: (context: PeerContext) => Promise<Toolchain>;
 export declare const linked_addresses: (context: PeerContext) => string[];
 export declare const visible_addresses: (context: PeerContext) => string[];

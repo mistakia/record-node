@@ -5,10 +5,34 @@ export const require_identity = (context) => {
         throw new Error('the peer is not started');
     return context.identity;
 };
-export const serialise_write = (context, job) => {
-    const run = context.writes.then(job);
-    context.writes = run.catch(() => { });
+const enqueue = (tail, job) => {
+    const run = tail.then(job);
+    return { run, tail: run.catch(() => { }) };
+};
+const refuse_when_stopping = (context) => {
+    if (context.stopping)
+        throw new Error('the peer is stopping');
+};
+export const serialise_write = async (context, job) => {
+    refuse_when_stopping(context);
+    const { run, tail } = enqueue(context.writes, job);
+    context.writes = tail;
     return run;
+};
+const serialise_ingest = async (context, job) => {
+    refuse_when_stopping(context);
+    const { run, tail } = enqueue(context.ingests, job);
+    context.ingests = tail;
+    return run;
+};
+// Waits until both queues are empty, including work queued while waiting.
+export const drain_queues = async (context) => {
+    for (;;) {
+        const { writes, ingests } = context;
+        await Promise.all([writes, ingests]);
+        if (writes === context.writes && ingests === context.ingests)
+            return;
+    }
 };
 export const require_toolchain = async (context) => {
     if (context.toolchain === undefined)
@@ -20,7 +44,7 @@ export const linked_addresses = (context) => list_linked_libraries({ db: context
 // The own library and what it links: the default scope of every query.
 export const visible_addresses = (context) => [require_identity(context).own_address, ...linked_addresses(context)];
 // Runs one ingest pipeline against the own library and indexes a new entry.
-export const ingest_into_own = (context, run) => serialise_write(context, async () => {
+export const ingest_into_own = (context, run) => serialise_ingest(context, async () => {
     const { key_pair, own_address } = require_identity(context);
     const handle = context.libraries.get(own_address);
     if (handle === undefined)

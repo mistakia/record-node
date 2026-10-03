@@ -9,6 +9,18 @@ import { ProtocolError } from '#types/errors.ts';
 import { PeerError } from '#types/peer.ts';
 import { ingest_into_own, require_identity, serialise_write, visible_addresses } from "./context.js";
 import { to_api_track, to_api_tracks } from "./views.js";
+// A CID that is no UnixFS file, or whose blocks are not all local, is no
+// audio this peer can serve.
+const read_local_audio = async (context, cid) => {
+    try {
+        return await read_unixfs_file({ cid, read: context.content_store.get });
+    }
+    catch (error) {
+        if (error instanceof ProtocolError && (error.code === 'invalid_shape' || error.code === 'content_unavailable'))
+            return undefined;
+        throw error;
+    }
+};
 // The own library's view of one track.
 const own_track = (context, track_id) => {
     const { own_address } = require_identity(context);
@@ -81,6 +93,6 @@ export const create_track_methods = (context) => ({
         track_id,
         tags: (current) => current.includes(tag) ? current.filter((label) => label !== tag) : undefined
     }),
-    get_audio: async (cid) => await read_unixfs_file({ cid, read: context.content_store.get }),
-    has_audio: async (cid) => await context.content_store.has(cid)
+    get_audio: async (cid) => await read_local_audio(context, cid),
+    has_audio: async (cid) => await read_local_audio(context, cid) !== undefined
 });
