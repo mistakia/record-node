@@ -1,5 +1,5 @@
-// The peer's RECORD topic (§5.3): announcing its own About and its non-empty
-// linked libraries' Abouts, and indexing what other peers announce. An
+// The peer's RECORD topic (§5.3): announcing its own About and the non-empty
+// Abouts of its other own libraries and its linked libraries, and indexing what other peers announce. An
 // announced library counts for a peer only once authenticate_announced has
 // verified it; until then it is a hint and changes nothing local.
 
@@ -13,7 +13,8 @@ import { authenticate_announced, create_announcer } from '#replication/announcem
 import { build_loaded_about_entry, decode_announcement, encode_announcement, type AnnouncedLibrary, type LoadedAboutEntry } from '#replication/messages.ts'
 import type { Timers } from '#replication/timers.ts'
 import { is_record } from '#types/guards.ts'
-import { linked_addresses, type PeerContext } from './context.ts'
+import type { PeerContext } from './context.ts'
+import { default_own_library, linked_addresses, own_recordstore_addresses } from './ownership.ts'
 
 export interface AnnouncedBy {
   // Every library the peer last announced, as untrusted hints.
@@ -57,11 +58,15 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
     interval_ms: context.config.announce_interval_ms,
     timers,
     build: async () => {
-      const identity = context.identity
-      if (identity === undefined) return undefined
-      const about = await loaded_about(context, identity.own_address)
+      // One own recordstore is announced as about, and the others with the
+      // linked libraries in logs; the identity library never is (§5.3.2).
+      if (context.identity === undefined) return undefined
+      const own_address = default_own_library(context)
+      if (own_address === undefined) return undefined
+      const about = await loaded_about(context, own_address)
       if (about === undefined) return undefined
-      const logs = await Promise.all(linked_addresses(context).map(async (address) => await loaded_about(context, address)))
+      const others = [...own_recordstore_addresses(context).filter((address) => address !== own_address), ...linked_addresses(context)]
+      const logs = await Promise.all(others.map(async (address) => await loaded_about(context, address)))
       return encode_announcement({ about, logs: logs.filter((log) => log !== undefined) })
     }
   })

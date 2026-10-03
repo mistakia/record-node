@@ -26,4 +26,4 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='url.https://github.com/.insteadOf' G
 cd "$project"
 npm install --ignore-scripts --no-audit --no-fund --before "$before" "git+file://$repo#$commit"
 test -f node_modules/record-node/dist/index.js
-node smoke.mjs "$repo/test/fixtures/audio/sine-sweep-5s.flac"
+node smoke.mjs "$repo/test/fixtures/audio/chirp-10s.flac"

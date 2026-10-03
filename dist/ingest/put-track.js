@@ -42,7 +42,7 @@ export const put_track = async ({ target, content, tags, timestamp }) => {
         ...(timestamp === undefined ? {} : { timestamp }),
         ...(tags === undefined ? {} : { tags })
     });
-    const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope }) });
+    const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope, capability_id: target.capability_id }) });
     // f: the entry block, pinned non-recursively.
     await content_store.put(entry.hash, entry.bytes);
     await content_store.pin(entry.hash);

@@ -6,8 +6,8 @@ import { type AccessChange, type Oplog } from '#oplog/dag.ts';
 import { type MergeResult } from '#oplog/merge.ts';
 import type { Projector } from '#query-db/projector.ts';
 import type { LibraryType } from '#types/library.ts';
-import { type PinSet } from './pins.ts';
-import type { LibraryStateStore } from './state.ts';
+import { type KeepsBlobs, type PinSet } from './pins.ts';
+import type { LibraryStateStore, StoredPolicy } from './state.ts';
 export interface LibraryHandle {
     readonly chain: ResolvedAcChain;
     readonly oplog: Oplog;
@@ -23,6 +23,11 @@ export interface LibraryManager {
     begin_unlink: (library_address: string) => Promise<void>;
     unlink_library: (library_address: string) => Promise<void>;
     pending_unlinks: () => Promise<string[]>;
+    load_policies: () => Promise<ReadonlyMap<string, StoredPolicy>>;
+    save_policy: (input: {
+        library_address: string;
+        policy: StoredPolicy | undefined;
+    }) => Promise<void>;
     get: (library_address: string) => LibraryHandle | undefined;
     list: () => LibraryHandle[];
     append: (input: {
@@ -43,12 +48,22 @@ export interface LibraryManager {
         library_address: string;
         entries: readonly VerifiedEntry[];
     }) => Promise<void>;
+    hold_blobs: (input: {
+        library_address: string;
+        cids: readonly string[];
+    }) => Promise<void>;
+    release_blobs: (input: {
+        library_address: string;
+        cids: readonly string[];
+    }) => Promise<void>;
     settled: () => Promise<void>;
 }
-export declare const create_library_manager: ({ content_store, projector, state_store, on_entries }: {
+export declare const create_library_manager: ({ content_store, projector, state_store, on_entries, keeps_blobs, retained }: {
     content_store: ContentStore;
     projector: Projector;
     state_store: LibraryStateStore;
+    keeps_blobs?: (library_address: string) => KeepsBlobs;
+    retained?: () => ReadonlySet<string>;
     on_entries?: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];

@@ -1,15 +1,22 @@
 // Library state kept outside the content store: the heads of every library
-// the peer holds, so a restart can walk each oplog back out of the store, and
-// the libraries whose unlink has begun, so an unlink a crash cut short is
-// finished at the next start (§4.6). Entries, content, and the AC chain are
+// the peer holds, so a restart can walk each oplog back out of the store; the
+// libraries whose unlink has begun, so an unlink a crash cut short is
+// finished at the next start (§4.6); and the node-local replication policy
+// configured for a library (§4.6.1). Entries, content, and the AC chain are
 // all blocks.
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
+export interface StoredPolicy {
+  readonly mode: 'full' | 'selective' | 'index_only'
+  readonly filter?: Readonly<Record<string, unknown>>
+}
+
 export interface LibraryState {
   readonly heads: ReadonlyMap<string, readonly string[]>
   readonly unlinking: ReadonlySet<string>
+  readonly policies: ReadonlyMap<string, StoredPolicy>
 }
 
 export interface LibraryStateStore {
@@ -17,14 +24,18 @@ export interface LibraryStateStore {
   // undefined forgets the library's heads.
   save_heads: (input: { library_address: string, heads: readonly string[] | undefined }) => Promise<void>
   set_unlinking: (input: { library_address: string, unlinking: boolean }) => Promise<void>
+  // undefined forgets the policy, so the library takes its default.
+  save_policy: (input: { library_address: string, policy: StoredPolicy | undefined }) => Promise<void>
 }
 
 interface MutableState {
   heads: Map<string, readonly string[]>
   unlinking: Set<string>
+  policies: Map<string, StoredPolicy>
 }
 
-const snapshot = (state: MutableState): LibraryState => ({ heads: new Map(state.heads), unlinking: new Set(state.unlinking) })
+const snapshot = (state: MutableState): LibraryState =>
+  ({ heads: new Map(state.heads), unlinking: new Set(state.unlinking), policies: new Map(state.policies) })
 
 const apply_heads = (state: MutableState, { library_address, heads }: { library_address: string, heads: readonly string[] | undefined }) => {
   if (heads === undefined) state.heads.delete(library_address)
@@ -36,16 +47,23 @@ const apply_unlinking = (state: MutableState, { library_address, unlinking }: { 
   else state.unlinking.delete(library_address)
 }
 
+const apply_policy = (state: MutableState, { library_address, policy }: { library_address: string, policy: StoredPolicy | undefined }) => {
+  if (policy === undefined) state.policies.delete(library_address)
+  else state.policies.set(library_address, policy)
+}
+
 export const create_memory_state_store = (): LibraryStateStore => {
-  const state: MutableState = { heads: new Map(), unlinking: new Set() }
+  const state: MutableState = { heads: new Map(), unlinking: new Set(), policies: new Map() }
   return {
     load: async () => snapshot(state),
     save_heads: async (input) => { apply_heads(state, input) },
-    set_unlinking: async (input) => { apply_unlinking(state, input) }
+    set_unlinking: async (input) => { apply_unlinking(state, input) },
+    save_policy: async (input) => { apply_policy(state, input) }
   }
 }
 
-// One JSON file of { heads: { [library_address]: heads }, unlinking: [...] }.
+// One JSON file of { heads: { [library_address]: heads }, unlinking: [...],
+// policies: { [library_address]: policy } }.
 // Writes are serialised and land by rename, so the file is always a complete
 // earlier or later state, and a marker is on disk before set_unlinking returns.
 export const create_file_state_store = ({ path }: { path: string }): LibraryStateStore => {
@@ -55,11 +73,15 @@ export const create_file_state_store = ({ path }: { path: string }): LibraryStat
   const read = async (): Promise<MutableState> => {
     if (state !== undefined) return state
     try {
-      const stored = JSON.parse(await readFile(path, 'utf8')) as { heads: Record<string, string[]>, unlinking: string[] }
-      state = { heads: new Map(Object.entries(stored.heads)), unlinking: new Set(stored.unlinking) }
+      const stored = JSON.parse(await readFile(path, 'utf8')) as {
+        heads: Record<string, string[]>
+        unlinking: string[]
+        policies?: Record<string, StoredPolicy>
+      }
+      state = { heads: new Map(Object.entries(stored.heads)), unlinking: new Set(stored.unlinking), policies: new Map(Object.entries(stored.policies ?? {})) }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      state = { heads: new Map(), unlinking: new Set() }
+      state = { heads: new Map(), unlinking: new Set(), policies: new Map() }
     }
     return state
   }
@@ -70,7 +92,7 @@ export const create_file_state_store = ({ path }: { path: string }): LibraryStat
       change(current)
       await mkdir(dirname(path), { recursive: true })
       const temp_path = `${path}.tmp`
-      const stored = { heads: Object.fromEntries(current.heads), unlinking: [...current.unlinking].sort() }
+      const stored = { heads: Object.fromEntries(current.heads), unlinking: [...current.unlinking].sort(), policies: Object.fromEntries(current.policies) }
       await writeFile(temp_path, `${JSON.stringify(stored, null, 2)}\n`)
       await rename(temp_path, path)
     })
@@ -81,6 +103,7 @@ export const create_file_state_store = ({ path }: { path: string }): LibraryStat
   return {
     load: async () => snapshot(await read()),
     save_heads: async (input) => { await update((current) => { apply_heads(current, input) }) },
-    set_unlinking: async (input) => { await update((current) => { apply_unlinking(current, input) }) }
+    set_unlinking: async (input) => { await update((current) => { apply_unlinking(current, input) }) },
+    save_policy: async (input) => { await update((current) => { apply_policy(current, input) }) }
   }
 }

@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-export {};
+export declare const EXIT_DATA_DIR_LOCKED = 75;

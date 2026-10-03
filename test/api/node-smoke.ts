@@ -23,7 +23,7 @@ try {
   form.append('files', new Blob([flac]), 'a.flac')
   const upload = await fetch(api.url('/import/file'), { method: 'POST', body: form })
   assert.equal(upload.status, 202)
-  const [path] = api.peer.calls.find(({ method }) => method === 'import_files')?.args[0] as string[]
+  const [path] = (api.peer.calls.find(({ method }) => method === 'import_files')?.args[0] as { paths: string[] }).paths
   assert.deepEqual(readFileSync(path as string), flac)
 
   const range = await fetch(api.url(`/audio/${AUDIO_CID}`), { headers: { range: 'bytes=0-3' } })

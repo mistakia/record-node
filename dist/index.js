@@ -7,4 +7,5 @@ export { create_api_server, stop_api_server } from '#api/index.ts';
 export { load_config } from "./config.js";
 export { PeerError } from '#types/peer.ts';
 export { ProtocolError } from '#types/errors.ts';
+export { DataDirectoryLocked } from '#peer/lock.ts';
 export { IngestError } from '#types/ingest.ts';

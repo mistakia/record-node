@@ -6,7 +6,9 @@ import type { ErrorRequestHandler, RequestHandler, Response } from 'express'
 import { PeerError } from '#types/peer.ts'
 import { ProtocolError } from '#types/errors.ts'
 
-export type ErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'INTERNAL_ERROR'
+export type ErrorCode =
+  | 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'UNAUTHORIZED' | 'FORBIDDEN'
+  | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'TRACK_ID_COLLISION' | 'DEGENERATE_FINGERPRINT' | 'INTERNAL_ERROR'
 
 export interface ErrorDetail {
   field: string
@@ -27,8 +29,10 @@ export class ApiError extends Error {
   }
 }
 
-// Verifies a bearer token. Absent in local-first mode, where every request
-// is the node's own operator.
+// Verifies a bearer token: from Authorization on REST, and from the bearer.
+// subprotocol on the WebSocket, never from a query string (§8.7.7). Absent in
+// local-first mode, where a loopback-bound node takes every request as its
+// own operator's (§8.7.3).
 export type Authenticate = (token: string | undefined) => boolean | Promise<boolean>
 
 // The known-client default allowlist, used when the operator configures none
@@ -98,6 +102,8 @@ const PEER_ERRORS = {
   not_found: { status: 404, code: 'NOT_FOUND' },
   conflict: { status: 409, code: 'CONFLICT' },
   forbidden: { status: 403, code: 'FORBIDDEN' },
+  capability_expired: { status: 403, code: 'CAPABILITY_EXPIRED' },
+  capability_revoked: { status: 403, code: 'CAPABILITY_REVOKED' },
   invalid: { status: 400, code: 'VALIDATION_ERROR' }
 } as const
 

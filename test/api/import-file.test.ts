@@ -27,7 +27,7 @@ describe('api: import/file', () => {
     expect(response.status).toBe(202)
     const ack = await response.json() as { import_id: string, file_count: number }
     expect(ack.file_count).toBe(2)
-    const paths = api.peer.calls.findLast(({ method }) => method === 'import_files')?.args[0] as string[]
+    const { paths } = api.peer.calls.findLast(({ method }) => method === 'import_files')?.args[0] as { paths: string[] }
     expect(paths.map((path) => extname(path))).toEqual(['.flac', '.mp3'])
     expect(new Uint8Array(readFileSync(paths[0] as string))).toEqual(new Uint8Array(FLAC))
     expect(readFileSync(paths[1] as string).length).toBe(100)
@@ -36,7 +36,7 @@ describe('api: import/file', () => {
   test('removes the buffered files when ingest refuses them', async () => {
     const original = api.peer.import_files
     let refused: string[] = []
-    api.peer.import_files = async (paths) => {
+    api.peer.import_files = async ({ paths }) => {
       refused = paths
       throw new Error('disk full')
     }

@@ -115,7 +115,7 @@ describe('api: libraries', () => {
   test('POST /libraries/{address}/about is a 403 for a library the caller does not own', async () => {
     const response = await post_json(api.url(`${library_path(LINKED_ADDRESS)}/about`), { name: 'hijack' })
     await expect_error(response, 403, 'FORBIDDEN')
-    expect(api.peer.calls.some(({ method, args }) => method === 'set_about' && (args[0] as { address: string }).address === LINKED_ADDRESS)).toBe(false)
+    expect((await fetch(api.url(`${library_path(LINKED_ADDRESS)}/about`))).status).toBe(404)
   })
 })
 
@@ -147,7 +147,7 @@ describe('api: import', () => {
     const response = await post_json(api.url('/import/url'), { url: 'https://www.youtube.com/watch?v=abc123' })
     expect(response.status).toBe(202)
     expect(typeof (await response.json() as { import_id: string }).import_id).toBe('string')
-    expect(last_call('import_url')).toEqual(['https://www.youtube.com/watch?v=abc123'])
+    expect(last_call('import_url')).toEqual([{ url: 'https://www.youtube.com/watch?v=abc123' }])
     await expect_error(await post_json(api.url('/import/url'), { url: 'not a url' }), 400, 'VALIDATION_ERROR')
   })
 })

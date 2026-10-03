@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { ResolverError } from 'record-resolver'
 
 import { data_paths } from '#peer/config.ts'
+import { DataDirectoryLocked } from '#peer/lock.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
 import { create_resolver, refuse_input_errors } from '#peer/resolver.ts'
 import { audio_pipeline_vector as f7 } from '#test/conformance/vectors.ts'
@@ -57,10 +58,10 @@ describe('peer', () => {
     const events: PeerEvent[] = []
     peer.subscribe((event) => { events.push(event) })
     await peer.ingest_file(f7.fixture_path)
-    await peer.remove_track(f7.track_id)
+    await peer.remove_track({ track_id: f7.track_id })
     expect((await peer.list_tracks(QUERY)).total).toBe(0)
     expect(events.map(({ type }) => type)).toContain('track:removed')
-    await expect(peer.remove_track(f7.track_id)).rejects.toMatchObject({ code: 'not_found' })
+    await expect(peer.remove_track({ track_id: f7.track_id })).rejects.toMatchObject({ code: 'not_found' })
   })
 
   test('the About entry is stamped with the own address and merges updates', async () => {
@@ -79,10 +80,13 @@ describe('peer', () => {
     const address = other.identity().own_address
     const library = await peer.link_library({ address, alias: 'friend' })
     expect(library).toMatchObject({ address, alias: 'friend', is_linked: true, is_loading_index: true })
-    expect((await peer.list_libraries()).map(({ address }) => address)).toEqual([peer.identity().own_address, address])
+    // Every own library is listed, the listens library included (§4.8.3).
+    expect((await peer.list_libraries()).map(({ address }) => address).sort())
+      .toEqual([peer.identity().own_address, peer.identity().listens_address, address].sort())
     await peer.unlink_library(address)
     expect(await peer.get_library(address)).toBeUndefined()
-    await expect(peer.unlink_library(peer.identity().own_address)).rejects.toMatchObject({ code: 'forbidden' })
+    // An own library is retired, never unlinked.
+    await expect(peer.unlink_library(peer.identity().own_address)).rejects.toMatchObject({ code: 'conflict' })
   })
 
   test('importing a new identity opens its own library, and the old key reopens the old one', async () => {
@@ -140,5 +144,13 @@ describe('resolver', () => {
     const refused = new ResolverError({ code: 'BLOCKED_DESTINATION', message: 'yt-dlp was refused a connection: 127.0.0.1 is a loopback address', url: 'https://example.com/redirects-inward' })
     const resolve = refuse_input_errors(async () => { throw refused })
     await expect(resolve('https://example.com/redirects-inward')).rejects.toMatchObject({ code: 'invalid', message: refused.message })
+  })
+
+  test('§8.4.6 [MUST] a node takes an exclusive lock on its data directory, and a second one on it fails with a distinct error', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-lock-test-'))
+    const first = await start(data_dir)
+    await expect(create_peer({ config: { data_dir, network: false } })).rejects.toBeInstanceOf(DataDirectoryLocked)
+    await stop(first)
+    await stop(await start(data_dir))
   })
 })

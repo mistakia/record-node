@@ -1,7 +1,8 @@
 // What a library pins (§3.5.1, §4.6): the three AC chain objects, and per
 // entry the signed entry block, the envelope content payload, and for a
-// track the audio blob and artwork. Items 1-5 are dag-cbor leaves and pinned
-// directly; item 6 is a UnixFS DAG and pinned recursively.
+// track the audio blob and artwork when the library's replication policy
+// keeps them (§4.6.1). Items 1-5 are dag-cbor leaves and pinned directly;
+// item 6 is a UnixFS DAG and pinned recursively.
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { is_put } from '#entry/operations.ts'
@@ -16,32 +17,42 @@ export type PinSet = Map<string, boolean>
 export const chain_pins = (chain: ResolvedAcChain): Array<[string, boolean]> =>
   [chain.cids.manifest, chain.cids.wrapper, chain.cids.write_list].map((cid) => [cid, false])
 
-// A track payload not stored yet contributes no item-6 pins; they follow once
-// the payload arrives and the entry is pinned again.
-const track_blob_pins = async ({ content_store, content_cid }: {
+// Whether a library keeps a track's item 6, given its validated content.
+export type KeepsBlobs = (input: { entry: VerifiedEntry, content: Record<string, unknown> }) => boolean
+
+// A track's validated content payload, or undefined when it is not stored or
+// does not validate.
+export const stored_track_content = async ({ content_store, content_cid }: {
   content_store: ContentStore
   content_cid: string
-}): Promise<Array<[string, boolean]>> => {
+}): Promise<Record<string, unknown> | undefined> => {
   const bytes = await content_store.get(content_cid)
-  if (bytes === undefined) return []
+  if (bytes === undefined) return undefined
   try {
-    const content = validate_track_content(decode_payload(bytes))
-    return [content.hash as string, ...(content.artwork as string[])].map((cid) => [cid, true])
+    return validate_track_content(decode_payload(bytes))
   } catch (error) {
-    if (error instanceof ProtocolError) return []
+    if (error instanceof ProtocolError) return undefined
     throw error
   }
 }
 
-export const entry_pins = async ({ content_store, entry }: {
+export const track_blobs = (content: Record<string, unknown>): string[] =>
+  [content.hash as string, ...(content.artwork as string[])]
+
+// A track payload not stored yet contributes no item-6 pins; they follow once
+// the payload arrives and the entry is pinned again.
+export const entry_pins = async ({ content_store, entry, keeps_blobs }: {
   content_store: ContentStore
   entry: VerifiedEntry
+  keeps_blobs: KeepsBlobs
 }): Promise<Array<[string, boolean]>> => {
   const pins: Array<[string, boolean]> = [[entry.hash, false]]
   if (!is_put(entry.operation)) return pins
   const { content, type } = entry.operation.value
   pins.push([content, false])
-  if (type === 'track') pins.push(...await track_blob_pins({ content_store, content_cid: content }))
+  if (type !== 'track') return pins
+  const track = await stored_track_content({ content_store, content_cid: content })
+  if (track !== undefined && keeps_blobs({ entry, content: track })) pins.push(...track_blobs(track).map((cid): [string, boolean] => [cid, true]))
   return pins
 }
 

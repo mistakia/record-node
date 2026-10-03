@@ -52,7 +52,7 @@ beforeAll(async () => {
 
 describe('query-db list_tracks', () => {
   test('defaults to newest first, one item per track id, own library preferred', () => {
-    const { items, total } = list_tracks({ db, own_library_address: own })
+    const { items, total } = list_tracks({ db, own_library_addresses: [own] })
     expect(total).toBe(4)
     expect(ids(items)).toEqual(['delta', 'gamma', 'beta', 'alpha'].map(id_of))
     const gamma = items.find(({ id }) => id === id_of('gamma'))
@@ -65,7 +65,7 @@ describe('query-db list_tracks', () => {
   })
 
   test('library_addresses scopes rows and tags', () => {
-    const { items, total } = list_tracks({ db, own_library_address: own, library_addresses: [friend] })
+    const { items, total } = list_tracks({ db, own_library_addresses: [own], library_addresses: [friend] })
     expect(total).toBe(2)
     const gamma = items.find(({ id }) => id === id_of('gamma'))
     expect(gamma).toMatchObject({ title: 'Gamma (theirs)', library_address: friend, have_track: true })
@@ -79,17 +79,17 @@ describe('query-db list_tracks', () => {
   })
 
   test('query searches title, artist, album, and remixer, with LIKE wildcards escaped', () => {
-    expect(ids(list_tracks({ db, own_library_address: own, query: 'night', sort: 'title', order: 'asc' }).items)).toEqual(['beta', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], query: 'night', sort: 'title', order: 'asc' }).items)).toEqual(['beta', 'gamma'].map(id_of))
     expect(ids(list_tracks({ db, query: 'zed' }).items)).toEqual([id_of('alpha')])
     expect(ids(list_tracks({ db, query: '100%' }).items)).toEqual([id_of('delta')])
     expect(list_tracks({ db, query: '_' }).total).toBe(0)
   })
 
   test('sorts by whitelisted fields with nulls last, and pages with an unpaginated total', () => {
-    expect(ids(list_tracks({ db, own_library_address: own, sort: 'bpm', order: 'asc' }).items)).toEqual(['beta', 'alpha', 'delta', 'gamma'].map(id_of))
-    expect(ids(list_tracks({ db, own_library_address: own, sort: 'bpm', order: 'desc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
-    expect(ids(list_tracks({ db, own_library_address: own, sort: 'duration', order: 'asc' }).items).slice(0, 2)).toEqual(['gamma', 'alpha'].map(id_of))
-    expect(ids(list_tracks({ db, own_library_address: own, sort: 'title', order: 'asc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'asc' }).items)).toEqual(['beta', 'alpha', 'delta', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'desc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'duration', order: 'asc' }).items).slice(0, 2)).toEqual(['gamma', 'alpha'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'title', order: 'asc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
     const page = list_tracks({ db, sort: 'added_at', order: 'asc', offset: 1, limit: 2 })
     expect(page).toMatchObject({ total: 4 })
     expect(ids(page.items)).toEqual(['beta', 'gamma'].map(id_of))
@@ -117,7 +117,7 @@ describe('query-db tags and listens', () => {
   })
 
   test('list_listens orders by most recent listen and pages', () => {
-    const { items, total } = list_listens({ db, own_library_address: own })
+    const { items, total } = list_listens({ db, own_library_addresses: [own] })
     expect(total).toBe(3)
     expect(items.map(({ track_id, count, timestamps_ms, last_listened_at_ms }) => ({ track_id, count, timestamps_ms, last_listened_at_ms }))).toEqual([
       { track_id: id_of('alpha'), count: 2, timestamps_ms: [40, 10], last_listened_at_ms: 40 },

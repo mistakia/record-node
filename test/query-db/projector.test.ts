@@ -41,7 +41,7 @@ describe('query-db projector', () => {
       timestamp: 5000
     })
     await projector.project_entries({ oplog, entries: [entry] })
-    const track = get_track({ db, track_id: compute_track_id('AQAA-track'), own_library_address: oplog.chain.address })
+    const track = get_track({ db, track_id: compute_track_id('AQAA-track'), own_library_addresses: [oplog.chain.address] })
     expect(track).toMatchObject({
       library_address: oplog.chain.address,
       title: 'Title',

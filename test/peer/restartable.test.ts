@@ -57,7 +57,7 @@ describe('url ingest dedup', () => {
     const events: PeerEvent[] = []
     peer.subscribe((event) => { events.push(event) })
     const import_url = async (url: string) => {
-      const { import_id } = await peer.import_url(url)
+      const { import_id } = await peer.import_url({ url })
       for (let attempt = 0; attempt < 400; attempt++) {
         const finished = events.find(({ type, payload }) => type === 'import:finished' && (payload as { import_id: string }).import_id === import_id)
         if (finished !== undefined) return finished.payload

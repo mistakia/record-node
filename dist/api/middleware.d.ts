@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
-export type ErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'INTERNAL_ERROR';
+export type ErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'TRACK_ID_COLLISION' | 'DEGENERATE_FINGERPRINT' | 'INTERNAL_ERROR';
 export interface ErrorDetail {
     field: string;
     message: string;

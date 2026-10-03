@@ -10,10 +10,33 @@ import { find_track_by_source, get_track } from '#query-db/queries.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { IngestError } from '#types/ingest.ts';
 import { PeerError } from '#types/peer.ts';
-import { ingest_into_own, require_identity, require_toolchain } from "./context.js";
+import { ingest_into, require_toolchain } from "./context.js";
+import { identity_state, own_recordstore_addresses } from "./ownership.js";
 import { to_api_track } from "./views.js";
+import { as_write_refusal, resolve_write_target } from "./write-target.js";
 const TOOL_ERROR_CODES = new Set(['toolchain_unavailable', 'toolchain_mismatch', 'tool_failed', 'download_failed']);
-// An ingest or protocol refusal is the input's fault, and the rest the node's.
+// The chapter 7 error code an import:error carries for a failure.
+const import_error_code = (error) => {
+    if (error instanceof IngestError) {
+        if (error.code === 'degenerate_fingerprint')
+            return 'DEGENERATE_FINGERPRINT';
+        if (error.code === 'track_id_collision')
+            return 'TRACK_ID_COLLISION';
+        return TOOL_ERROR_CODES.has(error.code) ? 'INTERNAL_ERROR' : 'VALIDATION_ERROR';
+    }
+    if (error instanceof PeerError) {
+        if (error.code === 'forbidden')
+            return 'FORBIDDEN';
+        if (error.code === 'capability_expired')
+            return 'CAPABILITY_EXPIRED';
+        if (error.code === 'capability_revoked')
+            return 'CAPABILITY_REVOKED';
+        if (error.code === 'conflict')
+            return 'CONFLICT';
+        return 'VALIDATION_ERROR';
+    }
+    return error instanceof ProtocolError ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR';
+};
 // Files settle one at a time and import:error follows its failure at once, so
 // the last failure seen is the one being reported.
 const classify_failures = () => {
@@ -24,22 +47,24 @@ const classify_failures = () => {
                 return await run();
             }
             catch (error) {
-                const input = (error instanceof IngestError && !TOOL_ERROR_CODES.has(error.code)) || error instanceof ProtocolError;
-                code = input ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR';
-                throw error;
+                const refusal = as_write_refusal(error);
+                code = import_error_code(refusal);
+                throw refusal;
             }
         },
         last_code: () => code
     };
 };
 // Relays one importer's events to the peer's subscribers.
-const relay_events = ({ context, importer, failures }) => {
+const relay_events = ({ context, importer, failures, target }) => {
     const { emit } = context.events;
     const unsubscribers = [
         importer.on('import:starting', (payload) => { emit({ type: 'import:starting', payload }); }),
         importer.on('import:processed-file', ({ import_id, file_path, track, completed, remaining }) => {
-            const row = get_track({ db: context.db, track_id: track.track_id, own_library_address: require_identity(context).own_address });
-            const api_track = row === undefined ? undefined : to_api_track(row);
+            const row = get_track({
+                db: context.db, track_id: track.track_id, own_library_addresses: own_recordstore_addresses(context), library_addresses: [target.address]
+            });
+            const api_track = row === undefined ? undefined : to_api_track(row, identity_state(context).pins);
             if (api_track !== undefined)
                 emit({ type: 'import:processed-file', payload: { import_id, file_path, track: api_track, completed, remaining } });
         }),
@@ -53,47 +78,50 @@ const relay_events = ({ context, importer, failures }) => {
         unsubscribe(); };
 };
 // Uploaded files belong to ingest once accepted, and are removed when done.
-export const create_file_importer = (context) => {
+// The target is resolved before the import is accepted, so a write the
+// identity cannot make is the request's error, not the files'.
+export const import_files = (context, { paths, library_address, capability_id }) => {
+    const target = resolve_write_target(context, { library_address, capability_id });
     const failures = classify_failures();
     const importer = create_importer({
         ingest_file: async (file_path) => await failures.ingest(async () => {
             try {
-                return await ingest_into_own(context, async (target) => await ingest_local_file({ file_path, target, toolchain: await require_toolchain(context) }));
+                return await ingest_into(context, target, async (track_target) => await ingest_local_file({ file_path, target: track_target, toolchain: await require_toolchain(context) }));
             }
             finally {
                 await rm(file_path, { force: true });
             }
         })
     });
-    relay_events({ context, importer, failures });
-    return importer;
+    const unsubscribe = relay_events({ context, importer, failures, target });
+    importer.on('import:finished', () => { unsubscribe(); });
+    return importer.import_files({ file_paths: paths });
 };
-const find_by_source = (context) => ({ extractor, id }) => {
-    const { own_address } = require_identity(context);
-    const track_id = find_track_by_source({ db: context.db, library_address: own_address, extractor, id });
-    const oplog = context.libraries.get(own_address)?.oplog;
-    return track_id === undefined || oplog === undefined ? undefined : find_existing_track({ oplog, track_id });
+const find_by_source = (target, context) => ({ extractor, id }) => {
+    const track_id = find_track_by_source({ db: context.db, library_address: target.address, extractor, id });
+    return track_id === undefined ? undefined : find_existing_track({ oplog: target.handle.oplog, track_id });
 };
 // Resolves first, so a URL the resolver refuses is the request's error; then
 // each resolved source settles as one file of the import, reported under the
 // URL it came from.
-export const import_url = async (context, url) => {
+export const import_url = async (context, { url, library_address, capability_id }) => {
+    const target = resolve_write_target(context, { library_address, capability_id });
     const entries = await context.resolve(url);
     if (entries.length === 0)
         throw new PeerError('invalid', `no source found at ${url}`);
     const failures = classify_failures();
     const importer = create_importer({
         ingest_file: async (_url, index) => await failures.ingest(async () => {
-            return await ingest_into_own(context, async (target) => await ingest_resolved_entry({
+            return await ingest_into(context, target, async (track_target) => await ingest_resolved_entry({
                 entry: entries[index],
-                target,
+                target: track_target,
                 toolchain: await require_toolchain(context),
-                find_by_source: find_by_source(context),
+                find_by_source: find_by_source(target, context),
                 download: context.download
             }));
         })
     });
-    const unsubscribe = relay_events({ context, importer, failures });
+    const unsubscribe = relay_events({ context, importer, failures, target });
     importer.on('import:finished', () => { unsubscribe(); });
     const { import_id } = importer.import_files({ file_paths: entries.map(() => url), source: 'url' });
     return { import_id };

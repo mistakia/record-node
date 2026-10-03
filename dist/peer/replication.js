@@ -11,7 +11,8 @@ import { SYSTEM_TIMERS } from '#replication/timers.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { create_peer_announcements } from "./announcements.js";
 import { create_content_fetcher } from "./content-fetch.js";
-import { linked_addresses, require_identity, serialise_write } from "./context.js";
+import { require_identity, serialise_write } from "./context.js";
+import { identity_state, linked_addresses } from "./ownership.js";
 export const create_peer_replication = ({ context, network, describe_library, timers = SYSTEM_TIMERS }) => {
     const { config, events, libraries, content_store, db } = context;
     const replicators = new Map();
@@ -23,7 +24,8 @@ export const create_peer_replication = ({ context, network, describe_library, ti
         if (merged.length === 0)
             return;
         const { length } = get_library_summary({ db, library_address });
-        events.emit({ type: 'library:replicated', payload: { library_address, length } });
+        const heads = [...libraries.get(library_address)?.oplog.heads ?? []].sort();
+        events.emit({ type: 'library:replicated', payload: { library_address, length, heads } });
         contents.fetch({ library_address, entries: merged });
     };
     const replicate = async (library_address) => {
@@ -49,6 +51,7 @@ export const create_peer_replication = ({ context, network, describe_library, ti
             on_peer_join: (peer_id) => {
                 events.emit({ type: 'library:peer-joined', payload: { library_address, peer_id } });
                 contents.retry_missing(library_address);
+                context.blobs.retry();
             },
             on_peer_leave: (peer_id) => { events.emit({ type: 'library:peer-left', payload: { library_address, peer_id } }); }
         });
@@ -61,10 +64,10 @@ export const create_peer_replication = ({ context, network, describe_library, ti
             throw error;
         }
     };
-    const is_wanted = (library_address) => {
-        const { own_address, listens_address } = require_identity(context);
-        return library_address === own_address || library_address === listens_address || linked_addresses(context).includes(library_address);
-    };
+    // The identity library, every library it records, and the link set.
+    const is_wanted = (library_address) => library_address === require_identity(context).identity_address ||
+        identity_state(context).libraries.has(library_address) ||
+        linked_addresses(context).includes(library_address);
     const connect = async (library_address) => {
         if (libraries.get(library_address) === undefined) {
             try {

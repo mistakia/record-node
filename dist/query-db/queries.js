@@ -44,13 +44,13 @@ const scoped_tracks_sql = ({ scoped }) => `
   SELECT * FROM (
     SELECT tracks.*, row_number() OVER (
       PARTITION BY track_id
-      ORDER BY library_address = :own_library_address DESC, library_address ASC
+      ORDER BY library_address IN (SELECT value FROM json_each(:own_library_addresses)) DESC, library_address ASC
     ) AS representative
     FROM tracks
     ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
   ) WHERE representative = 1`;
 // Tags, resolvers, listen counts, and ownership for a page of track rows.
-const hydrate_tracks = ({ db, rows, own_library_address, library_addresses, with_timestamps = false }) => {
+const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, with_timestamps = false }) => {
     const track_ids = JSON.stringify(rows.map((row) => row.track_id));
     const scoped = library_addresses !== undefined;
     const tag_rows = db.prepare(`
@@ -71,7 +71,7 @@ const hydrate_tracks = ({ db, rows, own_library_address, library_addresses, with
     const listens = group_by(listen_rows, 'track_id', (row) => Number(row.timestamp));
     const owned = new Set(db.prepare(`
     SELECT track_id FROM tracks
-    WHERE library_address = :own_library_address AND track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_address, track_ids }).map((row) => String(row.track_id)));
+    WHERE library_address IN (SELECT value FROM json_each(:own_library_addresses)) AND track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids }).map((row) => String(row.track_id)));
     return rows.map((row) => {
         const id = String(row.track_id);
         const timestamps = listens.get(id) ?? [];
@@ -106,7 +106,7 @@ const hydrate_tracks = ({ db, rows, own_library_address, library_addresses, with
 };
 // GET /tracks. One item per track id; tag labels come from every scoped library.
 export const list_tracks = ({ db, ...input }) => {
-    const { own_library_address = '', library_addresses, tags = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
+    const { own_library_addresses = [], library_addresses, tags = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
     assert_page({ offset, limit });
     if (!TRACK_SORTS.includes(sort))
         throw new RangeError(`sort must be one of ${TRACK_SORTS.join(', ')}, not ${sort}`);
@@ -129,7 +129,7 @@ export const list_tracks = ({ db, ...input }) => {
     ].filter((filter) => filter.length > 0);
     const from = `FROM (${scoped_tracks_sql({ scoped })}) AS matched ${filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : ''}`;
     const parameters = {
-        own_library_address,
+        own_library_addresses: JSON.stringify(own_library_addresses),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
         ...(searching ? { pattern: like_pattern(query) } : {}),
         ...(unique_tags.length > 0 ? { tags: JSON.stringify(unique_tags), tag_count: unique_tags.length } : {})
@@ -141,20 +141,20 @@ export const list_tracks = ({ db, ...input }) => {
     const total = Number(db.prepare(`SELECT count(*) AS total ${from}`).get(parameters).total);
     const rows = db.prepare(`SELECT * ${from} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
         .all({ ...parameters, limit, offset });
-    return { items: hydrate_tracks({ db, rows, own_library_address, library_addresses }), total };
+    return { items: hydrate_tracks({ db, rows, own_library_addresses, library_addresses }), total };
 };
 // One track by id, with its listen timestamps; the response for POST and
 // DELETE /tags. Undefined when no scoped library holds it.
-export const get_track = ({ db, track_id, own_library_address = '', library_addresses }) => {
+export const get_track = ({ db, track_id, own_library_addresses = [], library_addresses }) => {
     const scoped = library_addresses !== undefined;
     const row = db.prepare(`SELECT * FROM (${scoped_tracks_sql({ scoped })}) WHERE track_id = :track_id`).get({
         track_id,
-        own_library_address,
+        own_library_addresses: JSON.stringify(own_library_addresses),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {})
     });
     if (row === undefined)
         return undefined;
-    return hydrate_tracks({ db, rows: [row], own_library_address, library_addresses, with_timestamps: true })[0];
+    return hydrate_tracks({ db, rows: [row], own_library_addresses, library_addresses, with_timestamps: true })[0];
 };
 // GET /tags: tags by the number of distinct live tracks carrying them, most first.
 export const list_tags = ({ db, library_addresses }) => {
@@ -177,7 +177,7 @@ export const get_listen_count = ({ db, track_id, listens_addresses }) => {
 };
 // GET /listens: listened tracks by most recent listen, newest first.
 // listens_addresses narrows to the given listens libraries.
-export const list_listens = ({ db, own_library_address = '', listens_addresses, offset = 0, limit = DEFAULT_LIMIT }) => {
+export const list_listens = ({ db, own_library_addresses = [], listens_addresses, offset = 0, limit = DEFAULT_LIMIT }) => {
     assert_page({ offset, limit });
     const scoped = listens_addresses !== undefined;
     const where = scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:listens_addresses))' : '';
@@ -191,8 +191,8 @@ export const list_listens = ({ db, own_library_address = '', listens_addresses, 
     ORDER BY last_listened_at_ms DESC, track_id ASC
     LIMIT :limit OFFSET :offset`).all({ ...parameters, limit, offset });
     const track_rows = db.prepare(`SELECT * FROM (${scoped_tracks_sql({ scoped: false })})
-    WHERE track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_address, track_ids: JSON.stringify(groups.map((row) => row.track_id)) });
-    const tracks = new Map(hydrate_tracks({ db, rows: track_rows, own_library_address, library_addresses: undefined })
+    WHERE track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids: JSON.stringify(groups.map((row) => row.track_id)) });
+    const tracks = new Map(hydrate_tracks({ db, rows: track_rows, own_library_addresses, library_addresses: undefined })
         .map((track) => [track.id, track]));
     const items = groups.map((row) => {
         const track_id = String(row.track_id);

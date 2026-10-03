@@ -1,7 +1,7 @@
 import type { Network } from '#fabric/network.ts';
 import { type AnnouncedLibrary } from '#replication/messages.ts';
 import type { Timers } from '#replication/timers.ts';
-import { type PeerContext } from './context.ts';
+import type { PeerContext } from './context.ts';
 export interface AnnouncedBy {
     readonly hints: readonly AnnouncedLibrary[];
     readonly verified: ReadonlySet<string>;

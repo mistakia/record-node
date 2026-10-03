@@ -8,10 +8,30 @@ import { append_entry_with_access, create_oplog } from '#oplog/dag.ts';
 import { merge_entries } from '#oplog/merge.ts';
 import { PeerError } from '#types/peer.ts';
 import { load_entry_blocks } from "./load.js";
-import { chain_pins, entry_pins, pin_into } from "./pins.js";
-export const create_library_manager = ({ content_store, projector, state_store, on_entries }) => {
+import { canonical_cid } from '#entry/identity-record.ts';
+import { is_put } from '#entry/operations.ts';
+import { chain_pins, entry_pins, pin_into, stored_track_content, track_blobs } from "./pins.js";
+// Pins compare by CID, whatever the encoding: an entry's base58btc
+// content.hash and a pin record's base32 CIDv1 name one blob.
+const canonical_or_self = (cid) => {
+    try {
+        return canonical_cid(cid);
+    }
+    catch {
+        return cid;
+    }
+};
+export const create_library_manager = ({ content_store, projector, state_store, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }) => {
     const libraries = new Map();
     let indexing = Promise.resolve();
+    // Item 6 holds and releases apply one at a time, so a release made after a
+    // hold always undoes it, whichever await each was in.
+    let pin_tail = Promise.resolve();
+    const exclusive_pins = async (job) => {
+        const run = pin_tail.then(job);
+        pin_tail = run.catch(() => { });
+        return await run;
+    };
     const require_library = (library_address) => {
         const handle = libraries.get(library_address);
         if (handle === undefined)
@@ -19,8 +39,28 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         return handle;
     };
     const pin_entries = async (handle, entries) => {
+        const keeps = keeps_blobs(handle.chain.address);
         for (const entry of entries) {
-            await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry }) });
+            await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) });
+        }
+    };
+    // The canonical CIDs some other library or a pin record still holds.
+    const held_elsewhere = (library_address) => {
+        const held = new Set(retained());
+        for (const { chain, pins } of libraries.values()) {
+            if (chain.address === library_address)
+                continue;
+            for (const cid of pins.keys())
+                held.add(canonical_or_self(cid));
+        }
+        return held;
+    };
+    const release = async (handle, library_address, cids) => {
+        const held = held_elsewhere(library_address);
+        for (const cid of cids) {
+            if (!held.has(canonical_or_self(cid)))
+                await content_store.unpin(cid);
+            handle?.pins.delete(cid);
         }
     };
     const register = async ({ library_address, entries, access }) => {
@@ -82,17 +122,24 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         unlink_library: async (library_address) => {
             const handle = libraries.get(library_address);
             libraries.delete(library_address);
-            const held_elsewhere = new Set([...libraries.values()].flatMap(({ pins }) => [...pins.keys()]));
-            for (const cid of handle?.pins.keys() ?? []) {
-                if (!held_elsewhere.has(cid))
-                    await content_store.unpin(cid);
+            // Every blob its tracks reference, kept by the policy now or before,
+            // since a pin outlives a policy change made while the peer was down.
+            const blobs = [];
+            for (const entry of handle?.oplog.entries.values() ?? []) {
+                if (!is_put(entry.operation) || entry.operation.value.type !== 'track')
+                    continue;
+                const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content });
+                if (content !== undefined)
+                    blobs.push(...track_blobs(content));
             }
-            handle?.pins.clear();
+            await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs]));
             await state_store.save_heads({ library_address, heads: undefined });
             await projector.remove_library({ library_address });
             await state_store.set_unlinking({ library_address, unlinking: false });
         },
         pending_unlinks: async () => [...(await state_store.load()).unlinking],
+        load_policies: async () => (await state_store.load()).policies,
+        save_policy: async (input) => { await state_store.save_policy(input); },
         get: (library_address) => libraries.get(library_address),
         list: () => [...libraries.values()],
         append: async ({ library_address, payload, key_pair }) => {
@@ -118,6 +165,16 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             await projected;
             on_entries?.({ library_address, entries, inert: [] });
         },
+        hold_blobs: async ({ library_address, cids }) => await exclusive_pins(async () => {
+            const handle = libraries.get(library_address);
+            if (handle !== undefined)
+                await pin_into({ content_store, pins: handle.pins, items: cids.map((cid) => [cid, true]) });
+        }),
+        release_blobs: async ({ library_address, cids }) => await exclusive_pins(async () => {
+            const handle = libraries.get(library_address);
+            if (handle !== undefined)
+                await release(handle, library_address, cids.filter((cid) => handle.pins.get(cid) === true));
+        }),
         settled: async () => { await indexing; }
     };
 };

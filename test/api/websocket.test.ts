@@ -33,8 +33,8 @@ const EVENTS: PeerEvent[] = [
   { type: 'library:replicate-progress', payload: { library_address: OWN_ADDRESS, progress: 3, total: 9 } }
 ]
 
-const connect = async (url: string): Promise<{ socket: WebSocket, messages: unknown[] }> => {
-  const socket = new WebSocket(url)
+const connect = async (url: string, protocols?: string[]): Promise<{ socket: WebSocket, messages: unknown[] }> => {
+  const socket = new WebSocket(url, protocols)
   const messages: unknown[] = []
   socket.on('message', (data) => { messages.push(JSON.parse(String(data))) })
   await new Promise((resolve, reject) => { socket.once('open', resolve).once('error', reject) })
@@ -75,14 +75,20 @@ describe('api: websocket', () => {
     expect(status === 404 || status === 'error').toBe(true)
   })
 
-  test('hosted mode checks the token query parameter on upgrade', async () => {
+  test('hosted mode authenticates the upgrade from the bearer. subprotocol, selects record, and ignores a query token', async () => {
     const hosted = await start_test_server({ authenticate: (token) => token === 'good' })
     try {
-      const url = (query: string) => `ws://127.0.0.1:${hosted.server.port}/api/ws${query}`
-      const refused = new WebSocket(url('?token=bad'))
-      const status = await new Promise((resolve) => { refused.once('unexpected-response', (_req, res) => { resolve(res.statusCode) }).once('error', () => { resolve('error') }) })
-      expect(status === 401 || status === 'error').toBe(true)
-      const { socket } = await connect(url('?token=good'))
+      const url = (query = '') => `ws://127.0.0.1:${hosted.server.port}/api/ws${query}`
+      const refused_status = async (socket: WebSocket) => await new Promise((resolve) => {
+        socket.once('unexpected-response', (_req, res) => { resolve(res.statusCode) }).once('error', () => { resolve('error') })
+      })
+      for (const refused of [new WebSocket(url(), ['record', 'bearer.bad']), new WebSocket(url('?token=good'))]) {
+        const status = await refused_status(refused)
+        expect(status === 401 || status === 'error').toBe(true)
+      }
+      const { socket } = await connect(url(), ['record', 'bearer.good'])
+      // The token is never echoed back: the node selects record.
+      expect(socket.protocol).toBe('record')
       socket.close()
     } finally {
       await hosted.stop()

@@ -27,8 +27,9 @@ const MIB = 1024 * 1024
 // dedupe against another's and its stored UTF-8 bytes are the string itself.
 const audio_of = (bytes: number) => randomBytes(Math.ceil(bytes / 2)).toString('hex').slice(0, bytes)
 
-// A holds the tracks; B replicates A's library and serves the API.
-const replicated_pair = async ({ sizes, config = {} }: { sizes: number[], config?: Partial<PeerConfig> }) => {
+// A holds the tracks; B replicates A's library and serves the API. The
+// library replicates index_only unless a test asks for the full default.
+const replicated_pair = async ({ sizes, config = {}, mode = 'index_only' }: { sizes: number[], config?: Partial<PeerConfig>, mode?: 'full' | 'index_only' }) => {
   const a = await peers.start()
   const tracks = []
   for (const [index, size] of sizes.entries()) {
@@ -38,6 +39,7 @@ const replicated_pair = async ({ sizes, config = {} }: { sizes: number[], config
   const b = await peers.start({ bootstrap: [await dial_address(a)] }, config)
   const address = a.identity().own_address
   await b.link_library({ address, alias: null })
+  if (mode === 'index_only') await b.set_replication_policy({ address, mode })
   await wait_until(() => b.context.libraries.get(address)?.oplog.entries.size === sizes.length)
   await b.context.replication?.settled(address)
   const server = await create_api_server({ peer: b, resolve: create_fake_resolver({}), port: 0, log: false, validate_responses: true })
@@ -75,7 +77,7 @@ describe('audio playback', () => {
     expect((await fetch(audio_url(kept.audio_cid))).status).toBe(200)
     expect(await head(kept.audio_cid)).toBe(200)
     // Adopting the track into B's own library pins its audio.
-    await b.add_track(kept.content_cid)
+    await b.add_track({ content_cid: kept.content_cid })
     expect(await b.content_store.is_pinned(kept.audio_cid)).toBe(true)
 
     expect((await fetch(audio_url(evicted.audio_cid))).status).toBe(200)
@@ -86,6 +88,18 @@ describe('audio playback', () => {
     expect(await local_on(b, latest.audio_cid)).toBe(true)
     expect(await head(evicted.audio_cid)).toBe(404)
     expect(await head(latest.audio_cid)).toBe(200)
+  })
+
+  test('§4.6.1 [MUST] a library linked in the identity library replicates in full: its audio is fetched and pinned', async () => {
+    const { a, b, tracks: [track], head } = await replicated_pair({ sizes: [Math.floor(1.5 * MIB)], mode: 'full' })
+    if (track === undefined) throw new Error('no track')
+    const address = a.identity().own_address
+    await wait_until(async () => await b.content_store.is_pinned(track.audio_cid))
+    expect(await head(track.audio_cid)).toBe(200)
+    expect((await b.get_replication_policy(address)).mode).toBe('full')
+    // index_only releases the blob it no longer keeps.
+    await b.set_replication_policy({ address, mode: 'index_only' })
+    expect(await b.content_store.is_pinned(track.audio_cid)).toBe(false)
   })
 
   test('GET for audio no peer serves returns 404 once the fetch times out', async () => {

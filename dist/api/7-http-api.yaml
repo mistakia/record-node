@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.0.0
+  version: 1.1.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -20,12 +20,41 @@ info:
     - Replication status is normalized to `{progress, total}`; OrbitDB
       internals are not exposed.
 
+    Authentication:
+    - Every REST request carries `Authorization: Bearer <token>`. The
+      WebSocket presents the same token as a subprotocol (see
+      `x-websocket-events`); a token is never accepted as a query
+      parameter. Tokens are opaque and issued out of band (spec §8.7.3).
+    - A node bound to loopback only MAY accept requests without a token
+      (spec §8.7.3, bundled mode).
+    - A missing or invalid token yields 401 `UNAUTHORIZED`.
+
+    Write targets (v1.1):
+    - Every endpoint that appends to a library takes `library_address`,
+      the target, and `capability_id`, the capability authorising the
+      write when the identity does not own the target (spec §3.5.9).
+    - When `library_address` is omitted, the target is the identity's own
+      recordstore library if it has exactly one active one (spec §4.8.3).
+      Otherwise the request fails with 400 `VALIDATION_ERROR`, so v1.0
+      clients keep working against single-library identities.
+    - A write the identity cannot make fails with 403: `FORBIDDEN` when
+      it neither owns the target nor cites a capability that authorises
+      the write, `CAPABILITY_EXPIRED` or `CAPABILITY_REVOKED` when the
+      cited capability no longer applies. A retired target fails with
+      409 `CONFLICT`.
+    - Identity-library writes (library create and retire, link, unlink,
+      pin, unpin) take no target (spec §4.8). Listens go to the
+      identity's listens library (spec §4.8.3).
+
     WebSocket bridge schemas are in the top-level `x-websocket-events`
     extension at the bottom of this document.
 
 servers:
   - url: http://localhost:3000/api
     description: Local development (default).
+
+security:
+  - bearer: []
 
 tags:
   - name: tracks
@@ -39,6 +68,9 @@ tags:
   - name: import
   - name: audio
   - name: resolve
+  - name: capabilities
+  - name: replication
+  - name: pins
 
 paths:
   /tracks:
@@ -92,6 +124,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TrackList' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
     post:
@@ -99,8 +132,10 @@ paths:
       summary: Adopt an existing track by content CID.
       description: |
         Adds a track that already exists in the content network (known by
-        CID) to the requestor's own library. For URL ingest use
-        `POST /import/url`; for file upload use `POST /import/file`.
+        CID) to the target library (spec §6.4.3). Adopting into a library
+        the identity does not own needs a capability granting
+        `library.append_track`. For URL ingest use `POST /import/url`; for
+        file upload use `POST /import/file`.
       requestBody:
         required: true
         content:
@@ -110,6 +145,8 @@ paths:
               required: [content_cid]
               properties:
                 content_cid: { type: string }
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
           description: OK
@@ -117,7 +154,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Track' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /tracks/{id}:
@@ -129,10 +169,57 @@ paths:
         schema: { type: string, pattern: '^[a-f0-9]{64}$' }
     delete:
       tags: [tracks]
-      summary: Remove a track from the requestor's own library.
+      summary: Remove a track from an own library.
+      description: |
+        Appends a DEL to the target library. No capability action
+        authorises a DEL (spec §3.5.6), so the target must be an own
+        library.
+      parameters:
+        - $ref: '#/components/parameters/WriteTarget'
       responses:
         '204':
           description: Removed.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /tracks/{cid}/pin:
+    parameters:
+      - name: cid
+        in: path
+        required: true
+        description: |
+          CID of the audio blob (`content.hash`), in any valid CID form.
+          The node records it in the canonical form of spec §4.8.2
+          (CIDv1, base32).
+        schema: { type: string }
+    post:
+      tags: [pins]
+      summary: Pin a track's audio blob.
+      description: |
+        Appends a `pin` PUT to the identity library (spec §4.8.2). Every
+        device of the identity then fetches and keeps the blob whatever
+        the replication policy (spec §4.6.2). Pinning a pinned blob is a
+        no-op.
+      responses:
+        '204':
+          description: Pinned.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [pins]
+      summary: Unpin a track's audio blob.
+      description: |
+        Appends a `pin` DEL to the identity library. The blob stays if an
+        own library or a replication policy still holds it (spec §4.6.2).
+      responses:
+        '204':
+          description: Unpinned.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -157,11 +244,15 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TagCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
     post:
       tags: [tags]
-      summary: Attach a tag to a track in the requestor's own library.
+      summary: Attach a tag to a track in the target library.
+      description: |
+        Under a capability, needs `library.append_tag` or
+        `library.append_track` (spec §3.5.6).
       requestBody:
         required: true
         content:
@@ -175,6 +266,8 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 128
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
           description: OK. Returns the updated track.
@@ -182,13 +275,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Track' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
     delete:
       tags: [tags]
-      summary: Detach a tag from a track in the requestor's own library.
+      summary: Detach a tag from a track in the target library.
+      description: |
+        Under a capability, needs `library.append_track`:
+        `library.append_tag` only adds tags (spec §3.5.6).
       parameters:
         - name: track_id
           in: query
@@ -198,6 +296,8 @@ paths:
           in: query
           required: true
           schema: { type: string }
+        - $ref: '#/components/parameters/WriteTarget'
+        - $ref: '#/components/parameters/WriteCapability'
       responses:
         '200':
           description: OK. Returns the updated track.
@@ -205,7 +305,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Track' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /libraries:
@@ -213,8 +316,10 @@ paths:
       tags: [libraries]
       summary: List all locally-known libraries.
       description: |
-        Union of libraries linked from the requestor's own library and
-        libraries cached from peer discovery.
+        Union of the identity's own libraries (spec §4.8.3), its linked
+        libraries (spec §4.8.4), and libraries cached from peer
+        discovery. Identity libraries are not listed; read the
+        identity's own through `GET /identity/meta-log`.
       responses:
         '200':
           description: OK
@@ -223,11 +328,17 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Library' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
     post:
       tags: [libraries]
-      summary: Link a library to the requestor's own library.
+      summary: Link a library.
+      description: |
+        Appends a `link` PUT to the identity library (spec §4.8.4).
+        Replication then starts under the library's replication policy,
+        `full` unless configured. A link made before v1.1 defaults to
+        `index_only` (spec §4.6.1).
       requestBody:
         required: true
         content:
@@ -241,7 +352,7 @@ paths:
                   description: Full library address to link.
                 alias:
                   type: [string, 'null']
-                  description: Optional display alias stored with the link entry.
+                  description: Optional display alias stored with the link record.
                   maxLength: 128
       responses:
         '200':
@@ -250,6 +361,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Library' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -270,6 +382,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Library' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -277,13 +390,161 @@ paths:
       tags: [libraries]
       summary: Unlink and drop a library.
       description: |
-        Unlinks the library, drops the local replica, and unpins any
-        content held uniquely by this library. There is no "unlink only"
-        variant; unlink always implies drop.
+        Appends a `link` DEL to the identity library (spec §4.8.4), drops
+        the local replica, and unpins any content held uniquely by this
+        library, except pinned blobs (spec §4.6). There is no "unlink
+        only" variant; unlink always implies drop. An own library cannot
+        be unlinked (409); retire it with
+        `DELETE /identity/libraries/{address}`.
       responses:
         '204':
           description: Unlinked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/replication-policy:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [replication]
+      summary: Get the node-local replication policy for a library.
+      description: |
+        Spec §4.6.1. For an own library the mode is always `full`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplicationPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [replication]
+      summary: Set the node-local replication policy for a linked library.
+      description: |
+        Node-local configuration, not written to any log (spec §4.6.1).
+        `filter` is required for `selective` and ignored otherwise. A
+        filter the node cannot evaluate (unknown node type or malformed
+        shape, spec §3.5.7) is refused with 400. An own library's policy
+        cannot be changed (409). Connection state is changed through
+        `/connect` and `/disconnect`, not here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { $ref: '#/components/schemas/ReplicationMode' }
+                filter: { $ref: '#/components/schemas/FilterSpec' }
+      responses:
+        '200':
+          description: OK. Returns the stored policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplicationPolicy' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/capabilities:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [capabilities]
+      summary: List every capability issued in a library.
+      description: |
+        All capability records in the library's log, with their status
+        (spec §3.5.5, §3.5.10). Readable for any known library.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Capability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [capabilities]
+      summary: Issue a capability.
+      description: |
+        Appends a capability record (spec §3.5.5) to the library. The
+        owner issues directly; any other identity cites, as
+        `capability_id`, a capability granting
+        `library.grant_capability` (spec §3.5.9). The node refuses with
+        400 a capability holding an action, GranteeSpec, FilterSpec, or
+        ConditionSpec type it does not recognise, since it could not
+        verify writes under it. Capabilities exist only in recordstore
+        libraries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grantee, actions]
+              properties:
+                grantee: { $ref: '#/components/schemas/GranteeSpec' }
+                actions:
+                  type: array
+                  minItems: 1
+                  maxItems: 16
+                  items: { type: string }
+                filter: { $ref: '#/components/schemas/FilterSpec' }
+                conditions:
+                  type: array
+                  items: { $ref: '#/components/schemas/ConditionSpec' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
+      responses:
+        '201':
+          description: Issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Capability' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/capabilities/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+      - name: id
+        in: path
+        required: true
+        description: Capability id of the capability to revoke (spec §3.5.5).
+        schema: { type: string }
+    delete:
+      tags: [capabilities]
+      summary: Revoke a capability.
+      description: |
+        Appends a revocation record (spec §3.5.10). The owner revokes any
+        capability directly. Any other identity may revoke only a
+        capability it issued, or one descending from a capability it
+        issued, and passes as the `capability_id` query parameter a
+        capability it holds. Revocation is not retroactive: entries the
+        node had merged when it revoked stay valid, concurrent entries
+        under the capability become inert, and later ones are rejected.
+      parameters:
+        - $ref: '#/components/parameters/WriteCapability'
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /libraries/{address}/connect:
@@ -298,6 +559,7 @@ paths:
       responses:
         '202':
           description: Accepted. Replication will resume asynchronously.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -310,6 +572,7 @@ paths:
       responses:
         '202':
           description: Accepted. Replication will pause asynchronously.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -328,13 +591,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/About' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [about]
       summary: Update the profile for a library.
       description: |
-        Returns 403 if the caller does not own the target library. Any
+        Returns 403 unless the caller owns the target library or cites a
+        capability granting `library.update_about` (spec §3.5.6). Any
         subset of mutable fields may be supplied; omitted fields remain
         unchanged. Per protocol spec §2.6, `avatar` MUST be a
         content-addressed CID.
@@ -351,6 +616,7 @@ paths:
                 avatar:
                   type: [string, 'null']
                   description: CID of an image blob.
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
           description: OK
@@ -358,6 +624,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/About' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -378,6 +645,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TrackList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
     post:
@@ -388,6 +656,8 @@ paths:
         entries are `{trackId, address, timestamp}`; the `address` is the
         library address the track was played from (may differ from the
         recording library if the listener is attributing a remote track).
+        The listen is written to the identity's listens library (spec
+        §4.8.3); there is no write target.
       requestBody:
         required: true
         content:
@@ -407,6 +677,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ListenCount' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /peers:
@@ -424,6 +695,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Peer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /settings:
@@ -440,6 +712,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Settings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity:
+    get:
+      tags: [identity]
+      summary: Read the node's identity.
+      description: |
+        Public identity facts for display. Clients read the public key
+        here; `GET /identity/export` returns private key material and is
+        for an explicit user export only (spec §8.5.7).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /identity/export:
@@ -455,6 +745,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IdentityExport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /identity/import:
@@ -483,14 +774,146 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id, public_key, own_library_address]
+                required: [id, public_key, own_library_address, meta_log_address]
                 properties:
                   id:
                     type: string
                     description: sha256 of the public key.
                   public_key: { type: string }
-                  own_library_address: { type: string }
+                  own_library_address:
+                    type: string
+                    description: |
+                      The identity's default own recordstore library: its
+                      only active one, or else the one with discriminator
+                      `library`. `GET /identity/libraries` lists them all.
+                  meta_log_address:
+                    type: string
+                    description: Address of the identity library (spec §3.6.2).
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/libraries:
+    get:
+      tags: [identity]
+      summary: List the identity's own libraries.
+      description: |
+        Every library the identity library records as owned (spec §4.8.3),
+        active and retired, including the listens library.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Library' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [identity]
+      summary: Create an own recordstore library.
+      description: |
+        Derives the address from the identity key and the discriminator
+        (spec §3.6.1), appends a `library` PUT to the identity library,
+        and, when `about` is given, an About entry to the new library. If
+        `discriminator` is omitted the node generates one. A discriminator
+        the identity library already records, active or retired, is
+        refused with 409.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                discriminator:
+                  type: string
+                  pattern: '^[0-9a-zA-Z-]{1,64}$'
+                about:
+                  type: object
+                  properties:
+                    name: { type: [string, 'null'], maxLength: 128 }
+                    bio: { type: [string, 'null'], maxLength: 1024 }
+                    location: { type: [string, 'null'], maxLength: 128 }
+                    avatar: { type: [string, 'null'] }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Library' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/libraries/{address}:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    delete:
+      tags: [identity]
+      summary: Retire an own library.
+      description: |
+        Appends a `library` DEL to the identity library (spec §4.8.3).
+        Retirement is permanent. The library stays valid and replicable;
+        the node refuses new writes to it. The identity's active listens library cannot be retired
+        (409).
+      responses:
+        '204':
+          description: Retired.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/capabilities:
+    get:
+      tags: [identity, capabilities]
+      summary: List capabilities held by the identity.
+      description: |
+        Every capability, in any known library, whose grantee matches the
+        identity's key (spec §3.5.5), with its status.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Capability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/meta-log:
+    get:
+      tags: [identity]
+      summary: Read the identity library.
+      description: |
+        Records of the identity library (spec §4.8.2), newest first by
+        `clock_time`. The library replicates across the identity's
+        devices, so records may come from another device.
+      parameters:
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+        - name: type
+          in: query
+          description: Only records of this type.
+          schema:
+            type: string
+            enum: [library, link, pin]
+        - name: current_only
+          in: query
+          description: Only the current record of each `(type, key)` (spec §4.8.2).
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetaLogPage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /import/file:
@@ -501,7 +924,11 @@ paths:
         Files are buffered to a temp directory and fed to the protocol-v1
         ingest pipeline via `import_blob(path)`. Returns an `import_id`
         immediately; progress is delivered via `import:*` WebSocket
-        events.
+        events. The target and capability are checked before the import
+        is accepted. A file with a degenerate fingerprint fails with
+        `DEGENERATE_FINGERPRINT`, and one whose track id the target holds
+        for audio of a different duration fails with `TRACK_ID_COLLISION`
+        (spec §6.4.1), each as an `import:error` event.
       requestBody:
         required: true
         content:
@@ -515,6 +942,8 @@ paths:
                   items:
                     type: string
                     format: binary
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '202':
           description: Accepted. Ingest started asynchronously.
@@ -522,6 +951,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ImportAck' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /import/url:
@@ -540,6 +972,8 @@ paths:
               required: [url]
               properties:
                 url: { type: string, format: uri }
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '202':
           description: Accepted. Ingest started asynchronously.
@@ -547,6 +981,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ImportAck' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /audio/{cid}:
@@ -569,6 +1006,7 @@ paths:
       responses:
         '200':
           description: Locally available.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404':
           description: Not in the local content store.
     get:
@@ -611,6 +1049,7 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -630,6 +1069,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ResolverEntry' }
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
 components:
@@ -657,6 +1097,29 @@ components:
       required: true
       description: Full library address, e.g. `/record/<manifest-cid>/<name>`.
       schema: { type: string }
+    WriteTarget:
+      name: library_address
+      in: query
+      description: |
+        Target library of the write. Optional only when the identity has
+        exactly one active own recordstore library (spec §4.8.3).
+      schema: { type: string }
+    WriteCapability:
+      name: capability_id
+      in: query
+      description: |
+        Capability authorising the write (spec §3.5.9). Required when the
+        identity does not own the target; omitted otherwise.
+      schema: { type: string }
+
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        Opaque token issued out of band by the node operator (spec
+        §8.7.3). The WebSocket carries it as a subprotocol instead; see
+        `x-websocket-events`.
 
   responses:
     ValidationError:
@@ -666,6 +1129,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     NotFound:
       description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: The bearer token is missing or invalid.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -703,6 +1171,10 @@ components:
                 - CONFLICT
                 - UNAUTHORIZED
                 - FORBIDDEN
+                - CAPABILITY_EXPIRED
+                - CAPABILITY_REVOKED
+                - TRACK_ID_COLLISION
+                - DEGENERATE_FINGERPRINT
                 - INTERNAL_ERROR
             message:
               type: string
@@ -793,7 +1265,10 @@ components:
           items: { type: integer }
         have_track:
           type: boolean
-          description: Whether the track exists in the requestor's own library.
+          description: Whether the track exists in any of the identity's own libraries.
+        is_pinned:
+          type: boolean
+          description: Whether a current pin record holds `audio_cid` (spec §4.6.2).
         added_at_ms:
           type: integer
           description: First-seen timestamp (unix milliseconds) in the requestor's index.
@@ -826,21 +1301,29 @@ components:
       required:
         - id
         - address
+        - library_type
         - track_count
         - linked_library_count
         - length
+        - heads
         - replication_status
         - is_replicating
+        - connected
         - is_loading_index
         - is_processing_index
         - is_linked
         - is_own
+        - is_retired
+        - held_capability_ids
         - peer_ids
       properties:
         id:
           type: string
           description: sha256 of the library address.
         address: { type: string }
+        library_type:
+          type: string
+          description: Manifest type (spec §3.5.1), `recordstore` or `listens`.
         name: { type: [string, 'null'] }
         bio: { type: [string, 'null'] }
         location: { type: [string, 'null'] }
@@ -850,28 +1333,212 @@ components:
         alias:
           type: [string, 'null']
           description: |
-            Display alias from the link entry in the requestor's library.
-            Null when not linked or when no alias was provided.
+            Display alias from the identity's link to this library (spec
+            §4.8.4). Null when not linked or when no alias was provided.
         track_count: { type: integer }
         linked_library_count: { type: integer }
         length:
           type: integer
           description: Oplog length (count of live entries).
+        heads:
+          type: array
+          description: |
+            Current head entry hashes (spec §4.3), base58btc. Clients
+            compare them to detect missed updates (spec §8.8.5).
+          items: { type: string }
         replication_status:
           $ref: '#/components/schemas/ReplicationStatus'
         is_replicating: { type: boolean }
+        connected:
+          type: boolean
+          description: |
+            Whether replication runs for this library, false while paused
+            by `/disconnect` (spec §5.4.4). Paused is the only other state,
+            so a boolean suffices. Matches `ReplicationPolicy.connected`.
         is_loading_index: { type: boolean }
         is_processing_index: { type: boolean }
         is_linked:
           type: boolean
-          description: Whether the requestor's own library links to this one.
+          description: Whether the library is in the identity's link set (spec §4.8.4).
         is_own:
           type: boolean
-          description: Whether this library IS the requestor's own library.
+          description: Whether this is one of the identity's own libraries (spec §4.8.3), active or retired.
+        is_retired:
+          type: boolean
+          description: Whether this own library is retired (spec §4.8.3). Always false when `is_own` is false.
+        held_capability_ids:
+          type: array
+          description: |
+            Ids of the active capabilities the identity holds in this
+            library (spec §3.5.5). Non-empty marks a shared library.
+          items: { type: string }
+        replication_mode:
+          oneOf:
+            - $ref: '#/components/schemas/ReplicationMode'
+            - type: 'null'
+          description: Replication mode (spec §4.6.1); null when neither own nor linked.
         peer_ids:
           type: array
           description: libp2p peer ids currently subscribed to this library's pubsub topic.
           items: { type: string }
+
+    WriteTargetAddress:
+      type: string
+      description: |
+        Target library of the write. Optional only when the identity has
+        exactly one active own recordstore library (spec §4.8.3).
+
+    WriteCapabilityId:
+      type: string
+      description: |
+        Capability authorising the write (spec §3.5.9). Required when the
+        identity does not own the target; omitted otherwise.
+
+    ReplicationMode:
+      type: string
+      enum: [full, selective, index_only]
+
+    ReplicationPolicy:
+      type: object
+      required: [mode, filter, connected]
+      description: Node-local replication policy (spec §4.6.1).
+      properties:
+        mode: { $ref: '#/components/schemas/ReplicationMode' }
+        filter:
+          description: The `selective` filter; null in other modes.
+          oneOf:
+            - $ref: '#/components/schemas/FilterSpec'
+            - type: 'null'
+        connected:
+          type: boolean
+          description: Whether replication is running (spec §5.4.4).
+
+    FilterSpec:
+      type: object
+      required: [type]
+      additionalProperties: true
+      description: |
+        Recursive predicate (spec §3.5.7). v1.1 node types are `match`,
+        `any_of`, `range`, `and`, `or`, and `not`. The schema admits any
+        `type` so a node can report filters from newer peers; a filter
+        holding a type the node does not recognise matches nothing.
+      properties:
+        type: { type: string }
+
+    GranteeSpec:
+      type: object
+      required: [type]
+      additionalProperties: true
+      description: |
+        Who a capability is for (spec §3.5.5): `key` with `key`, or
+        `key_set` with `keys`. Any other `type` matches no signer.
+      properties:
+        type: { type: string }
+
+    ConditionSpec:
+      type: object
+      required: [type]
+      additionalProperties: true
+      description: |
+        Capability condition (spec §3.5.8). v1.1 defines `expires_at`
+        with `at` in Unix milliseconds. Any other `type` never holds.
+      properties:
+        type: { type: string }
+
+    Capability:
+      type: object
+      required:
+        - capability_id
+        - library_address
+        - issuer
+        - grantee
+        - actions
+        - filter
+        - conditions
+        - issued_at_ms
+        - status
+      description: A capability record and its state (spec §3.5.5).
+      properties:
+        capability_id:
+          type: string
+          description: Entry hash of the capability record's entry.
+        library_address: { type: string }
+        issuer:
+          type: string
+          description: Public key that signed the capability.
+        via_capability_id:
+          type: [string, 'null']
+          description: The capability the issuer cited, for a delegated grant.
+        grantee: { $ref: '#/components/schemas/GranteeSpec' }
+        actions:
+          type: array
+          description: Action verbs (spec §3.5.6), including any the node does not recognise.
+          items: { type: string }
+        filter:
+          oneOf:
+            - $ref: '#/components/schemas/FilterSpec'
+            - type: 'null'
+        conditions:
+          type: array
+          items: { $ref: '#/components/schemas/ConditionSpec' }
+        issued_at_ms:
+          type: integer
+          description: The record's `timestamp`.
+        expires_at_ms:
+          type: [integer, 'null']
+          description: The earliest `expires_at` condition, if any.
+        status:
+          type: string
+          enum: [active, expired, revoked, inert]
+          description: |
+            `revoked` when an effective revocation names it, and `inert`
+            when the capability's own entry is inert (spec §3.5.10). Both
+            follow verification. `expired` is advisory: it means an
+            `expires_at` is past by the node's clock, so a write the node
+            makes now, timestamped now, would fail §3.5.8. Verification
+            judges expiry by each operation's own timestamp, so entries
+            already written stay valid.
+        revoked_by:
+          type: [string, 'null']
+          description: Entry hash of the effective revocation, if any.
+
+    MetaLogRecord:
+      type: object
+      required: [entry_hash, op, type, key, record, clock_time, timestamp_ms, is_current]
+      description: One entry of the identity library (spec §4.8.2).
+      properties:
+        entry_hash: { type: string }
+        op:
+          type: string
+          enum: [PUT, DEL]
+        type:
+          type: string
+          description: Record type, `library`, `link`, `pin`, or one the node does not recognise.
+        key: { type: string }
+        record:
+          type: object
+          additionalProperties: true
+          description: The operation value as stored.
+        clock_time: { type: integer }
+        timestamp_ms: { type: integer }
+        is_current:
+          type: boolean
+          description: Whether this is the current record for its `(type, key)`.
+
+    MetaLogPage:
+      type: object
+      required: [address, heads, items, total]
+      properties:
+        address:
+          type: string
+          description: The identity library address (spec §3.6.2).
+        heads:
+          type: array
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MetaLogRecord' }
+        total: { type: integer }
 
     ReplicationStatus:
       type: object
@@ -958,6 +1625,23 @@ components:
             max_bytes: { type: integer }
             object_count: { type: integer }
 
+    Identity:
+      type: object
+      required: [public_key, meta_log_address, own_library_address]
+      properties:
+        public_key:
+          type: string
+          pattern: '^0[23][0-9a-f]{64}$'
+          description: Compressed secp256k1 public key, 66 lowercase hex characters (spec §3.1).
+        meta_log_address:
+          type: string
+          description: Address of the identity library (spec §3.6.2).
+        own_library_address:
+          type: string
+          description: |
+            The identity's default own recordstore library: its only
+            active one, or else the one with discriminator `library`.
+
     IdentityExport:
       type: object
       required: [public_key, private_key]
@@ -1003,7 +1687,7 @@ components:
 # WebSocket event bridge
 # ---------------------------------------------------------------------------
 #
-# Endpoint: WebSocket upgrade at `/api/ws`; JWT in `token` query param.
+# Endpoint: WebSocket upgrade at `/api/ws`; bearer token as a subprotocol.
 # Messages are JSON `{ type, payload }`. All payload field names use
 # snake_case. If AsyncAPI becomes the preferred format these can migrate
 # to a sibling document without touching the HTTP surface.
@@ -1012,10 +1696,20 @@ x-websocket-events:
   endpoint:
     upgrade_path: /api/ws
     auth:
-      type: jwt
-      location: query
-      param: token
-      local_mode: noop-passthrough
+      type: bearer
+      location: subprotocol
+      subprotocol: record
+      token_subprotocol_prefix: 'bearer.'
+      description: |
+        The client offers two subprotocols in `Sec-WebSocket-Protocol`:
+        `record` and `bearer.<token>`, where `<token>` is the REST bearer
+        token and consists of RFC 7230 token characters. The node
+        authenticates the upgrade from the `bearer.` entry and selects
+        `record`, so the token is never echoed in the response. A missing
+        or invalid token refuses the upgrade with 401. Query-parameter
+        tokens are not accepted, since query strings are routinely
+        logged (spec §8.7.7). A node bound to loopback only MAY accept an
+        upgrade without a token (spec §8.7.3).
   message_format:
     type: object
     required: [type, payload]
@@ -1067,6 +1761,67 @@ x-websocket-events:
         length:
           type: integer
           description: Oplog length after the batch.
+        heads:
+          type: array
+          description: Head entry hashes after the batch (spec §4.3).
+          items: { type: string }
+
+    library:entries-inert:
+      description: |
+        A revocation made entries inert (spec §3.5.10). Clients surface
+        writes of their own that this invalidated (spec §8.6.8).
+      payload:
+        library_address: { type: string }
+        capability_id:
+          type: string
+          description: The revoked capability.
+        entry_hashes:
+          type: array
+          items: { type: string }
+        track_ids:
+          type: array
+          description: Track ids whose current state changed.
+          items: { type: string }
+
+    library:replication-policy-changed:
+      payload:
+        library_address: { type: string }
+        policy: { $ref: '#/components/schemas/ReplicationPolicy' }
+
+    identity:library-created:
+      description: An own library was created, here or on another device.
+      payload:
+        library: { $ref: '#/components/schemas/Library' }
+
+    identity:library-retired:
+      description: An own library was retired, here or on another device.
+      payload:
+        library_address: { type: string }
+
+    identity:meta-log-appended:
+      description: |
+        A record was appended to or merged into the identity library
+        (spec §4.8), from this node or another device.
+      payload:
+        record: { $ref: '#/components/schemas/MetaLogRecord' }
+
+    capability:issued:
+      description: A capability was issued in a known library.
+      payload:
+        capability: { $ref: '#/components/schemas/Capability' }
+
+    capability:revoked:
+      description: An effective revocation now names a capability in a known library.
+      payload:
+        capability: { $ref: '#/components/schemas/Capability' }
+
+    track:pinned:
+      payload:
+        cid: { type: string }
+
+    track:unpinned:
+      payload:
+        cid: { type: string }
 
     library:replicate-progress:
       description: Replication progress update during an in-flight sync.

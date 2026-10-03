@@ -6,6 +6,7 @@ export interface TrackTarget {
     readonly oplog: Oplog;
     readonly key_pair: KeyPair;
     readonly content_store: ContentStore;
+    readonly capability_id?: string | undefined;
 }
 export declare const find_existing_track: ({ oplog, track_id }: {
     oplog: Oplog;

@@ -1,15 +1,24 @@
 // The WebSocket bridge at /api/ws: relays every peer event to every client
 // as { type, payload } JSON (x-websocket-events in 7-http-api.yaml). It holds
 // no state beyond the open clients; a reconnecting client reads current
-// state over REST.
+// state over REST. The client offers the subprotocols record and
+// bearer.<token>; the upgrade authenticates from the second and selects the
+// first, so the token is never echoed back.
 import { WebSocketServer } from 'ws';
 import { origin_allowed } from "./middleware.js";
 export const WS_PATH = '/api/ws';
+export const WS_SUBPROTOCOL = 'record';
+const TOKEN_SUBPROTOCOL_PREFIX = 'bearer.';
+const offered_subprotocols = (req) => (req.headers['sec-websocket-protocol'] ?? '').split(',').map((protocol) => protocol.trim()).filter((protocol) => protocol !== '');
+export const subprotocol_token = (req) => offered_subprotocols(req).find((protocol) => protocol.startsWith(TOKEN_SUBPROTOCOL_PREFIX))?.slice(TOKEN_SUBPROTOCOL_PREFIX.length);
 const refuse_upgrade = (socket, status) => {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 };
 export const attach_event_bridge = ({ http_server, peer, authenticate, cors_origins }) => {
-    const wss = new WebSocketServer({ noServer: true });
+    const wss = new WebSocketServer({
+        noServer: true,
+        handleProtocols: (protocols) => protocols.has(WS_SUBPROTOCOL) ? WS_SUBPROTOCOL : false
+    });
     const clients = new Set();
     const on_upgrade = async (req, socket, head) => {
         const url = new URL(req.url ?? '/', 'http://localhost');
@@ -22,7 +31,7 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
             refuse_upgrade(socket, '403 Forbidden');
             return;
         }
-        if (authenticate !== undefined && !(await authenticate(url.searchParams.get('token') ?? undefined))) {
+        if (authenticate !== undefined && !(await authenticate(subprotocol_token(req)))) {
             refuse_upgrade(socket, '401 Unauthorized');
             return;
         }

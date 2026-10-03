@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util'
 
 import { create_api_server, stop_api_server } from '#api/index.ts'
 import { create_peer, start_peer, stop_peer } from '#peer/peer.ts'
+import { DataDirectoryLocked } from '#peer/lock.ts'
 import { as_api_resolver } from '#peer/resolver.ts'
 import { load_config } from './config.ts'
 
@@ -48,8 +49,13 @@ const main = async (): Promise<void> => {
   process.on('SIGINT', () => { shutdown('SIGINT') })
 }
 
+// A held data directory exits with its own status (§8.4.6), so a host that
+// spawned the node can tell it from any other start failure.
+export const EXIT_DATA_DIR_LOCKED = 75
+
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error)
+  if (error instanceof DataDirectoryLocked) process.exit(EXIT_DATA_DIR_LOCKED)
   console.error(USAGE)
   process.exit(1)
 })

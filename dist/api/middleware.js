@@ -68,6 +68,8 @@ const PEER_ERRORS = {
     not_found: { status: 404, code: 'NOT_FOUND' },
     conflict: { status: 409, code: 'CONFLICT' },
     forbidden: { status: 403, code: 'FORBIDDEN' },
+    capability_expired: { status: 403, code: 'CAPABILITY_EXPIRED' },
+    capability_revoked: { status: 403, code: 'CAPABILITY_REVOKED' },
     invalid: { status: 400, code: 'VALIDATION_ERROR' }
 };
 const is_validator_error = (error) => error instanceof Error && typeof error.status === 'number';

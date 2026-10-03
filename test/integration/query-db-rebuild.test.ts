@@ -21,7 +21,7 @@ describe('query database rebuild', () => {
     for (const fingerprint of ['AQADone', 'AQADtwo', 'AQADthree']) tracks.push(await append_track({ peer: a, fingerprint }))
     const [first, second] = tracks.map(({ entry }) => (entry.operation as { key: string }).key) as [string, string]
     await a.add_tag({ track_id: first, tag: 'kept' })
-    await a.remove_track(second)
+    await a.remove_track({ track_id: second })
 
     await b.link_library({ address, alias: 'a' })
     const source = a.context.libraries.get(address)?.oplog

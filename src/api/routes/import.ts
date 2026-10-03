@@ -3,6 +3,8 @@ import { Router } from 'express'
 
 import type { ApiPeer } from '#types/peer.ts'
 
+const optional_string = (value: unknown): string | undefined => typeof value === 'string' && value !== '' ? value : undefined
+
 export const import_router = (peer: ApiPeer): Router => {
   const router = Router()
 
@@ -11,7 +13,11 @@ export const import_router = (peer: ApiPeer): Router => {
   router.post('/file', async (req, res) => {
     const paths = (req.files as Express.Multer.File[]).map((file) => file.path)
     try {
-      res.status(202).json(await peer.import_files(paths))
+      res.status(202).json(await peer.import_files({
+        paths,
+        library_address: optional_string(req.body.library_address),
+        capability_id: optional_string(req.body.capability_id)
+      }))
     } catch (error) {
       await Promise.all(paths.map(async (path) => await rm(path, { force: true })))
       throw error
@@ -19,7 +25,8 @@ export const import_router = (peer: ApiPeer): Router => {
   })
 
   router.post('/url', async (req, res) => {
-    res.status(202).json(await peer.import_url(req.body.url))
+    const { url, library_address, capability_id } = req.body
+    res.status(202).json(await peer.import_url({ url, library_address, capability_id }))
   })
 
   return router

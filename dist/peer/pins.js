@@ -1,35 +1,41 @@
 // What a library pins (§3.5.1, §4.6): the three AC chain objects, and per
 // entry the signed entry block, the envelope content payload, and for a
-// track the audio blob and artwork. Items 1-5 are dag-cbor leaves and pinned
-// directly; item 6 is a UnixFS DAG and pinned recursively.
+// track the audio blob and artwork when the library's replication policy
+// keeps them (§4.6.1). Items 1-5 are dag-cbor leaves and pinned directly;
+// item 6 is a UnixFS DAG and pinned recursively.
 import { is_put } from '#entry/operations.ts';
 import { decode_payload, validate_track_content } from '#entry/payload.ts';
 import { ProtocolError } from '#types/errors.ts';
 export const chain_pins = (chain) => [chain.cids.manifest, chain.cids.wrapper, chain.cids.write_list].map((cid) => [cid, false]);
-// A track payload not stored yet contributes no item-6 pins; they follow once
-// the payload arrives and the entry is pinned again.
-const track_blob_pins = async ({ content_store, content_cid }) => {
+// A track's validated content payload, or undefined when it is not stored or
+// does not validate.
+export const stored_track_content = async ({ content_store, content_cid }) => {
     const bytes = await content_store.get(content_cid);
     if (bytes === undefined)
-        return [];
+        return undefined;
     try {
-        const content = validate_track_content(decode_payload(bytes));
-        return [content.hash, ...content.artwork].map((cid) => [cid, true]);
+        return validate_track_content(decode_payload(bytes));
     }
     catch (error) {
         if (error instanceof ProtocolError)
-            return [];
+            return undefined;
         throw error;
     }
 };
-export const entry_pins = async ({ content_store, entry }) => {
+export const track_blobs = (content) => [content.hash, ...content.artwork];
+// A track payload not stored yet contributes no item-6 pins; they follow once
+// the payload arrives and the entry is pinned again.
+export const entry_pins = async ({ content_store, entry, keeps_blobs }) => {
     const pins = [[entry.hash, false]];
     if (!is_put(entry.operation))
         return pins;
     const { content, type } = entry.operation.value;
     pins.push([content, false]);
-    if (type === 'track')
-        pins.push(...await track_blob_pins({ content_store, content_cid: content }));
+    if (type !== 'track')
+        return pins;
+    const track = await stored_track_content({ content_store, content_cid: content });
+    if (track !== undefined && keeps_blobs({ entry, content: track }))
+        pins.push(...track_blobs(track).map((cid) => [cid, true]));
     return pins;
 };
 // Pins each CID the store holds and records it in the set. A CID whose blocks

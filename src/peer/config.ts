@@ -33,6 +33,9 @@ export interface PeerConfig {
   // evicted least recently used first.
   readonly audio_fetch_timeout_ms: number
   readonly audio_cache_max_bytes: number
+  // §5.4.6: how long one audio or artwork blob a policy or pin keeps may take
+  // to fetch before it is retried under backoff.
+  readonly blob_fetch_timeout_ms: number
   // §5.4.1 heads coalescing and §5.3.3 announcement rate limit, never below
   // the spec's 1000 ms and 5 s.
   readonly heads_interval_ms: number
@@ -52,6 +55,7 @@ export const DEFAULT_PEER_CONFIG: PeerConfig = Object.freeze({
   traversal_timeout_ms: 30_000,
   audio_fetch_timeout_ms: 30_000,
   audio_cache_max_bytes: 512 * 1024 * 1024,
+  blob_fetch_timeout_ms: 10 * 60_000,
   heads_interval_ms: HEADS_INTERVAL_FLOOR_MS,
   announce_interval_ms: ANNOUNCE_INTERVAL_FLOOR_MS,
   network: DEFAULT_NETWORK_CONFIG
@@ -90,7 +94,7 @@ export const resolve_peer_config = (config: Partial<PeerConfig> = {}): PeerConfi
     if (resolved[field] !== undefined && typeof resolved[field] !== 'string') throw new TypeError(`${field} must be a string`)
   }
   if (typeof resolved.allow_toolchain_mismatch !== 'boolean') throw new TypeError('allow_toolchain_mismatch must be true or false')
-  for (const field of ['traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'heads_interval_ms', 'announce_interval_ms'] as const) {
+  for (const field of ['traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'blob_fetch_timeout_ms', 'heads_interval_ms', 'announce_interval_ms'] as const) {
     if (!Number.isSafeInteger(resolved[field]) || resolved[field] <= 0) {
       throw new RangeError(`${field} must be a positive integer, not ${String(resolved[field])}`)
     }

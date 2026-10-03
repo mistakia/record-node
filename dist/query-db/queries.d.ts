@@ -80,7 +80,7 @@ export interface About {
     readonly avatar: string | null;
 }
 export interface ListTracksInput {
-    readonly own_library_address?: string | undefined;
+    readonly own_library_addresses?: readonly string[] | undefined;
     readonly library_addresses?: readonly string[] | undefined;
     readonly tags?: readonly string[] | undefined;
     readonly query?: string | undefined;
@@ -93,10 +93,10 @@ export interface ListTracksInput {
 export declare const list_tracks: ({ db, ...input }: {
     db: DatabaseSync;
 } & ListTracksInput) => Page<TrackRow>;
-export declare const get_track: ({ db, track_id, own_library_address, library_addresses }: {
+export declare const get_track: ({ db, track_id, own_library_addresses, library_addresses }: {
     db: DatabaseSync;
     track_id: string;
-    own_library_address?: string;
+    own_library_addresses?: readonly string[];
     library_addresses?: readonly string[];
 }) => TrackRow | undefined;
 export declare const list_tags: ({ db, library_addresses }: {
@@ -108,9 +108,9 @@ export declare const get_listen_count: ({ db, track_id, listens_addresses }: {
     track_id: string;
     listens_addresses?: readonly string[];
 }) => ListenCount;
-export declare const list_listens: ({ db, own_library_address, listens_addresses, offset, limit }: {
+export declare const list_listens: ({ db, own_library_addresses, listens_addresses, offset, limit }: {
     db: DatabaseSync;
-    own_library_address?: string;
+    own_library_addresses?: readonly string[];
     listens_addresses?: readonly string[];
     offset?: number;
     limit?: number;

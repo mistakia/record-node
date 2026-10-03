@@ -14,11 +14,13 @@ import type { VerifiedEntry } from '#oplog/accept.ts'
 import { append_entry, get_live_entry, type Oplog } from '#oplog/dag.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
 
-// The library a track goes into, with the writer key and the store behind it.
+// The library a track goes into, with the writer key, the store behind it,
+// and the capability the write is made under when the writer is not an owner.
 export interface TrackTarget {
   readonly oplog: Oplog
   readonly key_pair: KeyPair
   readonly content_store: ContentStore
+  readonly capability_id?: string | undefined
 }
 
 const describe_entry = ({ entry, existing }: { entry: VerifiedEntry, existing: boolean }): IngestedTrack | undefined =>
@@ -66,7 +68,7 @@ export const put_track = async ({ target, content, tags, timestamp }: {
     ...(timestamp === undefined ? {} : { timestamp }),
     ...(tags === undefined ? {} : { tags })
   })
-  const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope }) })
+  const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope, capability_id: target.capability_id }) })
   // f: the entry block, pinned non-recursively.
   await content_store.put(entry.hash, entry.bytes)
   await content_store.pin(entry.hash)

@@ -1,5 +1,5 @@
 // The contract: record-docs spec/7-http-api.yaml, vendored byte-identical
-// beside this file (record-docs v1.0.5, fe70f1d). It is served as the docs and
+// beside this file (record-docs v1.1.0, 7afd40c). It is served as the docs and
 // validates every request, and responses too when asked (the tests ask).
 // No schema is restated in code; a contract change lands in record-docs first.
 import { readFileSync } from 'node:fs';
@@ -25,6 +25,9 @@ export const create_validator = ({ spec, validate_responses }) => OpenApiValidat
     apiSpec: structuredClone(spec),
     validateRequests: true,
     validateResponses: validate_responses,
+    // The bearer scheme is enforced by authenticate_requests, which a node
+    // bound to loopback may leave off (§8.7.3).
+    validateSecurity: false,
     ignorePaths: /^\/api\/(docs|ws)(\/|$)/,
     // Its built-in uploader puts a lone file in the body as a string, not a
     // one-element array, so a single-file upload fails the spec's `files:

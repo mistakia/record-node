@@ -17,10 +17,19 @@ export const tracks_router = (peer) => {
         }));
     });
     router.post('/', async (req, res) => {
-        res.json(await peer.add_track(req.body.content_cid));
+        const { content_cid, library_address, capability_id } = req.body;
+        res.json(await peer.add_track({ content_cid, library_address, capability_id }));
     });
     router.delete('/:id', async (req, res) => {
-        await peer.remove_track(req.params.id);
+        await peer.remove_track({ track_id: req.params.id, library_address: query_value(req, 'library_address') });
+        res.status(204).end();
+    });
+    router.post('/:cid/pin', async (req, res) => {
+        await peer.pin_track(req.params.cid);
+        res.status(204).end();
+    });
+    router.delete('/:cid/pin', async (req, res) => {
+        await peer.unpin_track(req.params.cid);
         res.status(204).end();
     });
     return router;

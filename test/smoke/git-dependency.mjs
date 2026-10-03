@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert'
 
 import { create_peer, start_peer, stop_peer } from 'record-node'
 
-const F7_TRACK_ID = '20599ccf9f5efb8cc1d6e2ae464471f6f8fab82066a42579b07024d7673b1005'
+const F7_TRACK_ID = '13f92b74d4d33accd2424b87914fbc6d087b7557fb2166330756bdcddcd8b6db'
 const QUERY = { offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' }
 const NETWORK = { listen: ['/ip4/127.0.0.1/tcp/0'], bootstrap: [], mdns: false, dht: false }
 const [fixture_path] = process.argv.slice(2)

@@ -69,7 +69,9 @@ afterAll(async () => {
 describe('single peer', () => {
   test('creates its own library on start', async () => {
     const libraries = await get_json<Array<{ address: string, is_own: boolean, track_count: number }>>('/libraries')
-    expect(libraries).toEqual([expect.objectContaining({ address: peer.identity().own_address, is_own: true, track_count: 0 })])
+    // The own recordstore and listens libraries (§4.8.3); never the identity library.
+    expect(libraries.map(({ address }) => address).sort()).toEqual([peer.identity().own_address, peer.identity().listens_address].sort())
+    expect(libraries).toContainEqual(expect.objectContaining({ address: peer.identity().own_address, is_own: true, track_count: 0 }))
   })
 
   test('ingests the F7 file uploaded to /import/file and serves it back', async () => {
@@ -129,5 +131,31 @@ describe('single peer', () => {
     const imported = await post_json('/identity/import', { private_key })
     expect(await imported.json()).toMatchObject({ own_library_address: peer.identity().own_address })
     expect((await get_json<TrackList>('/tracks')).total).toBe(2)
+  })
+
+  test('serves the v1.1 identity, own-library, meta-log, policy, and capability routes', async () => {
+    const identity = await get_json<{ public_key: string, meta_log_address: string, own_library_address: string }>('/identity')
+    expect(identity).toEqual({ public_key: peer.identity().key_pair.public_key, meta_log_address: peer.identity().identity_address, own_library_address: peer.identity().own_address })
+    const created = await post_json('/identity/libraries', { discriminator: 'shared', about: { name: 'Shared' } })
+    expect(created.status).toBe(201)
+    const { address } = await created.json() as { address: string }
+    const page = await get_json<{ items: Array<{ type: string, record: { address?: string } }>, total: number }>('/identity/meta-log?type=library&current_only=true')
+    expect(page.items.map(({ record }) => record.address)).toContain(address)
+    const policy = await get_json<{ mode: string }>(`/libraries/${encodeURIComponent(address)}/replication-policy`)
+    expect(policy.mode).toBe('full')
+    const grantee = { type: 'key', key: '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798' }
+    const issued = await post_json(`/libraries/${encodeURIComponent(address)}/capabilities`, { grantee, actions: ['library.append_track'] })
+    expect(issued.status).toBe(201)
+    const { capability_id } = await issued.json() as { capability_id: string }
+    const revoked = await fetch(url(`/libraries/${encodeURIComponent(address)}/capabilities/${encodeURIComponent(capability_id)}`), { method: 'DELETE' })
+    expect(revoked.status).toBe(204)
+    expect(await get_json<Array<{ status: string }>>(`/libraries/${encodeURIComponent(address)}/capabilities`)).toEqual([expect.objectContaining({ capability_id, status: 'revoked' })])
+    // Two active own recordstores: a write must now name its target.
+    const untargeted = await post_json('/tags', { track_id: f7.track_id, tag: 'x' })
+    expect(untargeted.status).toBe(400)
+    expect((await fetch(url(`/identity/libraries/${encodeURIComponent(address)}`), { method: 'DELETE' })).status).toBe(204)
+    expect((await post_json('/tags', { track_id: f7.track_id, tag: 'x' })).status).toBe(200)
+    expect(events.filter(({ type }) => type.startsWith('identity:') || type.startsWith('capability:')).length).toBeGreaterThan(0)
+    expect(events.filter((event) => !event_matches_spec(event))).toEqual([])
   })
 })
