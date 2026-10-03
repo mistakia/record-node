@@ -6,6 +6,8 @@ export type ProtocolErrorCode =
   | 'size_exceeded'
   | 'invalid_shape'
   | 'invalid_cid'
+  | 'cid_mismatch'
+  | 'content_unavailable'
   | 'invalid_public_key'
   | 'invalid_private_key'
   | 'test_key_refused'

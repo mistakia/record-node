@@ -1,6 +1,6 @@
 // Entry version, pinning, and query database (§4.1.1, §4.6, §4.7).
-// §4.1.1 runs against src/entry and src/oplog. Pinning waits for the content
-// store, and derivability for the query database.
+// §4.1.1 runs against src/entry and src/oplog. Pinning waits for the library
+// lifecycle, and derivability for the query database.
 
 import { describe, expect, test } from 'bun:test'
 

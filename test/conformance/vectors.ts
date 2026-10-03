@@ -1,11 +1,14 @@
 // Conformance vectors ported from record-docs spec/fixtures (Record Protocol
-// v1.0.2). Inputs and expected outputs are typed constants; vectors.test.ts
+// v1.0.4). Inputs and expected outputs are typed constants; vectors.test.ts
 // recomputes every expected value with the same libraries the generators use
-// (@ipld/dag-cbor, @noble/curves, @noble/hashes, multiformats), so a porting
-// error fails here rather than in a later stage's module test.
+// (@ipld/dag-cbor, @noble/curves, @noble/hashes, multiformats,
+// ipfs-unixfs-importer), so a porting error fails here rather than in a later
+// stage's module test.
 //
-// F7 (audio pipeline) needs fpcalc and ffmpeg and lands with the single-peer
-// stage.
+// F7's fpcalc and ffmpeg steps are not recomputed here; its fixture FLAC is
+// already tag-free, so its raw bytes carry the audio identity and CID.
+
+import { fileURLToPath } from 'node:url'
 
 export const TEST_PRIVATE_KEY_HEX =
   '0000000000000000000000000000000000000000000000000000000000000001'
@@ -247,3 +250,22 @@ export const heads_message_vector = {
 } as const
 
 export const NETWORK_MESSAGE_SIZE_BOUND = 256 * 1024
+
+// F7 — §5.5.1 / §6.1.5 / §6.2.4 audio pipeline smoke. The fixture is
+// record-docs spec/fixtures/audio/sine-sweep-5s.flac, vendored byte-identical.
+export const audio_pipeline_vector = {
+  fixture_path: fileURLToPath(new URL('../fixtures/audio/sine-sweep-5s.flac', import.meta.url)),
+  fingerprint: 'AQAAE0mUaEkSZSoAAAAAAAAA',
+  track_id: '20599ccf9f5efb8cc1d6e2ae464471f6f8fab82066a42579b07024d7673b1005',
+  audio_identity_sha256: '8b96e6aa53240d01736fb444f55ce8184e78d32dfb2013ad48f14c3592308d69',
+  audio_cid: 'zb2rhg3BKZhTYqV2eSH7d2LXvjDdfyJUX9izYRre6NSG4z5WG'
+} as const
+
+// F7 multi-block input: byte[i] = i mod 251, where import profiles diverge.
+export const multi_block_vector = {
+  byte_length: 2 * 1024 * 1024 + 1,
+  cid: 'zdj7WZqdXsKQ1j19s9xaxhLp5oFvFF51WaWK7BVLgbZvB46n5'
+} as const
+
+export const build_multi_block_input = (byte_length: number = multi_block_vector.byte_length): Uint8Array =>
+  Uint8Array.from({ length: byte_length }, (_, index) => index % 251)

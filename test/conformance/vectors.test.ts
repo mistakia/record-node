@@ -11,6 +11,8 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js'
 import { CID } from 'multiformats/cid'
 import { create as create_digest } from 'multiformats/hashes/digest'
 import { base58btc } from 'multiformats/bases/base58'
+import { importer } from 'ipfs-unixfs-importer'
+import { readFileSync } from 'node:fs'
 
 import {
   TEST_PRIVATE_KEY_HEX,
@@ -18,6 +20,8 @@ import {
   ENVELOPE_TIMESTAMP,
   NETWORK_MESSAGE_SIZE_BOUND,
   ac_chain_vector,
+  audio_pipeline_vector,
+  build_multi_block_input,
   build_race_entry,
   child_entry_vector,
   content_cid_vector,
@@ -25,6 +29,7 @@ import {
   envelope_vectors,
   heads_message_vector,
   loaded_about_entry_vector,
+  multi_block_vector,
   sha256_vector,
   signed_entry_vector,
   signing_vector
@@ -32,6 +37,13 @@ import {
 
 const SHA3_512_CODE = 0x14
 const utf8 = (text: string) => new TextEncoder().encode(text)
+
+// The generator's import: the profile alone, blocks discarded.
+const profile_cid = async (bytes: Uint8Array) => {
+  let root
+  for await (const { cid } of importer([{ content: bytes }], { put: async (cid) => cid }, { profile: 'unixfs-v1-2025' })) root = cid
+  return root?.toString(base58btc)
+}
 
 const sha3_cid = (bytes: Uint8Array) =>
   CID.createV1(dag_cbor_code, create_digest(SHA3_512_CODE, sha3_512(bytes)))
@@ -147,5 +159,13 @@ describe('fixture port self-check', () => {
     expect(JSON.parse(json)).toEqual(message)
     expect(Buffer.byteLength(heads_message_vector.json)).toBe(heads_message_vector.json_byte_length)
     expect(heads_message_vector.json_byte_length).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)
+  })
+
+  test('F7 §5.5.1 audio and multi-block import CIDs', async () => {
+    const audio = readFileSync(audio_pipeline_vector.fixture_path)
+    expect(bytesToHex(sha256(utf8(audio_pipeline_vector.fingerprint)))).toBe(audio_pipeline_vector.track_id)
+    expect(bytesToHex(sha256(audio))).toBe(audio_pipeline_vector.audio_identity_sha256)
+    expect(await profile_cid(audio)).toBe(audio_pipeline_vector.audio_cid)
+    expect(await profile_cid(build_multi_block_input())).toBe(multi_block_vector.cid)
   })
 })

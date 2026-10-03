@@ -1,5 +1,5 @@
 // Access-control chain and append verification (§3.5), against
-// src/access-control and src/oplog. Pinning stubs wait for the content store.
+// src/access-control and src/oplog. Pinning stubs wait for the library lifecycle.
 
 import { describe, expect, test } from 'bun:test'
 

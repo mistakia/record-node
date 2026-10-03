@@ -1,14 +1,34 @@
 // Discovery, announcements, heads exchange, merge, disconnect, and profile (§5).
 // The F6 message vectors run against src/replication/messages.ts and
-// src/entry; the network behaviour lands with the replication stage.
+// src/entry, and the F7 import vectors against the Helia content store; the
+// network behaviour lands with the replication stage.
 
 import { describe, expect, test } from 'bun:test'
 
+import { create_helia_content_store } from '#adapter/libp2p/content-store.ts'
 import { compute_about_id } from '#entry/id.ts'
 import { assert_signed_entry_shape } from '#entry/signed.ts'
 import { build_loaded_about_entry, encode_heads_message } from '#replication/messages.ts'
+import { create_offline_helia } from '#test/helpers/helia.ts'
 import { content_cid_of } from '#test/helpers/library.ts'
-import { heads_message_vector, loaded_about_entry_vector, NETWORK_MESSAGE_SIZE_BOUND, signed_entry_vector } from './vectors.ts'
+import {
+  audio_pipeline_vector,
+  build_multi_block_input,
+  heads_message_vector,
+  loaded_about_entry_vector,
+  multi_block_vector,
+  NETWORK_MESSAGE_SIZE_BOUND,
+  signed_entry_vector
+} from './vectors.ts'
+
+const import_with_helia = async (source: string | Uint8Array) => {
+  const helia = await create_offline_helia()
+  try {
+    return await create_helia_content_store({ helia }).import_blob(source)
+  } finally {
+    await helia.stop()
+  }
+}
 
 describe('network-protocol', () => {
   test.todo('§5.2 [MUST] the peer bootstraps from any one discovery mechanism alone', () => {})
@@ -69,4 +89,10 @@ describe('network-protocol', () => {
   test.todo('§5.5 [MUST] the peer implements the §5.5.1 libp2p profile', () => {})
   test.todo('§5.5.1 [MUST] the pubsub router is gossipsub', () => {})
   test.todo('§5.5.1 [MUST] the swarm uses the Record pre-shared key', () => {})
+  test('§5.5.1 [vector] F7 the fixture audio imports with unixfs-v1-2025 to its base58btc content.hash', async () => {
+    expect(await import_with_helia(audio_pipeline_vector.fixture_path)).toBe(audio_pipeline_vector.audio_cid)
+  })
+  test('§5.5.1 [vector] F7 a 2 MiB+1 blob imports with unixfs-v1-2025 to the multi-block CID', async () => {
+    expect(await import_with_helia(build_multi_block_input())).toBe(multi_block_vector.cid)
+  })
 })
