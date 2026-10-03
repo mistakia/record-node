@@ -8,7 +8,6 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { Network } from '#fabric/network.ts'
 import { download_to_file, type Download } from '#ingest/download.ts'
-import { ingest_local_file } from '#ingest/pipeline-local.ts'
 import { verify_toolchain } from '#ingest/toolchain.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { create_projector } from '#query-db/projector.ts'
@@ -21,12 +20,12 @@ import { create_track_methods } from './api-tracks.ts'
 import { create_audio_source } from './audio.ts'
 import { create_blob_keeper } from './blobs.ts'
 import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
-import { drain_queues, ingest_into, refuse_when_stopping, require_identity, require_toolchain, serialise_write, type PeerContext } from './context.ts'
+import { drain_queues, ingest_into, refuse_when_stopping, require_identity, serialise_write, type PeerContext } from './context.ts'
 import { describe_library } from './describe.ts'
 import { create_event_bus } from './events.ts'
 import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key, peer_id_of, save_key_pair, unmarshal_private_key } from './identity.ts'
 import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_sync } from './identity-library.ts'
-import { import_files, import_url } from './imports.ts'
+import { import_files, import_url, local_file_phases } from './imports.ts'
 import { create_library_manager } from './library.ts'
 import { project_entry_events } from './notify.ts'
 import { default_own_library, listens_library, OWN_LIBRARY_NAME } from './ownership.ts'
@@ -131,6 +130,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     ingests: Promise.resolve(),
     stopping: false,
     known: { ready: false, links: new Set(), libraries: new Map() },
+    prepares: { active: 0, waiting: [], in_flight: new Set() },
     policies: new Map(await libraries.load_policies()),
     blobs: undefined as never
   }
@@ -150,8 +150,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     },
     ingest_file: async (file_path) => {
       refuse_when_stopping(context)
-      return await ingest_into(context, resolve_write_target(context, {}), async (target) =>
-        await ingest_local_file({ file_path, target, toolchain: await require_toolchain(context) }))
+      return await ingest_into(context, resolve_write_target(context, {}), local_file_phases(context, file_path))
     },
     ...create_track_methods(context),
     ...create_library_methods(context),

@@ -42,6 +42,11 @@ export interface PeerContext {
         links: Set<string>;
         libraries: Map<string, boolean>;
     };
+    readonly prepares: {
+        active: number;
+        waiting: Array<() => void>;
+        in_flight: Set<Promise<void>>;
+    };
     readonly policies: Map<string, StoredPolicy>;
     blobs: BlobKeeper;
 }
@@ -50,4 +55,12 @@ export declare const refuse_when_stopping: (context: PeerContext) => void;
 export declare const serialise_write: <T>(context: PeerContext, job: () => Promise<T>) => Promise<T>;
 export declare const drain_queues: (context: PeerContext) => Promise<void>;
 export declare const require_toolchain: (context: PeerContext) => Promise<Toolchain>;
-export declare const ingest_into: (context: PeerContext, target: WriteTarget, run: (target: TrackTarget) => Promise<IngestedTrack>) => Promise<IngestedTrack>;
+export declare const ingest_into: <P>(context: PeerContext, target: WriteTarget, { prepare, commit, blobs }: {
+    prepare: (target: TrackTarget) => Promise<P>;
+    commit: (input: {
+        target: TrackTarget;
+        prepared: P;
+        release: (cids: readonly string[]) => Promise<void>;
+    }) => Promise<IngestedTrack>;
+    blobs: (prepared: P) => readonly string[];
+}) => Promise<IngestedTrack>;

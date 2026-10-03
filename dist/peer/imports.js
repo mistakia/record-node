@@ -3,8 +3,8 @@
 // a failure carries the spec's Error envelope.
 import { rm } from 'node:fs/promises';
 import { create_importer } from '#ingest/import.ts';
-import { ingest_local_file } from '#ingest/pipeline-local.ts';
-import { ingest_resolved_entry } from '#ingest/pipeline-url.ts';
+import { commit_local_file, prepare_local_file, prepared_blobs } from '#ingest/pipeline-local.ts';
+import { commit_resolved_entry, prepare_resolved_entry, source_blobs } from '#ingest/pipeline-url.ts';
 import { find_existing_track } from '#ingest/put-track.ts';
 import { find_track_by_source, get_track } from '#query-db/queries.ts';
 import { ProtocolError } from '#types/errors.ts';
@@ -77,6 +77,12 @@ const relay_events = ({ context, importer, failures, target }) => {
     return () => { for (const unsubscribe of unsubscribers)
         unsubscribe(); };
 };
+// The two phases of a local file ingest (§6.4.1), for ingest_into.
+export const local_file_phases = (context, file_path) => ({
+    prepare: async (target) => await prepare_local_file({ file_path, target, toolchain: await require_toolchain(context) }),
+    commit: async ({ target, prepared, release }) => await commit_local_file({ prepared, target, release }),
+    blobs: prepared_blobs
+});
 // Uploaded files belong to ingest once accepted, and are removed when done.
 // The target is resolved before the import is accepted, so a write the
 // identity cannot make is the request's error, not the files'.
@@ -86,7 +92,7 @@ export const import_files = (context, { paths, library_address, capability_id })
     const importer = create_importer({
         ingest_file: async (file_path) => await failures.ingest(async () => {
             try {
-                return await ingest_into(context, target, async (track_target) => await ingest_local_file({ file_path, target: track_target, toolchain: await require_toolchain(context) }));
+                return await ingest_into(context, target, local_file_phases(context, file_path));
             }
             finally {
                 await rm(file_path, { force: true });
@@ -112,13 +118,17 @@ export const import_url = async (context, { url, library_address, capability_id 
     const failures = classify_failures();
     const importer = create_importer({
         ingest_file: async (_url, index) => await failures.ingest(async () => {
-            return await ingest_into(context, target, async (track_target) => await ingest_resolved_entry({
-                entry: entries[index],
-                target: track_target,
-                toolchain: await require_toolchain(context),
-                find_by_source: find_by_source(target, context),
-                download: context.download
-            }));
+            return await ingest_into(context, target, {
+                prepare: async (track_target) => await prepare_resolved_entry({
+                    entry: entries[index],
+                    target: track_target,
+                    toolchain: await require_toolchain(context),
+                    find_by_source: find_by_source(target, context),
+                    download: context.download
+                }),
+                commit: async ({ target: track_target, prepared, release }) => await commit_resolved_entry({ source: prepared, target: track_target, release }),
+                blobs: source_blobs
+            });
         })
     });
     const unsubscribe = relay_events({ context, importer, failures, target });

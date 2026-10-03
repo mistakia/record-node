@@ -3,7 +3,6 @@
 // surface.
 import { readFileSync } from 'node:fs';
 import { download_to_file } from '#ingest/download.ts';
-import { ingest_local_file } from '#ingest/pipeline-local.ts';
 import { verify_toolchain } from '#ingest/toolchain.ts';
 import { generate_key_pair } from '#identity/key-pair.ts';
 import { create_projector } from '#query-db/projector.ts';
@@ -14,12 +13,12 @@ import { create_track_methods } from "./api-tracks.js";
 import { create_audio_source } from "./audio.js";
 import { create_blob_keeper } from "./blobs.js";
 import { data_paths, resolve_peer_config } from "./config.js";
-import { drain_queues, ingest_into, refuse_when_stopping, require_identity, require_toolchain, serialise_write } from "./context.js";
+import { drain_queues, ingest_into, refuse_when_stopping, require_identity, serialise_write } from "./context.js";
 import { describe_library } from "./describe.js";
 import { create_event_bus } from "./events.js";
 import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key, peer_id_of, save_key_pair, unmarshal_private_key } from "./identity.js";
 import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_sync } from "./identity-library.js";
-import { import_files, import_url } from "./imports.js";
+import { import_files, import_url, local_file_phases } from "./imports.js";
 import { create_library_manager } from "./library.js";
 import { project_entry_events } from "./notify.js";
 import { default_own_library, listens_library, OWN_LIBRARY_NAME } from "./ownership.js";
@@ -91,6 +90,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         ingests: Promise.resolve(),
         stopping: false,
         known: { ready: false, links: new Set(), libraries: new Map() },
+        prepares: { active: 0, waiting: [], in_flight: new Set() },
         policies: new Map(await libraries.load_policies()),
         blobs: undefined
     };
@@ -109,7 +109,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         },
         ingest_file: async (file_path) => {
             refuse_when_stopping(context);
-            return await ingest_into(context, resolve_write_target(context, {}), async (target) => await ingest_local_file({ file_path, target, toolchain: await require_toolchain(context) }));
+            return await ingest_into(context, resolve_write_target(context, {}), local_file_phases(context, file_path));
         },
         ...create_track_methods(context),
         ...create_library_methods(context),

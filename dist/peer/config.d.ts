@@ -10,6 +10,7 @@ export interface PeerConfig {
     readonly fpcalc_path: string;
     readonly ytdlp_path?: string | undefined;
     readonly allow_toolchain_mismatch: boolean;
+    readonly ingest_prepare_concurrency: number;
     readonly traversal_concurrency: number;
     readonly traversal_timeout_ms: number;
     readonly audio_fetch_timeout_ms: number;

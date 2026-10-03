@@ -74,7 +74,12 @@ export const create_track_methods = (context) => ({
         const target = resolve_write_target(context, { library_address, capability_id });
         let track_id;
         try {
-            track_id = (await ingest_into(context, target, async (track_target) => await ingest_cid({ content_cid, target: track_target }))).track_id;
+            // Nothing to prepare: the content object is already stored.
+            track_id = (await ingest_into(context, target, {
+                prepare: async () => undefined,
+                commit: async ({ target: track_target }) => await ingest_cid({ content_cid, target: track_target }),
+                blobs: () => []
+            })).track_id;
         }
         catch (error) {
             if (error instanceof ProtocolError && error.code === 'content_unavailable')

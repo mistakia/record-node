@@ -84,7 +84,13 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         const handle = { chain, oplog: create_oplog({ chain }), pins: new Map() };
         await pin_into({ content_store, pins: handle.pins, items: chain_pins(chain) });
         const heads = (await state_store.load()).heads.get(library_address) ?? [];
-        merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) });
+        const loaded = merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) });
+        // A stored entry that no longer verifies, under a rule a later version
+        // added, drops out of the oplog; that is never silent.
+        const [first] = loaded.rejected;
+        if (first !== undefined) {
+            process.emitWarning(`library ${library_address}: ${loaded.rejected.length} stored entries failed verification at open and were left out; first ${first.hash}: ${first.error.code} ${first.error.message}`);
+        }
         await pin_entries(handle, handle.oplog.entries.values());
         libraries.set(library_address, handle);
         const actual_heads = [...handle.oplog.heads].sort();
@@ -170,6 +176,7 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             if (handle !== undefined)
                 await pin_into({ content_store, pins: handle.pins, items: cids.map((cid) => [cid, true]) });
         }),
+        release_unheld: async (cids) => await exclusive_pins(async () => { await release(undefined, '', cids); }),
         release_blobs: async ({ library_address, cids }) => await exclusive_pins(async () => {
             const handle = libraries.get(library_address);
             if (handle !== undefined)

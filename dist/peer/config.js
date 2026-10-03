@@ -16,6 +16,7 @@ export const DEFAULT_PEER_CONFIG = Object.freeze({
     ffmpeg_path: 'ffmpeg',
     fpcalc_path: 'fpcalc',
     allow_toolchain_mismatch: false,
+    ingest_prepare_concurrency: 8,
     traversal_concurrency: 4,
     traversal_timeout_ms: 30_000,
     audio_fetch_timeout_ms: 30_000,
@@ -62,7 +63,7 @@ export const resolve_peer_config = (config = {}) => {
     }
     if (typeof resolved.allow_toolchain_mismatch !== 'boolean')
         throw new TypeError('allow_toolchain_mismatch must be true or false');
-    for (const field of ['traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'blob_fetch_timeout_ms', 'heads_interval_ms', 'announce_interval_ms']) {
+    for (const field of ['ingest_prepare_concurrency', 'traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'blob_fetch_timeout_ms', 'heads_interval_ms', 'announce_interval_ms']) {
         if (!Number.isSafeInteger(resolved[field]) || resolved[field] <= 0) {
             throw new RangeError(`${field} must be a positive integer, not ${String(resolved[field])}`);
         }
