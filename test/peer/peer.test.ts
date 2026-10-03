@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ResolverError } from 'record-resolver'
 
 import { data_paths } from '#peer/config.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
@@ -131,5 +132,13 @@ describe('resolver', () => {
     for (const url of ['http://127.0.0.1:5001/api/v0/id', 'http://localhost/', 'http://169.254.169.254/latest/meta-data/']) {
       await expect(resolve(url)).rejects.toMatchObject({ code: 'invalid' })
     }
+  })
+
+  // record-resolver's own tests drive a real yt-dlp into a redirect to
+  // loopback; this pins the mapping of the refusal they produce.
+  test('a destination yt-dlp\'s guarded proxy refused is the caller\'s error too', async () => {
+    const refused = new ResolverError({ code: 'BLOCKED_DESTINATION', message: 'yt-dlp was refused a connection: 127.0.0.1 is a loopback address', url: 'https://example.com/redirects-inward' })
+    const resolve = refuse_input_errors(async () => { throw refused })
+    await expect(resolve('https://example.com/redirects-inward')).rejects.toMatchObject({ code: 'invalid', message: refused.message })
   })
 })

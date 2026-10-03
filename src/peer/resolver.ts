@@ -1,5 +1,7 @@
 // URL resolution through record-resolver (§6.4.2 step 1). A URL the resolver
-// refuses as input is the caller's error; every other failure is the node's.
+// refuses as input is the caller's error, including one whose redirect or
+// extractor fetch yt-dlp's guarded proxy refused as a non-public destination;
+// every other failure is the node's.
 
 import { resolve_url, ResolverError, type ResolvedEntry, type ResolverErrorCode } from 'record-resolver'
 
