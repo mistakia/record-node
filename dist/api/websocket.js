@@ -3,17 +3,23 @@
 // no state beyond the open clients; a reconnecting client reads current
 // state over REST.
 import { WebSocketServer } from 'ws';
+import { origin_allowed } from "./middleware.js";
 export const WS_PATH = '/api/ws';
 const refuse_upgrade = (socket, status) => {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 };
-export const attach_event_bridge = ({ http_server, peer, authenticate }) => {
+export const attach_event_bridge = ({ http_server, peer, authenticate, cors_origins }) => {
     const wss = new WebSocketServer({ noServer: true });
     const clients = new Set();
     const on_upgrade = async (req, socket, head) => {
         const url = new URL(req.url ?? '/', 'http://localhost');
         if (url.pathname !== WS_PATH) {
             refuse_upgrade(socket, '404 Not Found');
+            return;
+        }
+        // A WebSocket handshake carries no CORS check, so the origin rule is applied here.
+        if (!origin_allowed(cors_origins, req.headers.origin)) {
+            refuse_upgrade(socket, '403 Forbidden');
             return;
         }
         if (authenticate !== undefined && !(await authenticate(url.searchParams.get('token') ?? undefined))) {

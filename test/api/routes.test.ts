@@ -191,14 +191,30 @@ describe('api: server', () => {
   })
 })
 
+describe('api: origin allowlist', () => {
+  test('an empty allowlist refuses every browser origin, preflight-free uploads included, and serves requests with no Origin', async () => {
+    const locked = await start_test_server({ cors_origins: [] })
+    try {
+      expect((await fetch(locked.url('/settings'))).status).toBe(200)
+      await expect_error(await fetch(locked.url('/settings'), { headers: { origin: 'http://localhost:8080' } }), 403, 'FORBIDDEN')
+      const form = new FormData()
+      form.append('files', new Blob([new Uint8Array(4)]), 'a.flac')
+      await expect_error(await fetch(locked.url('/import/file'), { method: 'POST', body: form, headers: { origin: 'https://evil.example' } }), 403, 'FORBIDDEN')
+    } finally {
+      await locked.stop()
+    }
+  })
+})
+
 describe('api: hosted mode', () => {
-  test('a bearer-token verifier gates HTTP requests and a CORS whitelist gates origins', async () => {
+  test('a bearer-token verifier gates HTTP requests and a CORS allowlist gates origins', async () => {
     const hosted = await start_test_server({ authenticate: (token) => token === 'good', cors_origins: ['https://app.example'] })
     try {
       await expect_error(await fetch(hosted.url('/settings')), 401, 'UNAUTHORIZED')
-      const response = await fetch(hosted.url('/settings'), { headers: { authorization: 'Bearer good', origin: 'https://evil.example' } })
-      expect(response.status).toBe(200)
-      expect(response.headers.get('access-control-allow-origin')).toBeNull()
+      await expect_error(await fetch(hosted.url('/settings'), { headers: { authorization: 'Bearer good', origin: 'https://evil.example' } }), 403, 'FORBIDDEN')
+      const allowed = await fetch(hosted.url('/settings'), { headers: { authorization: 'Bearer good', origin: 'https://app.example' } })
+      expect(allowed.status).toBe(200)
+      expect(allowed.headers.get('access-control-allow-origin')).toBe('https://app.example')
     } finally {
       await hosted.stop()
     }

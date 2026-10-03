@@ -14,10 +14,12 @@ export const default_data_dir = (): string => join(homedir(), '.record')
 export interface NodeConfig {
   readonly port: number
   readonly host: string
+  // The origins a browser page may call the API from; unset allows all.
+  readonly cors_origins?: readonly string[] | undefined
   readonly peer: PeerConfig
 }
 
-const FILE_KEYS = new Set(['port', 'host', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
 
 const read_config_file = async (path: string): Promise<Record<string, unknown>> => {
   const value: unknown = JSON.parse(await readFile(path, 'utf8'))
@@ -33,6 +35,12 @@ const port_of = (value: unknown): number => {
   return port as number
 }
 
+const cors_origins_of = (value: unknown): readonly string[] | undefined => {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || !value.every((origin) => typeof origin === 'string')) throw new TypeError('cors_origins must be an array of origin strings')
+  return Object.freeze([...value as string[]])
+}
+
 export const load_config = async ({ config_path, port, data_dir, env = process.env }: {
   config_path?: string | undefined
   port?: string | number | undefined
@@ -40,10 +48,11 @@ export const load_config = async ({ config_path, port, data_dir, env = process.e
   env?: Record<string, string | undefined>
 } = {}): Promise<NodeConfig> => {
   const path = config_path ?? env.RECORD_CONFIG
-  const { port: file_port, host, ...peer } = path === undefined ? {} : await read_config_file(path)
+  const { port: file_port, host, cors_origins, ...peer } = path === undefined ? {} : await read_config_file(path)
   return {
     port: port_of(port ?? file_port ?? DEFAULT_PORT),
     host: typeof host === 'string' ? host : DEFAULT_HOST,
+    cors_origins: cors_origins_of(cors_origins),
     peer: resolve_peer_config({ ...peer, data_dir: data_dir ?? (peer.data_dir as string | undefined) ?? default_data_dir() } as Partial<PeerConfig>)
   }
 }

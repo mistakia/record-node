@@ -36,6 +36,14 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ ffmpeg_path: 7 }) })).rejects.toThrow('ffmpeg_path')
   })
 
+  test('reads cors_origins, and refuses anything but an array of strings', async () => {
+    expect((await load_config({ env: {} })).cors_origins).toBeUndefined()
+    expect((await load_config({ config_path: config_file({ cors_origins: [] }) })).cors_origins).toEqual([])
+    expect((await load_config({ config_path: config_file({ cors_origins: ['app://record'] }) })).cors_origins).toEqual(['app://record'])
+    await expect(load_config({ config_path: config_file({ cors_origins: 'app://record' }) })).rejects.toThrow('cors_origins')
+    await expect(load_config({ config_path: config_file({ cors_origins: [1] }) })).rejects.toThrow('cors_origins')
+  })
+
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
     await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
     await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')

@@ -7,7 +7,7 @@ import { DEFAULT_PEER_CONFIG, resolve_peer_config } from '#peer/config.ts';
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_HOST = '127.0.0.1';
 export const default_data_dir = () => join(homedir(), '.record');
-const FILE_KEYS = new Set(['port', 'host', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
 const read_config_file = async (path) => {
     const value = JSON.parse(await readFile(path, 'utf8'));
     if (value === null || typeof value !== 'object' || Array.isArray(value))
@@ -23,12 +23,20 @@ const port_of = (value) => {
         throw new RangeError(`port must be 0-65535, not ${String(value)}`);
     return port;
 };
+const cors_origins_of = (value) => {
+    if (value === undefined)
+        return undefined;
+    if (!Array.isArray(value) || !value.every((origin) => typeof origin === 'string'))
+        throw new TypeError('cors_origins must be an array of origin strings');
+    return Object.freeze([...value]);
+};
 export const load_config = async ({ config_path, port, data_dir, env = process.env } = {}) => {
     const path = config_path ?? env.RECORD_CONFIG;
-    const { port: file_port, host, ...peer } = path === undefined ? {} : await read_config_file(path);
+    const { port: file_port, host, cors_origins, ...peer } = path === undefined ? {} : await read_config_file(path);
     return {
         port: port_of(port ?? file_port ?? DEFAULT_PORT),
         host: typeof host === 'string' ? host : DEFAULT_HOST,
+        cors_origins: cors_origins_of(cors_origins),
         peer: resolve_peer_config({ ...peer, data_dir: data_dir ?? peer.data_dir ?? default_data_dir() })
     };
 };

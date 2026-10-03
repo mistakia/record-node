@@ -14,11 +14,21 @@ export class ApiError extends Error {
         this.details = details;
     }
 }
-// Echo the Origin and allow credentials. Any origin locally; a whitelist when
-// cors_origins is set (hosted mode).
+// Whether a request's Origin may use the API: any origin when cors_origins is
+// unset, otherwise only those listed. A request with no Origin is not from a
+// browser page and always passes.
+export const origin_allowed = (cors_origins, origin) => origin === undefined || cors_origins === undefined || cors_origins.includes(origin);
+// Echo an allowed Origin and allow credentials. A request from any other
+// origin is refused outright, not just left without CORS headers: the headers
+// only stop a page reading the response, and a simple request such as a
+// multipart upload takes effect without a preflight.
 export const cors = (cors_origins) => (req, res, next) => {
     const origin = req.headers.origin;
-    if (origin !== undefined && (cors_origins === undefined || cors_origins.includes(origin))) {
+    if (!origin_allowed(cors_origins, origin)) {
+        next(new ApiError({ status: 403, code: 'FORBIDDEN', message: `origin not allowed: ${String(origin)}` }));
+        return;
+    }
+    if (origin !== undefined) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');

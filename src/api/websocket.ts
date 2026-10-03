@@ -8,7 +8,7 @@ import type { Duplex } from 'node:stream'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 import type { ApiPeer } from '#types/peer.ts'
-import type { Authenticate } from './middleware.ts'
+import { origin_allowed, type Authenticate } from './middleware.ts'
 
 export const WS_PATH = '/api/ws'
 
@@ -21,10 +21,11 @@ const refuse_upgrade = (socket: Duplex, status: string): void => {
   socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`)
 }
 
-export const attach_event_bridge = ({ http_server, peer, authenticate }: {
+export const attach_event_bridge = ({ http_server, peer, authenticate, cors_origins }: {
   http_server: Server
   peer: ApiPeer
   authenticate: Authenticate | undefined
+  cors_origins?: readonly string[] | undefined
 }): EventBridge => {
   const wss = new WebSocketServer({ noServer: true })
   const clients = new Set<WebSocket>()
@@ -33,6 +34,11 @@ export const attach_event_bridge = ({ http_server, peer, authenticate }: {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname !== WS_PATH) {
       refuse_upgrade(socket, '404 Not Found')
+      return
+    }
+    // A WebSocket handshake carries no CORS check, so the origin rule is applied here.
+    if (!origin_allowed(cors_origins, req.headers.origin)) {
+      refuse_upgrade(socket, '403 Forbidden')
       return
     }
     if (authenticate !== undefined && !(await authenticate(url.searchParams.get('token') ?? undefined))) {

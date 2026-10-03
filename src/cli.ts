@@ -29,7 +29,7 @@ const main = async (): Promise<void> => {
   const peer = await create_peer({ config: config.peer })
   await start_peer(peer)
   peer.context.toolchain?.catch((error: Error) => { console.warn(`ingest disabled: ${error.message}`) })
-  const server = await create_api_server({ peer, resolve: as_api_resolver(peer.context.resolve), port: config.port, host: config.host })
+  const server = await create_api_server({ peer, resolve: as_api_resolver(peer.context.resolve), port: config.port, host: config.host, cors_origins: config.cors_origins })
   console.log(`record-node listening on http://${config.host}:${server.port}/api (data ${config.peer.data_dir ?? 'in memory'})`)
 
   let stopping = false

@@ -89,6 +89,21 @@ describe('api: websocket', () => {
     }
   })
 
+  test('an upgrade from an origin off the allowlist is refused, and one with no origin is not', async () => {
+    const locked = await start_test_server({ cors_origins: ['app://record'] })
+    try {
+      const url = `ws://127.0.0.1:${locked.server.port}/api/ws`
+      // Bun's ws client ignores the origin option, so the header is set directly.
+      const refused = new WebSocket(url, { headers: { origin: 'https://evil.example' } })
+      const status = await new Promise((resolve) => { refused.once('unexpected-response', (_req, res) => { resolve(res.statusCode) }).once('error', () => { resolve('error') }) })
+      expect(status === 403 || status === 'error').toBe(true)
+      const { socket } = await connect(url)
+      socket.close()
+    } finally {
+      await locked.stop()
+    }
+  })
+
   test('stopping the server closes clients with 1001 and unsubscribes from the peer', async () => {
     const own = await start_test_server()
     const { socket } = await connect(`ws://127.0.0.1:${own.server.port}/api/ws`)

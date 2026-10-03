@@ -5,6 +5,7 @@ export declare const default_data_dir: () => string;
 export interface NodeConfig {
     readonly port: number;
     readonly host: string;
+    readonly cors_origins?: readonly string[] | undefined;
     readonly peer: PeerConfig;
 }
 export declare const load_config: ({ config_path, port, data_dir, env }?: {

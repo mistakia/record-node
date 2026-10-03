@@ -7,7 +7,7 @@ export interface ApiServerOptions {
     resolve: Resolver;
     port: number;
     host?: string;
-    cors_origins?: readonly string[];
+    cors_origins?: readonly string[] | undefined;
     authenticate?: Authenticate;
     log?: boolean;
     validate_responses?: boolean;

@@ -51,7 +51,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
     app.use('/api', no_cache, api);
     app.use(handle_errors((error) => { console.error(error); }));
     const http_server = createServer(app);
-    const bridge = attach_event_bridge({ http_server, peer, authenticate });
+    const bridge = attach_event_bridge({ http_server, peer, authenticate, cors_origins });
     try {
         await new Promise((resolve, reject) => {
             http_server.once('error', reject);

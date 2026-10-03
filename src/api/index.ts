@@ -37,8 +37,9 @@ export interface ApiServerOptions {
   port: number
   // Loopback by default: the local-first node is not a network service.
   host?: string
-  // Hosted mode: the allowed CORS origins, and a bearer-token verifier.
-  cors_origins?: readonly string[]
+  // The origins a browser page may call the API from (all when unset), and a
+  // bearer-token verifier (hosted mode).
+  cors_origins?: readonly string[] | undefined
   authenticate?: Authenticate
   // Request logging (default on).
   log?: boolean
@@ -90,7 +91,7 @@ export const create_api_server = async ({
   app.use(handle_errors((error) => { console.error(error) }))
 
   const http_server = createServer(app)
-  const bridge = attach_event_bridge({ http_server, peer, authenticate })
+  const bridge = attach_event_bridge({ http_server, peer, authenticate, cors_origins })
   try {
     await new Promise<void>((resolve, reject) => {
       http_server.once('error', reject)
