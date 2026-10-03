@@ -1,5 +1,7 @@
 // Request middleware and the error envelope. Every non-2xx body is
-// { error: { code, message, details? } } with a code from the spec's enum.
+// { error: { code, message, resolver_code?, details? } } with a code from the
+// spec's enum.
+import { ResolverError } from 'record-resolver';
 import { PeerError } from '#types/peer.ts';
 import { ProtocolError } from '#types/errors.ts';
 export class ApiError extends Error {
@@ -62,8 +64,10 @@ export const authenticate_requests = (authenticate) => async (req, _res, next) =
     }
     next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'a valid bearer token is required' }));
 };
-const send_error = (res, { status, code, message, details }) => {
-    res.status(status).json({ error: details === undefined ? { code, message } : { code, message, details } });
+const send_error = (res, { status, code, message, resolver_code, details }) => {
+    res.status(status).json({
+        error: { code, message, ...(resolver_code === undefined ? {} : { resolver_code }), ...(details === undefined ? {} : { details }) }
+    });
 };
 const PEER_ERRORS = {
     not_found: { status: 404, code: 'NOT_FOUND' },
@@ -89,6 +93,11 @@ export const handle_errors = (log_error) => (error, _req, res, _next) => {
     }
     else if (error instanceof PeerError) {
         send_error(res, { ...PEER_ERRORS[error.code], message: error.message });
+    }
+    else if (error instanceof ResolverError) {
+        // The peer refuses input errors as invalid, so any resolver error here
+        // is a failure on a URL the resolver accepted: the upstream's, not ours.
+        send_error(res, { status: 502, code: 'RESOLVER_FAILED', message: error.message, resolver_code: error.code });
     }
     else if (error instanceof ProtocolError) {
         send_error(res, { status: 400, code: 'VALIDATION_ERROR', message: error.message, details: [{ field: error.code, message: error.message }] });

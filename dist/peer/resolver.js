@@ -1,7 +1,8 @@
 // URL resolution through record-resolver (§6.4.2 step 1). A URL the resolver
 // refuses as input is the caller's error, including one whose redirect or
-// extractor fetch yt-dlp's guarded proxy refused as a non-public destination;
-// every other failure is the node's.
+// extractor fetch yt-dlp's guarded proxy refused as a non-public destination.
+// Every other failure stays a ResolverError, which the API answers with 502
+// RESOLVER_FAILED and the resolver's code.
 import { resolve_url, ResolverError } from 'record-resolver';
 import { PeerError } from '#types/peer.ts';
 const INPUT_ERRORS = new Set(['MISSING_URL', 'INVALID_URL', 'BLOCKED_DESTINATION', 'UNSUPPORTED_URL']);

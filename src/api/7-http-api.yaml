@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.1.0
+  version: 1.1.1
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -45,6 +45,16 @@ info:
     - Identity-library writes (library create and retire, link, unlink,
       pin, unpin) take no target (spec §4.8). Listens go to the
       identity's listens library (spec §4.8.3).
+
+    URL resolution (spec §6.4.2 step 1):
+    - A URL the resolver refuses as input (malformed, not http(s), a
+      non-public destination, no extractor) fails with 400
+      `VALIDATION_ERROR`.
+    - Any other resolver failure (the resolver binary is missing, exits
+      non-zero, times out, or prints unparseable output, as for an
+      unavailable format or an upstream 404) fails with 502
+      `RESOLVER_FAILED`. `resolver_code` carries the resolver's own
+      error code, e.g. `YTDLP_FAILED`.
 
     WebSocket bridge schemas are in the top-level `x-websocket-events`
     extension at the bottom of this document.
@@ -785,7 +795,8 @@ paths:
                     description: |
                       The identity's default own recordstore library: its
                       only active one, or else the one with discriminator
-                      `library`. `GET /identity/libraries` lists them all.
+                      `record`, record-node's v1.0 own library (spec
+                      §3.6.1). `GET /identity/libraries` lists them all.
                   meta_log_address:
                     type: string
                     description: Address of the identity library (spec §3.6.2).
@@ -985,6 +996,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/ResolverFailed' }
 
   /audio/{cid}:
     parameters:
@@ -1071,6 +1083,7 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/ResolverFailed' }
 
 components:
   parameters:
@@ -1152,6 +1165,13 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    ResolverFailed:
+      description: |
+        The resolver could not resolve a URL it accepted as input. The
+        error carries `RESOLVER_FAILED` and `resolver_code`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
     Error:
@@ -1175,10 +1195,16 @@ components:
                 - CAPABILITY_REVOKED
                 - TRACK_ID_COLLISION
                 - DEGENERATE_FINGERPRINT
+                - RESOLVER_FAILED
                 - INTERNAL_ERROR
             message:
               type: string
               description: Human-readable message suitable for UI display.
+            resolver_code:
+              type: string
+              description: |
+                With `RESOLVER_FAILED` only: the resolver's own error code,
+                e.g. `YTDLP_NOT_FOUND`, `YTDLP_FAILED`, `YTDLP_TIMEOUT`.
             details:
               type: array
               description: Optional structured per-field errors (validation).
@@ -1640,7 +1666,8 @@ components:
           type: string
           description: |
             The identity's default own recordstore library: its only
-            active one, or else the one with discriminator `library`.
+            active one, or else the one with discriminator `record`,
+            record-node's v1.0 own library (spec §3.6.1).
 
     IdentityExport:
       type: object

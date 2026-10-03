@@ -2,6 +2,7 @@
 // response validated against 7-http-api.yaml.
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { ResolverError } from 'record-resolver'
 
 import { CONTENT_CID, LINKED_ADDRESS, OWN_ADDRESS, TRACK_ID, UNKNOWN_ADDRESS } from './fake-peer.ts'
 import { library_path, post_json, start_test_server, type TestServer } from './server.ts'
@@ -158,6 +159,23 @@ describe('api: resolve', () => {
     await expect_error(no_source, 400, 'VALIDATION_ERROR')
     await expect_error(await fetch(api.url('/resolve?url=nope')), 400, 'VALIDATION_ERROR')
     await expect_error(await fetch(api.url('/resolve')), 400, 'VALIDATION_ERROR')
+  })
+
+  test('a resolver failure on /resolve and /import/url is 502 RESOLVER_FAILED with the resolver code', async () => {
+    const failure = new ResolverError({ code: 'YTDLP_FAILED', message: 'yt-dlp exited 1: ERROR: Requested format is not available' })
+    const failing = await start_test_server({ resolve: async () => { throw failure } })
+    failing.peer.import_url = async () => { throw failure }
+    try {
+      for (const response of [
+        await fetch(failing.url(`/resolve?url=${encodeURIComponent('https://www.youtube.com/watch?v=abc123')}`)),
+        await post_json(failing.url('/import/url'), { url: 'https://www.youtube.com/watch?v=abc123' })
+      ]) {
+        const body = await expect_error(response, 502, 'RESOLVER_FAILED')
+        expect(body.error).toMatchObject({ resolver_code: 'YTDLP_FAILED', message: failure.message })
+      }
+    } finally {
+      await failing.stop()
+    }
   })
 })
 
