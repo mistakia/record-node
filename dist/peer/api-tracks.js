@@ -1,8 +1,12 @@
 // ApiPeer track, tag, pin, and audio methods. Writes go to a write target:
 // an own library, or one written under a capability (chapter 7).
+import { encode_canonical } from '#encoding/canonical-bytes.ts';
+import { compute_cid_string } from '#encoding/cid.ts';
+import { assert_payload_size } from '#encoding/size-bounds.ts';
 import { build_track_envelope } from '#entry/envelope.ts';
 import { build_identity_del, build_identity_put, canonical_cid, identity_record_key } from '#entry/identity-record.ts';
 import { build_del_operation, build_put_operation, is_put } from '#entry/operations.ts';
+import { decode_payload, validate_track_content } from '#entry/payload.ts';
 import { ingest_cid } from '#ingest/pipeline-cid.ts';
 import { resolve_current_state } from '#oplog/current-state.ts';
 import { get_live_entry } from '#oplog/dag.ts';
@@ -49,6 +53,22 @@ const relabel = async (context, { track_id, library_address, capability_id, tags
     }
     return library_track(context, { address: target.address, track_id });
 });
+// content.tags with each given field set, or removed by null. The
+// fingerprint derives the track id, so it never changes.
+const corrected_tags = (current, changes) => {
+    const fingerprint = current.acoustid_fingerprint;
+    if (Object.hasOwn(changes, 'acoustid_fingerprint') && changes.acoustid_fingerprint !== fingerprint) {
+        throw new PeerError('invalid', 'acoustid_fingerprint derives the track id and cannot change');
+    }
+    const tags = { ...current };
+    for (const [name, value] of Object.entries(changes)) {
+        if (value === null)
+            delete tags[name];
+        else
+            tags[name] = value;
+    }
+    return tags;
+};
 // A pin keys on the canonical CID (§4.8.2); a string that is no CID is the
 // request's error.
 const pin_key_of = (cid) => {
@@ -88,6 +108,28 @@ export const create_track_methods = (context) => ({
         }
         return library_track(context, { address: target.address, track_id });
     },
+    // A content.tags correction (§2.4.3): a new content object for the same
+    // audio, PUT under the same id with the envelope's labels kept.
+    update_track: async ({ track_id, tags, library_address, capability_id }) => await serialise_write(context, async () => {
+        const target = resolve_write_target(context, { library_address, capability_id });
+        const envelope = live_envelope(target, track_id);
+        const stored = await context.content_store.get(envelope.content);
+        if (stored === undefined)
+            throw new PeerError('conflict', `the content payload of ${track_id} is not stored on this node`);
+        const content = validate_track_content(decode_payload(stored));
+        const bytes = encode_canonical(validate_track_content({ ...content, tags: corrected_tags(content.tags, tags) }));
+        assert_payload_size(bytes);
+        const content_cid = compute_cid_string(bytes);
+        if (content_cid !== envelope.content) {
+            await context.content_store.put(content_cid, bytes);
+            const payload = build_put_operation({
+                envelope: build_track_envelope({ id: envelope.id, content_cid, ...(envelope.tags === undefined ? {} : { tags: envelope.tags }) }),
+                capability_id: target.capability_id
+            });
+            await append_write(context, target, payload);
+        }
+        return library_track(context, { address: target.address, track_id });
+    }),
     // No capability action authorises a DEL (§3.5.6), so only an owner removes.
     remove_track: async ({ track_id, library_address }) => {
         await serialise_write(context, async () => {

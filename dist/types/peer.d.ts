@@ -230,6 +230,10 @@ export interface ApiPeer {
     add_track: (input: {
         content_cid: string;
     } & WriteTargetInput) => Promise<Track>;
+    update_track: (input: {
+        track_id: string;
+        tags: Readonly<Record<string, unknown>>;
+    } & WriteTargetInput) => Promise<Track>;
     remove_track: (input: {
         track_id: string;
         library_address?: string | undefined;

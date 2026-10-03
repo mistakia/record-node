@@ -26,6 +26,11 @@ export const tracks_router = (peer: ApiPeer): Router => {
     res.json(await peer.add_track({ content_cid, library_address, capability_id }))
   })
 
+  router.patch('/:id', async (req, res) => {
+    const { tags, library_address, capability_id } = req.body
+    res.json(await peer.update_track({ track_id: req.params.id, tags, library_address, capability_id }))
+  })
+
   router.delete('/:id', async (req, res) => {
     await peer.remove_track({ track_id: req.params.id, library_address: query_value<string>(req, 'library_address') })
     res.status(204).end()

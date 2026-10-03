@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.1.1
+  version: 1.2.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -177,6 +177,54 @@ paths:
         required: true
         description: Track id (sha256 of the AcoustID fingerprint, lowercase hex).
         schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    patch:
+      tags: [tracks]
+      summary: Correct a track's audio metadata.
+      description: |
+        Writes a new content object (spec §2.4.1) for the same audio, with
+        `content.tags` changed as the request says, and appends a PUT of it
+        under the same track id, which supersedes the current one (spec
+        §4.4.2). The audio blob and its size, `audio`, `artwork`,
+        `resolver`, and the envelope's labels (spec §2.4.3) are kept.
+
+        Each field of `tags` sets that tag, and `null` removes it.
+        `acoustid_fingerprint` derives the track id, so a request that
+        changes it fails with 400. A request that changes nothing appends
+        nothing. Under a capability the write needs `library.append_track`
+        (spec §3.5.6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tags]
+              properties:
+                tags:
+                  type: object
+                  minProperties: 1
+                  description: Tag names to new values, or `null` to remove the tag.
+                  additionalProperties: true
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
+      responses:
+        '200':
+          description: The track as the target library now holds it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            The target is retired, or the node does not hold the track's
+            current content payload, so it has nothing to correct.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [tracks]
       summary: Remove a track from an own library.

@@ -126,6 +126,13 @@ export const create_fake_peer = (): FakePeer => {
       if (input.content_cid !== CONTENT_CID) throw new PeerError('not_found', `content not found: ${input.content_cid}`)
       return track
     },
+    update_track: async (input) => {
+      record('update_track', input)
+      const current = known_track(input.track_id)
+      const title = input.tags.title
+      track = { ...current, ...(typeof title === 'string' ? { title } : {}) }
+      return track
+    },
     remove_track: async (input) => {
       record('remove_track', input)
       known_track(input.track_id)

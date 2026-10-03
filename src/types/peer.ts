@@ -271,6 +271,8 @@ export interface ApiPeer {
   // Adopts a track known by its content CID into the target library (§6.4.3).
   add_track: (input: { content_cid: string } & WriteTargetInput) => Promise<Track>
   // A DEL needs an own library: no capability action authorises one (§3.5.6).
+  // Corrects content.tags with a superseding PUT (§2.4.3); null removes a tag.
+  update_track: (input: { track_id: string, tags: Readonly<Record<string, unknown>> } & WriteTargetInput) => Promise<Track>
   remove_track: (input: { track_id: string, library_address?: string | undefined }) => Promise<void>
   // Identity-library pin records (§4.6.2), keyed by the canonical CID.
   pin_track: (cid: string) => Promise<void>

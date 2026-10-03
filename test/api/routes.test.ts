@@ -143,6 +143,23 @@ describe('api: listens, peers, settings, identity', () => {
   })
 })
 
+describe('api: track metadata', () => {
+  test('PATCH /tracks/{id} hands the tag changes to the peer and returns the track', async () => {
+    const response = await fetch(api.url(`/tracks/${TRACK_ID}`), {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tags: { title: 'Corrected', artist: null } })
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ id: TRACK_ID, title: 'Corrected' })
+    expect(last_call('update_track')).toEqual([{ track_id: TRACK_ID, tags: { title: 'Corrected', artist: null } }])
+    for (const body of [{}, { tags: {} }, { tags: 'title' }]) {
+      const refused = await fetch(api.url(`/tracks/${TRACK_ID}`), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      await expect_error(refused, 400, 'VALIDATION_ERROR')
+    }
+  })
+})
+
 describe('api: import', () => {
   test('POST /import/url hands the URL to the ingest pipeline and acks 202', async () => {
     const response = await post_json(api.url('/import/url'), { url: 'https://www.youtube.com/watch?v=abc123' })

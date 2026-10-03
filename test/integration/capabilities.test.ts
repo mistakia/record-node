@@ -52,6 +52,12 @@ describe('capabilities', () => {
 
     await wait_until(async () => (await owner.list_tracks({ offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' }))
       .items.some(({ id, tags }) => id === track.id && tags.some(({ tag }) => tag === 'from-friend')))
+
+    // library.append_track also covers a metadata update (§2.4.3).
+    const corrected = await grantee.update_track({ track_id: track.id, tags: { title: 'From a friend' }, library_address: address, capability_id: capability.capability_id })
+    expect(corrected).toMatchObject({ title: 'From a friend', tags: [{ library_address: address, tag: 'from-friend' }] })
+    await wait_until(async () => (await owner.list_tracks({ offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' }))
+      .items.some(({ id, title }) => id === track.id && title === 'From a friend'))
   })
 
   test('§3.5.7 [MUST] a capability\'s filter scopes the writes it authorises', async () => {

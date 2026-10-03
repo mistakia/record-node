@@ -53,6 +53,29 @@ describe('peer', () => {
     expect(await second.content_store.is_pinned(f7.audio_cid)).toBe(true)
   })
 
+  test('§2.4.3 a metadata update supersedes the content with corrected tags, keeping the audio and labels', async () => {
+    const peer = await start()
+    await peer.ingest_file(f7.fixture_path)
+    await peer.add_tag({ track_id: f7.track_id, tag: 'kept' })
+    const { own_address } = peer.identity()
+    const entry_count = () => peer.context.libraries.get(own_address)?.oplog.entries.size ?? 0
+    const [before] = (await peer.list_tracks(QUERY)).items
+    const appended = entry_count()
+
+    const updated = await peer.update_track({ track_id: f7.track_id, tags: { title: 'Corrected', album: 'Fixed Album', artist: null } })
+    expect(updated).toMatchObject({ id: f7.track_id, title: 'Corrected', album: 'Fixed Album', audio_cid: before?.audio_cid, tags: [{ library_address: own_address, tag: 'kept' }] })
+    expect(updated.artist ?? null).toBeNull()
+    expect(updated.content_cid).not.toBe(before?.content_cid)
+    expect(entry_count()).toBe(appended + 1)
+    expect((await peer.list_tracks(QUERY)).items).toEqual([expect.objectContaining({ id: f7.track_id, title: 'Corrected' })])
+
+    // A request that changes nothing appends nothing.
+    await peer.update_track({ track_id: f7.track_id, tags: { title: 'Corrected' } })
+    expect(entry_count()).toBe(appended + 1)
+    await expect(peer.update_track({ track_id: f7.track_id, tags: { acoustid_fingerprint: 'AQADother' } })).rejects.toMatchObject({ code: 'invalid' })
+    await expect(peer.update_track({ track_id: '0'.repeat(64), tags: { title: 'x' } })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   test('removing a track tombstones it and emits track:removed', async () => {
     const peer = await start()
     const events: PeerEvent[] = []
