@@ -90,6 +90,45 @@ describe('library-structure', () => {
     expect(await pinned(content_store, [unique.content_cid, unique.audio_cid])).toEqual([false, false])
   })
 
+  test('§4.6 [MUST] after a restart, unlink keeps shared content before the other library\'s re-pin pass has run', async () => {
+    const { content_store, manager, reopen } = open_library_manager()
+    const writer = generate_key_pair()
+    const [kept, gone] = [await manager.create_library({ name: 'kept', type: 'recordstore', write_keys: [writer.public_key] }),
+      await manager.create_library({ name: 'gone', type: 'recordstore', write_keys: [writer.public_key] })]
+    const write = async (library_address: string, fingerprint: string) =>
+      await append_stored_track({ manager, content_store, library_address, key_pair: writer, fingerprint, audio: `audio of ${fingerprint}` })
+    const shared = await write(kept.chain.address, 'AQAA-restart-shared')
+    await write(gone.chain.address, 'AQAA-restart-shared')
+    // Entry pins wait on a gate, so both opens return with their re-pin
+    // passes still pending; every unpin is recorded.
+    const chain_objects = [kept, gone].flatMap(({ chain: { cids } }) => [cids.manifest, cids.wrapper, cids.write_list])
+    let open_gate = () => {}
+    const gate = new Promise<void>((resolve) => { open_gate = resolve })
+    const unpinned: string[] = []
+    const restarted = reopen({
+      ...content_store,
+      pin: async (cid, options) => {
+        if (options?.recursive !== true && !chain_objects.includes(cid)) await gate
+        await content_store.pin(cid, options)
+      },
+      unpin: async (cid) => {
+        unpinned.push(cid)
+        await content_store.unpin(cid)
+      }
+    })
+    await restarted.open_library(kept.chain.address)
+    await restarted.open_library(gone.chain.address)
+    const unlinked = restarted.unlink_library(gone.chain.address)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    open_gate()
+    await unlinked
+    expect(unpinned).not.toContain(shared.audio_cid)
+    expect(unpinned).not.toContain(shared.content_cid)
+    expect(await pinned(content_store, [shared.content_cid, shared.audio_cid])).toEqual([true, true])
+    await restarted.pins_settled()
+    expect(restarted.get(kept.chain.address)?.pins.get(shared.audio_cid)).toBe(true)
+  })
+
   test('§4.7 [MUST] the query database is fully derivable from the oplog', async () => {
     const writer = generate_key_pair()
     const { oplog, block_store } = await open_test_library({ writers: [writer] })

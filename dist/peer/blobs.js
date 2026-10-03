@@ -216,7 +216,9 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
             }
             const removed = [...previous].filter((cid) => !pins.has(cid));
             if (removed.length > 0) {
-                // A removed pin releases the blob unless a library still keeps it.
+                // A removed pin releases the blob unless a library still keeps it,
+                // judged once every open's re-pin pass has filled its pin set.
+                await libraries.pins_settled();
                 const kept = new Set(libraries.list().flatMap(({ pins: held }) => [...held].flatMap(([cid, recursive]) => recursive ? [canonical_cid(cid)] : [])));
                 for (const cid of removed) {
                     const job = jobs.get(cid);

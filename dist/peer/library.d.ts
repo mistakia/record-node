@@ -59,6 +59,8 @@ export interface LibraryManager {
     }) => Promise<void>;
     release_unheld: (cids: readonly string[]) => Promise<void>;
     settled: () => Promise<void>;
+    pins_settled: () => Promise<void>;
+    stop_pin_passes: () => void;
 }
 export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, on_entries, keeps_blobs, retained }: {
     content_store: ContentStore;

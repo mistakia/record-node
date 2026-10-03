@@ -30,7 +30,8 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     const libraries = new Map();
     let indexing = Promise.resolve();
     // Item 6 holds and releases apply one at a time, so a release made after a
-    // hold always undoes it, whichever await each was in.
+    // hold always undoes it, whichever await each was in. An open's re-pin pass
+    // queues here too, so no release decides on a pin set it has not filled.
     let pin_tail = Promise.resolve();
     const exclusive_pins = async (job) => {
         const run = pin_tail.then(job);
@@ -43,9 +44,12 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
             throw new PeerError('not_found', `library not open: ${library_address}`);
         return handle;
     };
-    const pin_entries = async (handle, entries) => {
+    let pin_passes_stopped = false;
+    const pin_entries = async (handle, entries, { pass = false } = {}) => {
         const keeps = keeps_blobs(handle.chain);
         await run_bounded(entries, PIN_CONCURRENCY, async (entry) => {
+            if (pass && pin_passes_stopped)
+                return;
             await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) });
         });
     };
@@ -61,6 +65,8 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
         return held;
     };
     const release = async (handle, library_address, cids) => {
+        if (pin_passes_stopped)
+            throw new Error('the peer is stopping: blobs are not released');
         const held = held_elsewhere(library_address);
         for (const cid of cids) {
             if (!held.has(canonical_or_self(cid)))
@@ -112,7 +118,6 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
         if (first !== undefined) {
             process.emitWarning(`library ${library_address}: ${loaded.rejected.length} stored entries failed verification at open and were left out; first ${first.hash}: ${first.error.code} ${first.error.message}`);
         }
-        await pin_entries(handle, handle.oplog.entries.values());
         libraries.set(library_address, handle);
         const actual_heads = [...handle.oplog.heads].sort();
         await state_store.save_heads({ library_address, heads: actual_heads });
@@ -131,6 +136,12 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
             await projector.remove_library({ library_address });
             await projector.project_library({ oplog: handle.oplog });
         }
+        // Re-pinning every entry repairs its pins and fills the pin set, at a few
+        // small reads per entry: minutes for a large library on a slow disk. So
+        // it runs after the open returns, queued with the holds and releases.
+        exclusive_pins(async () => { await pin_entries(handle, handle.oplog.entries.values(), { pass: true }); }).catch((error) => {
+            process.emitWarning(`library ${library_address}: re-pinning its entries at open failed: ${error.message}`);
+        });
         return handle;
     };
     return {
@@ -159,7 +170,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
                 if (content !== undefined)
                     blobs.push(...track_blobs(content));
             }
-            await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs]));
+            await exclusive_pins(async () => { await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs])); });
             await state_store.save_heads({ library_address, heads: undefined });
             await projector.remove_library({ library_address });
             entry_blocks.remove(library_address);
@@ -204,6 +215,8 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
             if (handle !== undefined)
                 await release(handle, library_address, cids.filter((cid) => handle.pins.get(cid) === true));
         }),
-        settled: async () => { await indexing; }
+        settled: async () => { await indexing; },
+        pins_settled: async () => { await exclusive_pins(async () => { }); },
+        stop_pin_passes: () => { pin_passes_stopped = true; }
     };
 };

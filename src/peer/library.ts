@@ -61,6 +61,13 @@ export interface LibraryManager {
   release_unheld: (cids: readonly string[]) => Promise<void>
   // Waits for queued index writes.
   settled: () => Promise<void>
+  // Waits for queued pin work: the re-pin passes opens queued, and item 6
+  // holds and releases. Every library's pin set is complete afterwards.
+  pins_settled: () => Promise<void>
+  // For stop: cuts re-pin passes short, since each is a repair the next open
+  // redoes, and refuses releases from then on, since a pin set a cut pass left
+  // incomplete could release a blob another library holds.
+  stop_pin_passes: () => void
 }
 
 // Pins compare by CID, whatever the encoding: an entry's base58btc
@@ -98,7 +105,8 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   let indexing: Promise<unknown> = Promise.resolve()
 
   // Item 6 holds and releases apply one at a time, so a release made after a
-  // hold always undoes it, whichever await each was in.
+  // hold always undoes it, whichever await each was in. An open's re-pin pass
+  // queues here too, so no release decides on a pin set it has not filled.
   let pin_tail: Promise<unknown> = Promise.resolve()
   const exclusive_pins = async <T>(job: () => Promise<T>): Promise<T> => {
     const run = pin_tail.then(job)
@@ -112,9 +120,12 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     return handle
   }
 
-  const pin_entries = async (handle: LibraryHandle, entries: Iterable<VerifiedEntry>) => {
+  let pin_passes_stopped = false
+
+  const pin_entries = async (handle: LibraryHandle, entries: Iterable<VerifiedEntry>, { pass = false } = {}) => {
     const keeps = keeps_blobs(handle.chain)
     await run_bounded(entries, PIN_CONCURRENCY, async (entry) => {
+      if (pass && pin_passes_stopped) return
       await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) })
     })
   }
@@ -130,6 +141,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   }
 
   const release = async (handle: LibraryHandle | undefined, library_address: string, cids: Iterable<string>) => {
+    if (pin_passes_stopped) throw new Error('the peer is stopping: blobs are not released')
     const held = held_elsewhere(library_address)
     for (const cid of cids) {
       if (!held.has(canonical_or_self(cid))) await content_store.unpin(cid)
@@ -184,7 +196,6 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     if (first !== undefined) {
       process.emitWarning(`library ${library_address}: ${loaded.rejected.length} stored entries failed verification at open and were left out; first ${first.hash}: ${first.error.code} ${first.error.message}`)
     }
-    await pin_entries(handle, handle.oplog.entries.values())
     libraries.set(library_address, handle)
     const actual_heads = [...handle.oplog.heads].sort()
     await state_store.save_heads({ library_address, heads: actual_heads })
@@ -201,6 +212,12 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
       await projector.remove_library({ library_address })
       await projector.project_library({ oplog: handle.oplog })
     }
+    // Re-pinning every entry repairs its pins and fills the pin set, at a few
+    // small reads per entry: minutes for a large library on a slow disk. So
+    // it runs after the open returns, queued with the holds and releases.
+    exclusive_pins(async () => { await pin_entries(handle, handle.oplog.entries.values(), { pass: true }) }).catch((error: unknown) => {
+      process.emitWarning(`library ${library_address}: re-pinning its entries at open failed: ${(error as Error).message}`)
+    })
     return handle
   }
 
@@ -222,13 +239,13 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
       libraries.delete(library_address)
       // Every blob its tracks reference, kept by the policy now or before,
       // since a pin outlives a policy change made while the peer was down.
-      const blobs = []
+      const blobs: string[] = []
       for (const entry of handle?.oplog.entries.values() ?? []) {
         if (!is_put(entry.operation) || entry.operation.value.type !== 'track') continue
         const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content })
         if (content !== undefined) blobs.push(...track_blobs(content))
       }
-      await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs]))
+      await exclusive_pins(async () => { await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs])) })
       await state_store.save_heads({ library_address, heads: undefined })
       await projector.remove_library({ library_address })
       entry_blocks.remove(library_address)
@@ -270,6 +287,8 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
       const handle = libraries.get(library_address)
       if (handle !== undefined) await release(handle, library_address, cids.filter((cid) => handle.pins.get(cid) === true))
     }),
-    settled: async () => { await indexing }
+    settled: async () => { await indexing },
+    pins_settled: async () => { await exclusive_pins(async () => {}) },
+    stop_pin_passes: () => { pin_passes_stopped = true }
   }
 }

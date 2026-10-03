@@ -136,6 +136,8 @@ describe('identity library', () => {
     await stop_peer(first)
     const restarted = await peers.start({ config: { data_dir } })
     expect(await restarted.content_store.is_pinned(audio_cid)).toBe(true)
+    // The open's re-pin pass fills the pin set after the open returns.
+    await restarted.context.libraries.pins_settled()
     const own = restarted.context.libraries.get(restarted.identity().own_address)
     expect(own?.pins.get(audio_cid)).toBe(true)
     await restarted.pin_track(audio_cid)

@@ -16,16 +16,19 @@ import { create_entry_block_cache } from '#query-db/entry-blocks.ts'
 import { create_projector } from '#query-db/projector.ts'
 import { open_query_db } from '#query-db/schema.ts'
 
+// reopen makes a second manager over the same stores, as a restart would,
+// optionally through a wrapper of the content store.
 export const open_library_manager = () => {
   const content_store = create_memory_content_store()
   const db = open_query_db()
-  const manager = create_library_manager({
-    content_store,
-    projector: create_projector({ db, read_content: content_store.get }),
+  const state_store = create_memory_state_store()
+  const reopen = (store: ContentStore = content_store) => create_library_manager({
+    content_store: store,
+    projector: create_projector({ db, read_content: store.get }),
     entry_blocks: create_entry_block_cache(db),
-    state_store: create_memory_state_store()
+    state_store
   })
-  return { content_store, db, manager }
+  return { content_store, db, manager: reopen(), reopen }
 }
 
 // The chain is written to the store but not opened, so nothing is pinned yet.

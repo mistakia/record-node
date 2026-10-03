@@ -222,11 +222,13 @@ export const stop_peer = async (peer: Peer): Promise<void> => {
 
 const stop_context = async (context: PeerContext): Promise<void> => {
   context.stopping = true
+  context.libraries.stop_pin_passes()
   context.blobs.stop()
   await context.replication?.stop()
   await drain_queues(context)
   await context.blobs.settled()
   await context.libraries.settled()
+  await context.libraries.pins_settled()
   await context.store.helia.stop()
   context.db.close()
   context.lock?.release()
