@@ -34,6 +34,7 @@ Reference implementation of Record Protocol v1: a Node-compatible peer covering 
 
 - `@helia/bitswap` never sends a cancel after a block arrives, so the serving peer ignores a later want for the same block on the same connection. An evicted block is refetchable only from another peer or after reconnect.
 - Bun 1.4 `node:crypto` lacks `chacha20-poly1305`, so the noise layer falls back to pure-JS crypto under Bun.
+- Capability verification is not incremental. Each grantee write walks its causal past once per revocation (spec 3.5.9 step 6), and a new revocation re-judges every delegated entry, so merge cost grows with delegated entries times revocations times log size. An owner-only library never takes that path. A heavily delegated one would need an incremental effective set and causal index.
 
 ## Notable Context
 
