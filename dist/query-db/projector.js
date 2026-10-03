@@ -46,8 +46,36 @@ const create_statements = (db) => ({
     insert_listen: db.prepare(`
     INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
     VALUES (?, ?, ?, ?, ?)`),
-    remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`))
+    remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
+    read_marker: db.prepare('SELECT heads, pending FROM library_heads WHERE library_address = ?'),
+    upsert_marker: db.prepare(`
+    INSERT INTO library_heads (library_address, heads, pending)
+    VALUES (?, ?, ?)
+    ON CONFLICT(library_address) DO UPDATE SET heads = excluded.heads, pending = excluded.pending`),
+    delete_marker: db.prepare('DELETE FROM library_heads WHERE library_address = ?')
 });
+// The canonical marker encoding of an oplog's heads: the sorted hashes, so two
+// equal head sets always encode identically.
+const heads_of = (oplog) => JSON.stringify([...oplog.heads].sort());
+// The pending keys a marker row recorded, as a set for incremental update.
+const pending_of = (statements, library_address) => {
+    const row = statements.read_marker.get(library_address);
+    return new Set(row?.pending === undefined ? [] : JSON.parse(row.pending));
+};
+// Rewrites the library's marker in the same transaction as the rows just
+// written, so a crash leaves the index either fully current or rebuilt by
+// replay at the next start, never claiming heads whose rows are missing
+// (§4.7). A key whose current entry is a PUT that is not in the store joins
+// the pending set; a key whose content arrived leaves it.
+const touch_marker = ({ statements, oplog, stable }) => {
+    const pending = pending_of(statements, oplog.chain.address);
+    for (const { key, entry, content } of stable) {
+        pending.delete(key);
+        if (entry !== undefined && is_put(entry.operation) && content === undefined)
+            pending.add(key);
+    }
+    statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), JSON.stringify([...pending].sort()));
+};
 // First sight of a track in this library: the earliest envelope timestamp over
 // every known PUT for the key, so a relabel does not move it and a replay
 // reproduces it.
@@ -153,6 +181,7 @@ export const create_projector = ({ db, read_content }) => {
             in_transaction(db, () => {
                 for (const { key, entry, content } of stable)
                     write_key({ statements, oplog, key, entry, content });
+                touch_marker({ statements, oplog, stable });
             });
             pending = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key));
         }
@@ -160,6 +189,7 @@ export const create_projector = ({ db, read_content }) => {
     const write_listens = (oplog, entries) => in_transaction(db, () => {
         for (const entry of entries)
             write_listen({ statements, library_address: oplog.chain.address, entry });
+        statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]');
     });
     const project_entries = ({ oplog, entries }) => enqueue(async () => {
         if (oplog.chain.type === 'listens') {
@@ -183,7 +213,14 @@ export const create_projector = ({ db, read_content }) => {
             in_transaction(db, () => {
                 for (const statement of statements.remove_library)
                     statement.run(library_address);
+                statements.delete_marker.run(library_address);
             });
-        })
+        }),
+        projection_state: async ({ library_address }) => {
+            const row = statements.read_marker.get(library_address);
+            if (row === undefined)
+                return undefined;
+            return { heads: JSON.parse(row.heads), pending: JSON.parse(row.pending) };
+        }
     };
 };

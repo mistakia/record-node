@@ -76,7 +76,10 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   const config = resolve_peer_config(overrides)
   const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir)
   const store = await open_peer_store({ data_dir: config.data_dir, network: join_network === undefined ? config.network : false })
-  const db = open_query_db()
+  // A peer with a data dir keeps the query index on disk, so a restart opens
+  // it instead of re-projecting every library from blocks; without one the
+  // index stays in memory and dies with the process.
+  const db = paths === undefined ? open_query_db() : open_query_db({ path: paths.index })
   const events = create_event_bus()
   const content_store = store.content_store
   const network = join_network?.({ content_store }) ?? store.network

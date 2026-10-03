@@ -77,5 +77,8 @@ export const data_paths = (data_dir) => ({
     blocks: join(data_dir, 'blocks'),
     datastore: join(data_dir, 'datastore'),
     identity: join(data_dir, 'identity.key'),
-    libraries: join(data_dir, 'libraries.json')
+    libraries: join(data_dir, 'libraries.json'),
+    // The persisted query index (§4.7): reopened across restarts so the library
+    // is not re-projected from blocks every time.
+    index: join(data_dir, 'index.sqlite')
 });

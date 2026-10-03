@@ -3,10 +3,15 @@
 // be dropped and rebuilt by replay. The schema is not protocol and is never
 // exchanged with peers.
 
+import { rmSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 // Dependents first, so a drop never trips over an index or a view.
-export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens'] as const
+export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'meta'] as const
+
+// Bump when the schema changes, so an index written by an older version is
+// dropped and rebuilt by replay at the next open instead of being misread.
+export const SCHEMA_VERSION = 1
 
 export type QueryTable = typeof QUERY_TABLES[number]
 
@@ -112,22 +117,72 @@ const SCHEMA = `
     PRIMARY KEY (library_address, entry_hash)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS listens_by_track_id ON listens (track_id, timestamp);
+
+  -- Per-library projection markers (§4.7): the library's entry heads at the
+  -- moment its rows were last written, and the keys whose content payload was
+  -- missing then. A restart whose freshly-loaded oplog has the same heads skips
+  -- the full replay and re-projects only the pending keys, so rows fill in
+  -- when a payload arrived while the peer was down.
+  CREATE TABLE IF NOT EXISTS library_heads (
+    library_address TEXT PRIMARY KEY,
+    heads TEXT NOT NULL,
+    pending TEXT NOT NULL
+  ) WITHOUT ROWID;
+
+  -- Schema version, for §4.7 rebuilds on schema change. Not protocol.
+  CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  ) WITHOUT ROWID;
 `
+
+const STAMP_VERSION = "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
 
 export const apply_schema = (db: DatabaseSync): void => {
   db.exec(SCHEMA)
+  db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION))
 }
 
 export const drop_schema = (db: DatabaseSync): void => {
   for (const table of QUERY_TABLES) db.exec(`DROP TABLE IF EXISTS ${table}`)
 }
 
-// A file path, or ':memory:' for an index that lives as long as the process.
-export const open_query_db = ({ path = ':memory:' }: { path?: string } = {}): DatabaseSync => {
+// The written schema version, or undefined when the version cannot be read
+// (a fresh file, an older schema without meta, or a corrupt one).
+const stored_version = (db: DatabaseSync): string | undefined => {
+  try {
+    const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | undefined
+    return row?.value
+  } catch {
+    return undefined
+  }
+}
+
+const open = (path: string): DatabaseSync => {
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
-  apply_schema(db)
+  if (stored_version(db) !== String(SCHEMA_VERSION)) {
+    // An older or unreadable schema: drop every table and start over. The
+    // next library open finds no marker and rebuilds the index by replay.
+    drop_schema(db)
+    apply_schema(db)
+  }
   return db
+}
+
+// A file path, or ':memory:' for an index that lives as long as the process.
+// A missing, corrupt, or unreadable file is removed and rebuilt: the survivor
+// replays every library at its next open, so the index can never be misread.
+export const open_query_db = ({ path = ':memory:' }: { path?: string } = {}): DatabaseSync => {
+  try {
+    return open(path)
+  } catch (error) {
+    if (path === ':memory:') throw error
+    rmSync(`${path}-wal`, { force: true })
+    rmSync(`${path}-shm`, { force: true })
+    rmSync(path, { force: true })
+    return open(path)
+  }
 }
 
 // Runs fn inside one transaction, rolled back if it throws.

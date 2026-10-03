@@ -48,8 +48,23 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) });
         await pin_entries(handle, handle.oplog.entries.values());
         libraries.set(library_address, handle);
-        await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] });
-        await projector.project_library({ oplog: handle.oplog });
+        const actual_heads = [...handle.oplog.heads].sort();
+        await state_store.save_heads({ library_address, heads: actual_heads });
+        // The persisted index covers the loaded oplog exactly when its marker names
+        // the same heads; then the full replay is skipped and only the keys whose
+        // content was missing at the last write are re-projected, so a payload
+        // that arrived while the peer was down still fills in. Anything else — a
+        // library not in the index, a schema change, or heads that no longer
+        // reproduce after load — clears the library's rows and projects them over.
+        const marker = await projector.projection_state({ library_address });
+        if (marker !== undefined && JSON.stringify(marker.heads) === JSON.stringify(actual_heads)) {
+            if (marker.pending.length > 0)
+                await projector.project_keys({ oplog: handle.oplog, keys: marker.pending });
+        }
+        else {
+            await projector.remove_library({ library_address });
+            await projector.project_library({ oplog: handle.oplog });
+        }
         return handle;
     };
     return {

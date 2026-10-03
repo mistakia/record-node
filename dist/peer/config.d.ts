@@ -27,4 +27,5 @@ export declare const data_paths: (data_dir: string) => {
     datastore: string;
     identity: string;
     libraries: string;
+    index: string;
 };

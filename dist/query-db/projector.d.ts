@@ -22,6 +22,12 @@ export interface Projector {
     remove_library: (input: {
         library_address: string;
     }) => Promise<void>;
+    projection_state: (input: {
+        library_address: string;
+    }) => Promise<{
+        heads: readonly string[];
+        pending: readonly string[];
+    } | undefined>;
 }
 export declare const create_projector: ({ db, read_content }: {
     db: DatabaseSync;
