@@ -172,4 +172,16 @@ describe.each(backends)('%s ContentStore', (_name, open) => {
     await store.unpin(first)
     expect(await store.is_pinned(shared.cid)).toBe(false)
   })
+
+  test('concurrent pins and unpins of blobs sharing a block keep its count exact', async () => {
+    const shared = await raw_block(build_multi_block_input(MIB))
+    const blobs = await Promise.all([2, 3, 4, 5, 6, 7, 8, 9].map(async (mib) => await store.import_blob(build_multi_block_input(mib * MIB))))
+    await Promise.all([...blobs, ...blobs].map(async (cid) => { await store.pin(cid, { recursive: true }) }))
+    await Promise.all(blobs.slice(1).map(async (cid) => { await store.unpin(cid) }))
+    expect(await store.is_pinned(shared.cid)).toBe(true)
+    expect(await store.evict(shared.cid)).toBe(false)
+    await store.unpin(blobs[0] as string)
+    expect(await store.is_pinned(shared.cid)).toBe(false)
+    expect(await store.evict(shared.cid)).toBe(true)
+  })
 })
