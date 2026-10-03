@@ -5,6 +5,7 @@
 import { is_put } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import type { PeerContext } from './context.ts'
+import { run_bounded } from './bounded.ts'
 
 export interface ContentFetcher {
   fetch: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => void
@@ -12,15 +13,6 @@ export interface ContentFetcher {
   forget: (library_address: string) => void
   // Resolves once no fetch for the library is running.
   settled: (library_address: string) => Promise<void>
-}
-
-// Runs jobs with at most `limit` in flight.
-const run_bounded = async <T>(items: readonly T[], limit: number, job: (item: T) => Promise<void>): Promise<void> => {
-  const queue = [...items]
-  const worker = async () => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift()) await job(item)
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, worker))
 }
 
 export const create_content_fetcher = ({ context, get_block }: {

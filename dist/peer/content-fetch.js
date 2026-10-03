@@ -2,15 +2,7 @@
 // merge, pinned and re-indexed once they land. One that no peer serves yet is
 // kept and retried when a peer joins the library topic or replication resumes.
 import { is_put } from '#entry/operations.ts';
-// Runs jobs with at most `limit` in flight.
-const run_bounded = async (items, limit, job) => {
-    const queue = [...items];
-    const worker = async () => {
-        for (let item = queue.shift(); item !== undefined; item = queue.shift())
-            await job(item);
-    };
-    await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, worker));
-};
+import { run_bounded } from "./bounded.js";
 export const create_content_fetcher = ({ context, get_block }) => {
     const { config, content_store, libraries } = context;
     const missing = new Map();

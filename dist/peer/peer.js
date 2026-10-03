@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { download_to_file } from '#ingest/download.ts';
 import { verify_toolchain } from '#ingest/toolchain.ts';
 import { generate_key_pair } from '#identity/key-pair.ts';
+import { create_entry_block_cache } from '#query-db/entry-blocks.ts';
 import { create_projector } from '#query-db/projector.ts';
 import { open_query_db } from '#query-db/schema.ts';
 import { SYSTEM_TIMERS } from '#replication/timers.ts';
@@ -54,6 +55,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     const libraries = create_library_manager({
         content_store,
         projector: create_projector({ db, read_content: content_store.get }),
+        entry_blocks: create_entry_block_cache(db),
         state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
         keeps_blobs: (chain) => keeps_blobs(context)(chain),
         retained: () => context.blobs.retained(),

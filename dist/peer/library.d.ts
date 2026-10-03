@@ -4,6 +4,7 @@ import type { KeyPair } from '#identity/key-pair.ts';
 import type { VerifiedEntry } from '#oplog/accept.ts';
 import { type AccessChange, type Oplog } from '#oplog/dag.ts';
 import { type MergeResult } from '#oplog/merge.ts';
+import type { EntryBlockCache } from '#query-db/entry-blocks.ts';
 import type { Projector } from '#query-db/projector.ts';
 import type { LibraryType } from '#types/library.ts';
 import { type KeepsBlobs, type PinSet } from './pins.ts';
@@ -59,9 +60,10 @@ export interface LibraryManager {
     release_unheld: (cids: readonly string[]) => Promise<void>;
     settled: () => Promise<void>;
 }
-export declare const create_library_manager: ({ content_store, projector, state_store, on_entries, keeps_blobs, retained }: {
+export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, on_entries, keeps_blobs, retained }: {
     content_store: ContentStore;
     projector: Projector;
+    entry_blocks: EntryBlockCache;
     state_store: LibraryStateStore;
     keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs;
     retained?: () => ReadonlySet<string>;

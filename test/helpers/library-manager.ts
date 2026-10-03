@@ -12,6 +12,7 @@ import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import { create_library_manager, type LibraryManager } from '#peer/library.ts'
 import { create_memory_state_store } from '#peer/state.ts'
+import { create_entry_block_cache } from '#query-db/entry-blocks.ts'
 import { create_projector } from '#query-db/projector.ts'
 import { open_query_db } from '#query-db/schema.ts'
 
@@ -21,6 +22,7 @@ export const open_library_manager = () => {
   const manager = create_library_manager({
     content_store,
     projector: create_projector({ db, read_content: content_store.get }),
+    entry_blocks: create_entry_block_cache(db),
     state_store: create_memory_state_store()
   })
   return { content_store, db, manager }

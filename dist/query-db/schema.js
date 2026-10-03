@@ -1,13 +1,18 @@
 // The derived query index (§4.7). Every table is a projection of oplog
-// entries plus the content payloads they point at, so the whole database can
-// be dropped and rebuilt by replay. The schema is not protocol and is never
-// exchanged with peers.
+// entries plus the content payloads they point at, or a copy of the entries
+// themselves, so the whole database can be dropped and rebuilt by replay.
+// The schema is not protocol and is never exchanged with peers.
 import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 // Dependents first, so a drop never trips over an index or a view.
 export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'meta'];
+// Not a projection, so a rebuild by replay leaves it empty and each library's
+// next open refills it.
+const ENTRY_BLOCKS_TABLE = 'entry_blocks';
 // Bump when the schema changes, so an index written by an older version is
-// dropped and rebuilt by replay at the next open instead of being misread.
+// dropped and rebuilt by replay at the next open instead of being misread. A
+// table added empty, whose absence nothing misreads, needs no bump: every
+// open applies the schema.
 export const SCHEMA_VERSION = 1;
 const SCHEMA = `
   -- The current entry per (library, key) under §4.4.2. A current DEL stays as
@@ -123,6 +128,16 @@ const SCHEMA = `
     pending TEXT NOT NULL
   ) WITHOUT ROWID;
 
+  -- Each library's verified signed-entry blocks, so a restart reads its
+  -- oplog in one scan (entry-blocks.ts). Empty is valid: the open walks the
+  -- blockstore and fills it.
+  CREATE TABLE IF NOT EXISTS entry_blocks (
+    library_address TEXT NOT NULL,
+    entry_hash TEXT NOT NULL,
+    bytes BLOB NOT NULL,
+    PRIMARY KEY (library_address, entry_hash)
+  ) WITHOUT ROWID;
+
   -- Schema version, for §4.7 rebuilds on schema change. Not protocol.
   CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -135,7 +150,7 @@ export const apply_schema = (db) => {
     db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION));
 };
 export const drop_schema = (db) => {
-    for (const table of QUERY_TABLES)
+    for (const table of [...QUERY_TABLES, ENTRY_BLOCKS_TABLE])
         db.exec(`DROP TABLE IF EXISTS ${table}`);
 };
 // The written schema version, or undefined when the version cannot be read
@@ -157,12 +172,11 @@ const open = (path) => {
     // open finds the marker behind the oplog and re-projects. So no commit
     // waits on an fsync, which costs ingest dearly on a slow disk.
     db.exec('PRAGMA synchronous = NORMAL');
-    if (stored_version(db) !== String(SCHEMA_VERSION)) {
-        // An older or unreadable schema: drop every table and start over. The
-        // next library open finds no marker and rebuilds the index by replay.
+    // An older or unreadable schema: drop every table and start over. The
+    // next library open finds no marker and rebuilds the index by replay.
+    if (stored_version(db) !== String(SCHEMA_VERSION))
         drop_schema(db);
-        apply_schema(db);
-    }
+    apply_schema(db);
     return db;
 };
 // A file path, or ':memory:' for an index that lives as long as the process.

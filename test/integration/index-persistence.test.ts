@@ -158,3 +158,45 @@ describe('query index persistence', () => {
     expect(dump_query_db(second.db)).not.toEqual(snapshot)
   })
 })
+
+describe('entry block cache', () => {
+  const cached_hashes = (peer: Peer, library_address: string) =>
+    (peer.db.prepare('SELECT entry_hash FROM entry_blocks WHERE library_address = ? ORDER BY entry_hash').all(library_address) as Array<{ entry_hash: string }>)
+      .map(({ entry_hash }) => entry_hash)
+  const oplog_of = (peer: Peer, library_address: string) => peer.context.libraries.get(library_address)?.oplog
+
+  test('a restart reads the oplog from the cache, without the entry blocks in the store', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-entry-cache-'))
+    const first = await reopen(data_dir)
+    const own_address = first.identity().own_address
+    for (const fingerprint of ['AQAA-cache-a', 'AQAA-cache-b', 'AQAA-cache-c']) await append_track(first, fingerprint)
+    const hashes = [...oplog_of(first, own_address)?.entries.keys() ?? []].sort()
+    expect(cached_hashes(first, own_address)).toEqual(hashes)
+    // A walk from the heads would stop at the first missing block.
+    for (const hash of hashes) await drop_content(first, hash)
+    await stop_peer(first)
+    running.splice(0)
+
+    const second = await reopen(data_dir)
+    expect([...oplog_of(second, own_address)?.entries.keys() ?? []].sort()).toEqual(hashes)
+  })
+
+  test('a cache behind the persisted heads is replaced by a walk of the blockstore', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-entry-cache-behind-'))
+    const first = await reopen(data_dir)
+    const own_address = first.identity().own_address
+    for (const fingerprint of ['AQAA-behind-a', 'AQAA-behind-b']) await append_track(first, fingerprint)
+    const hashes = [...oplog_of(first, own_address)?.entries.keys() ?? []].sort()
+    await stop_peer(first)
+    running.splice(0)
+    // As after a crash between the heads and the cache write, or an index
+    // written before the cache existed.
+    const db = open_query_db({ path: data_paths(data_dir).index })
+    db.prepare('DELETE FROM entry_blocks WHERE library_address = ? AND entry_hash = ?').run(own_address, hashes[0] as string)
+    db.close()
+
+    const second = await reopen(data_dir)
+    expect([...oplog_of(second, own_address)?.entries.keys() ?? []].sort()).toEqual(hashes)
+    expect(cached_hashes(second, own_address)).toEqual(hashes)
+  })
+})

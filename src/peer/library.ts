@@ -10,9 +10,11 @@ import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { append_entry_with_access, create_oplog, type AccessChange, type Oplog } from '#oplog/dag.ts'
 import { merge_entries, type MergeResult } from '#oplog/merge.ts'
+import type { EntryBlockCache } from '#query-db/entry-blocks.ts'
 import type { Projector } from '#query-db/projector.ts'
 import type { LibraryType } from '#types/library.ts'
 import { PeerError } from '#types/peer.ts'
+import { run_bounded } from './bounded.ts'
 import { load_entry_blocks } from './load.ts'
 import { canonical_cid } from '#entry/identity-record.ts'
 import { is_put } from '#entry/operations.ts'
@@ -71,9 +73,17 @@ const canonical_or_self = (cid: string): string => {
   }
 }
 
-export const create_library_manager = ({ content_store, projector, state_store, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }: {
+// Entries pinned at once. Each pin is a few small reads, which a slow disk
+// serves far faster side by side than one after another.
+const PIN_CONCURRENCY = 16
+
+const same_heads = (a: Iterable<string>, b: Iterable<string>): boolean =>
+  JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+
+export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }: {
   content_store: ContentStore
   projector: Projector
+  entry_blocks: EntryBlockCache
   state_store: LibraryStateStore
   // Whether a library's policy keeps a track's item 6 (§4.6.1), judged from
   // its resolved chain, since it runs before the library is listed; every
@@ -104,9 +114,9 @@ export const create_library_manager = ({ content_store, projector, state_store, 
 
   const pin_entries = async (handle: LibraryHandle, entries: Iterable<VerifiedEntry>) => {
     const keeps = keeps_blobs(handle.chain)
-    for (const entry of entries) {
+    await run_bounded(entries, PIN_CONCURRENCY, async (entry) => {
       await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) })
-    }
+    })
   }
 
   // The canonical CIDs some other library or a pin record still holds.
@@ -134,6 +144,7 @@ export const create_library_manager = ({ content_store, projector, state_store, 
   }) => {
     const handle = require_library(library_address)
     for (const entry of entries) await content_store.put(entry.hash, entry.bytes)
+    entry_blocks.save({ library_address, entries })
     await pin_entries(handle, entries)
     await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] })
     const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] })
@@ -142,16 +153,31 @@ export const create_library_manager = ({ content_store, projector, state_store, 
     on_entries?.({ library_address, entries, inert: access?.inert ?? [] })
   }
 
+  // The oplog at the persisted heads, from the entry block cache when it
+  // reproduces them. Otherwise, as for a library cached before or whose cache
+  // fell behind a crash, it is walked from the blockstore and recached.
+  const load_oplog = async (chain: ResolvedAcChain, heads: readonly string[]) => {
+    const library_address = chain.address
+    const cached = create_oplog({ chain })
+    const from_cache = merge_entries({ oplog: cached, blocks: entry_blocks.load(library_address) })
+    if (from_cache.rejected.length === 0 && same_heads(cached.heads, heads)) return { oplog: cached, loaded: from_cache }
+    const oplog = create_oplog({ chain })
+    const loaded = merge_entries({ oplog, blocks: await load_entry_blocks({ heads, content_store }) })
+    entry_blocks.replace({ library_address, entries: oplog.entries.values() })
+    return { oplog, loaded }
+  }
+
   // Resolving the chain is the gate (§3.5.1): a library that fails it never
   // gets an oplog. Its objects are pinned before any entry is loaded.
   const open_library = async (library_address: string): Promise<LibraryHandle> => {
     const existing = libraries.get(library_address)
     if (existing !== undefined) return existing
     const chain = await resolve_ac_chain({ library_address, block_store: content_store })
-    const handle: LibraryHandle = { chain, oplog: create_oplog({ chain }), pins: new Map() }
-    await pin_into({ content_store, pins: handle.pins, items: chain_pins(chain) })
+    const pins: PinSet = new Map()
+    await pin_into({ content_store, pins, items: chain_pins(chain) })
     const heads = (await state_store.load()).heads.get(library_address) ?? []
-    const loaded = merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) })
+    const { oplog, loaded } = await load_oplog(chain, heads)
+    const handle: LibraryHandle = { chain, oplog, pins }
     // A stored entry that no longer verifies, under a rule a later version
     // added, drops out of the oplog; that is never silent.
     const [first] = loaded.rejected
@@ -205,6 +231,7 @@ export const create_library_manager = ({ content_store, projector, state_store, 
       await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs]))
       await state_store.save_heads({ library_address, heads: undefined })
       await projector.remove_library({ library_address })
+      entry_blocks.remove(library_address)
       await state_store.set_unlinking({ library_address, unlinking: false })
     },
     pending_unlinks: async () => [...(await state_store.load()).unlinking],
