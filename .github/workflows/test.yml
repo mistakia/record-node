@@ -73,6 +73,10 @@ jobs:
       - name: Ingest smoke under Node
         run: node test/smoke/ingest-node.ts
 
+      # Under Node, OpenSSL verifies signatures, which bun test never runs.
+      - name: Signature smoke under Node
+        run: node test/smoke/signature-node.ts
+
       # record-app installs record-node as a git dependency with install
       # scripts off, so the committed dist/ and its # aliases must load from
       # node_modules under plain Node: install this commit that way, create a
