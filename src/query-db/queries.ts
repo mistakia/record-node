@@ -46,6 +46,8 @@ export interface TrackRow {
   // The library this row's content and resolvers come from: the requestor's
   // own library when it holds the track, else the first address in order.
   readonly library_address: string
+  // Every scoped library holding the track live.
+  readonly library_addresses: string[]
   readonly content_cid: string
   readonly audio_cid: string | null
   readonly audio_size_bytes: number | null
@@ -101,6 +103,8 @@ export interface LinkedLibrary {
 
 export interface LibrarySummary {
   readonly track_count: number
+  // content.size summed over live tracks whose payload is stored.
+  readonly audio_size_bytes: number
   readonly linked_library_count: number
   // Live entries: keys whose current entry is a PUT.
   readonly length: number
@@ -203,6 +207,13 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
     ORDER BY timestamp DESC, entry_hash`
   ).all({ track_ids }) as Row[]
   const listens = group_by(listen_rows, 'track_id', (row) => Number(row.timestamp))
+  const holder_rows = db.prepare(`
+    SELECT track_id, library_address FROM tracks
+    WHERE track_id IN (SELECT value FROM json_each(:track_ids))
+    ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
+    ORDER BY track_id, library_address`
+  ).all({ track_ids, ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}) }) as Row[]
+  const holders = group_by(holder_rows, 'track_id', (row) => String(row.library_address))
   const owned = new Set((db.prepare(`
     SELECT track_id FROM tracks
     WHERE library_address IN (SELECT value FROM json_each(:own_library_addresses)) AND track_id IN (SELECT value FROM json_each(:track_ids))`
@@ -214,6 +225,7 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
     return {
       id,
       library_address: String(row.library_address),
+      library_addresses: holders.get(id) ?? [],
       content_cid: String(row.content_cid),
       audio_cid: nullable_text(row.audio_cid),
       audio_size_bytes: nullable_number(row.audio_size_bytes),
@@ -400,11 +412,13 @@ export const get_library_summary = ({ db, library_address }: {
   const row = db.prepare(`
     SELECT
       (SELECT count(*) FROM tracks WHERE library_address = :library_address) AS track_count,
+      (SELECT coalesce(sum(audio_size_bytes), 0) FROM tracks WHERE library_address = :library_address) AS audio_size_bytes,
       (SELECT count(*) FROM logs WHERE library_address = :library_address AND linked_address IS NOT NULL) AS linked_library_count,
       (SELECT count(*) FROM entries WHERE library_address = :library_address AND op = 'PUT') AS length`
   ).get({ library_address }) as Row
   return {
     track_count: Number(row.track_count),
+    audio_size_bytes: Number(row.audio_size_bytes),
     linked_library_count: Number(row.linked_library_count),
     length: Number(row.length)
   }

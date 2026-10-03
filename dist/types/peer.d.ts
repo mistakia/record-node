@@ -16,6 +16,7 @@ export interface TrackTag {
 }
 export interface Track {
     id: string;
+    library_addresses: string[];
     content_cid: string;
     audio_cid: string;
     audio_size_bytes: number;
@@ -72,6 +73,7 @@ export interface Library {
     avatar?: string | null;
     alias?: string | null;
     track_count: number;
+    audio_size_bytes: number;
     linked_library_count: number;
     length: number;
     heads: string[];

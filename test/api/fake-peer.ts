@@ -28,6 +28,7 @@ export const CAPABILITY_ID = 'zBwWX61Hk9TaWwav3Kd5fTzdx4TEyJTU4NzSjhqDqDjyz9UoQP
 
 export const make_track = (overrides: Partial<Track> = {}): Track => ({
   id: TRACK_ID,
+  library_addresses: [OWN_ADDRESS],
   content_cid: CONTENT_CID,
   audio_cid: AUDIO_CID,
   audio_size_bytes: 1024,
@@ -52,6 +53,7 @@ const make_library = (address: string, overrides: Partial<Library> = {}): Librar
   name: null,
   alias: null,
   track_count: 1,
+  audio_size_bytes: 4096,
   linked_library_count: 0,
   length: 1,
   heads: [CONTENT_CID],

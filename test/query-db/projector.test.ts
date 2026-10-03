@@ -89,7 +89,7 @@ describe('query-db projector', () => {
     for (const table of ['tracks', 'tags', 'resolvers']) {
       expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count).toBe(0)
     }
-    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, linked_library_count: 0, length: 0 })
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
   })
 
   test('links and the profile project from log and about payloads', async () => {
@@ -105,7 +105,7 @@ describe('query-db projector', () => {
       location: null,
       avatar: null
     })
-    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, linked_library_count: 1, length: 2 })
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 1, length: 2 })
   })
 
   test('a track whose content is not stored yet fills in when re-projected', async () => {

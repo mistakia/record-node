@@ -22,6 +22,7 @@ export interface TrackResolver {
 export interface TrackRow {
     readonly id: string;
     readonly library_address: string;
+    readonly library_addresses: string[];
     readonly content_cid: string;
     readonly audio_cid: string | null;
     readonly audio_size_bytes: number | null;
@@ -69,6 +70,7 @@ export interface LinkedLibrary {
 }
 export interface LibrarySummary {
     readonly track_count: number;
+    readonly audio_size_bytes: number;
     readonly linked_library_count: number;
     readonly length: number;
 }

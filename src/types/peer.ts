@@ -27,6 +27,8 @@ export interface TrackTag {
 
 export interface Track {
   id: string
+  // The scoped libraries holding the track live.
+  library_addresses: string[]
   content_cid: string
   audio_cid: string
   audio_size_bytes: number
@@ -90,6 +92,8 @@ export interface Library {
   avatar?: string | null
   alias?: string | null
   track_count: number
+  // content.size summed over live tracks whose payload is stored.
+  audio_size_bytes: number
   linked_library_count: number
   length: number
   heads: string[]

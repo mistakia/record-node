@@ -76,6 +76,23 @@ describe('peer', () => {
     await expect(peer.update_track({ track_id: '0'.repeat(64), tags: { title: 'x' } })).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  test('a track lists the scoped libraries that hold it, and a library totals its audio', async () => {
+    const peer = await start()
+    await peer.ingest_file(f7.fixture_path)
+    const { own_address } = peer.identity()
+    const [ingested] = (await peer.list_tracks(QUERY)).items
+    const mixes = await peer.create_own_library({ discriminator: 'mixes' })
+    await peer.add_track({ content_cid: ingested?.content_cid as string, library_address: mixes.address })
+
+    expect((await peer.list_tracks(QUERY)).items).toEqual([expect.objectContaining({ id: f7.track_id, library_addresses: [own_address, mixes.address].sort() })])
+    expect((await peer.list_tracks({ ...QUERY, library_addresses: [mixes.address] })).items)
+      .toEqual([expect.objectContaining({ library_addresses: [mixes.address] })])
+    expect((await peer.get_library(mixes.address))?.audio_size_bytes).toBe(ingested?.audio_size_bytes)
+    await peer.remove_track({ track_id: f7.track_id, library_address: mixes.address })
+    expect((await peer.list_tracks(QUERY)).items).toEqual([expect.objectContaining({ library_addresses: [own_address] })])
+    expect((await peer.get_library(mixes.address))?.audio_size_bytes).toBe(0)
+  })
+
   test('removing a track tombstones it and emits track:removed', async () => {
     const peer = await start()
     const events: PeerEvent[] = []

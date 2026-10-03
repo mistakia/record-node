@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.2.0
+  version: 1.3.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -1288,10 +1288,19 @@ components:
         - tags
         - listen_count
         - have_track
+        - library_addresses
       properties:
         id:
           type: string
           description: sha256 of the AcoustID fingerprint (lowercase hex).
+        library_addresses:
+          type: array
+          items: { type: string }
+          description: |
+            The libraries holding a live PUT of the track, among those the
+            request covers: the `library_addresses` filter when given, else
+            every library the node shows. A list folds a track several
+            libraries hold into one item, so this says which they are.
         content_cid:
           type: string
           description: Base58btc CID of the dag-cbor content payload.
@@ -1377,6 +1386,7 @@ components:
         - address
         - library_type
         - track_count
+        - audio_size_bytes
         - linked_library_count
         - length
         - heads
@@ -1410,6 +1420,12 @@ components:
             Display alias from the identity's link to this library (spec
             §4.8.4). Null when not linked or when no alias was provided.
         track_count: { type: integer }
+        audio_size_bytes:
+          type: integer
+          description: |
+            Total size of the audio blobs of the library's live tracks
+            (`content.size`), for storage estimates. A track whose content
+            payload the node does not hold yet counts zero.
         linked_library_count: { type: integer }
         length:
           type: integer

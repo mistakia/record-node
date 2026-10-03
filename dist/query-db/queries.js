@@ -69,6 +69,12 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
     WHERE track_id IN (SELECT value FROM json_each(:track_ids))
     ORDER BY timestamp DESC, entry_hash`).all({ track_ids });
     const listens = group_by(listen_rows, 'track_id', (row) => Number(row.timestamp));
+    const holder_rows = db.prepare(`
+    SELECT track_id, library_address FROM tracks
+    WHERE track_id IN (SELECT value FROM json_each(:track_ids))
+    ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
+    ORDER BY track_id, library_address`).all({ track_ids, ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}) });
+    const holders = group_by(holder_rows, 'track_id', (row) => String(row.library_address));
     const owned = new Set(db.prepare(`
     SELECT track_id FROM tracks
     WHERE library_address IN (SELECT value FROM json_each(:own_library_addresses)) AND track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids }).map((row) => String(row.track_id)));
@@ -78,6 +84,7 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
         return {
             id,
             library_address: String(row.library_address),
+            library_addresses: holders.get(id) ?? [],
             content_cid: String(row.content_cid),
             audio_cid: nullable_text(row.audio_cid),
             audio_size_bytes: nullable_number(row.audio_size_bytes),
@@ -219,10 +226,12 @@ export const get_library_summary = ({ db, library_address }) => {
     const row = db.prepare(`
     SELECT
       (SELECT count(*) FROM tracks WHERE library_address = :library_address) AS track_count,
+      (SELECT coalesce(sum(audio_size_bytes), 0) FROM tracks WHERE library_address = :library_address) AS audio_size_bytes,
       (SELECT count(*) FROM logs WHERE library_address = :library_address AND linked_address IS NOT NULL) AS linked_library_count,
       (SELECT count(*) FROM entries WHERE library_address = :library_address AND op = 'PUT') AS length`).get({ library_address });
     return {
         track_count: Number(row.track_count),
+        audio_size_bytes: Number(row.audio_size_bytes),
         linked_library_count: Number(row.linked_library_count),
         length: Number(row.length)
     };
