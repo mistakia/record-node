@@ -5,7 +5,7 @@
 import type { HashedEntry } from '#entry/signed.ts'
 import { is_record } from '#types/guards.ts'
 
-const compare_bytes = (a: Uint8Array, b: Uint8Array): number => {
+export const compare_bytes = (a: Uint8Array, b: Uint8Array): number => {
   const length = Math.min(a.length, b.length)
   for (let index = 0; index < length; index++) {
     const difference = (a[index] ?? 0) - (b[index] ?? 0)
@@ -14,8 +14,8 @@ const compare_bytes = (a: Uint8Array, b: Uint8Array): number => {
   return a.length - b.length
 }
 
-// PUT carries the envelope timestamp and DEL its own, both at value.timestamp.
-const envelope_timestamp = ({ entry }: HashedEntry): number => {
+// PUT carries the envelope or record timestamp and DEL its own, all at value.timestamp.
+export const envelope_timestamp = ({ entry }: HashedEntry): number => {
   const { payload } = entry
   const value = is_record(payload) ? payload.value : undefined
   return is_record(value) && typeof value.timestamp === 'number' ? value.timestamp : 0

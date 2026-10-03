@@ -5,9 +5,9 @@
 // the oplog, so an unreachable library keeps what it has (§5.4.5).
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
-import { decode_signed_entry } from '#entry/signed.ts'
+import { decode_signed_entry, type HashedEntry } from '#entry/signed.ts'
 import type { PubSub } from '#fabric/pubsub.ts'
-import { verify_entry, type VerifiedEntry } from '#oplog/accept.ts'
+import { check_entry } from '#oplog/accept.ts'
 import type { Oplog } from '#oplog/dag.ts'
 import { ProtocolError } from '#types/errors.ts'
 import type { ReplicationStatus } from '#types/peer.ts'
@@ -43,7 +43,7 @@ export interface ReplicatorOptions {
   pubsub: PubSub
   fetch_block: (cid: string, options: { signal: AbortSignal }) => Promise<Uint8Array | undefined>
   // Merges one ready batch into the library (§4.5).
-  merge: (entries: VerifiedEntry[]) => Promise<void>
+  merge: (entries: HashedEntry[]) => Promise<void>
   concurrency: number
   timeout_ms: number
   heads_interval_ms: number
@@ -53,12 +53,13 @@ export interface ReplicatorOptions {
   on_peer_leave?: (peer_id: string) => void
 }
 
-// Every fetched entry passes the same append verification as a local one
-// (§3.5, §3.5.4), and must hash to the CID it was fetched by.
-export const verify_fetched = (chain: ResolvedAcChain) => (hash: string, bytes: Uint8Array): VerifiedEntry => {
+// A fetched entry must hash to the CID it was fetched by and pass every
+// check the entry alone decides; the clock and a capability need its causal
+// past, so the merge checks those once its next have landed (§5.4.2 item 5).
+export const verify_fetched = (chain: ResolvedAcChain) => (hash: string, bytes: Uint8Array): HashedEntry => {
   const hashed = decode_signed_entry(bytes)
   if (hashed.hash !== hash) throw new ProtocolError('cid_mismatch', `fetched ${hash}, got ${hashed.hash}`)
-  return verify_entry({ hashed, chain })
+  return check_entry({ hashed, chain }).hashed
 }
 
 export const create_replicator = ({
@@ -86,7 +87,7 @@ export const create_replicator = ({
     on_status?.(current)
   }
 
-  const orchestrator = create_merge_orchestrator<VerifiedEntry>({
+  const orchestrator = create_merge_orchestrator<HashedEntry>({
     is_landed,
     merge: async (entries) => {
       const before = [...oplog.heads].sort().join()

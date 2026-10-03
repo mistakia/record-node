@@ -1,6 +1,6 @@
 // Indexed entries as WebSocket events (x-websocket-events in 7-http-api.yaml).
 
-import { is_operation, is_put } from '#entry/operations.ts'
+import { is_envelope_operation, is_put } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { get_library_summary, get_track } from '#query-db/queries.ts'
 import type { PeerContext } from './context.ts'
@@ -14,7 +14,7 @@ export const project_entry_events = ({ context, library_address, entries }: {
   const { emit } = context.events
   const own_library_address = context.identity?.own_address ?? ''
   for (const { operation } of entries) {
-    if (!is_operation(operation) || operation.value.type !== 'track') continue
+    if (!is_envelope_operation(operation) || operation.value.type !== 'track') continue
     const track_id = operation.key
     if (!is_put(operation)) {
       emit({ type: 'track:removed', payload: { library_address, track_id } })

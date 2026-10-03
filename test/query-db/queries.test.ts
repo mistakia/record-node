@@ -40,13 +40,13 @@ beforeAll(async () => {
     { oplog: theirs.oplog, fingerprint: 'delta', title: '100% off', artist: 'Wu', bpm: 128, tags: ['techno'], timestamp: 5 }
   ]
   for (const { oplog, ...track } of tracks) {
-    await projector.project_append({ oplog, entry: await add_track({ oplog, key_pair: writer, block_store, ...track }) })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, ...track })] })
   }
   const plays: [string, number][] = [['alpha', 10], ['gamma', 30], ['alpha', 40], ['unknown', 20]]
   for (const [fingerprint, timestamp] of plays) {
     const track_id = fingerprint === 'unknown' ? 'f'.repeat(64) : id_of(fingerprint)
     const entry = append_listen({ oplog: listens.oplog, track_id, address: own, key_pair: writer, timestamp })
-    await projector.project_append({ oplog: listens.oplog, entry })
+    await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
   }
 })
 

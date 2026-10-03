@@ -2,9 +2,10 @@
 // next closure is local or merge-ready, then merge in batches behind one
 // per-library queue, so concurrent heads messages end in the state of some
 // sequential merge order. An entry with an unfetched or abandoned ancestor
-// never merges.
+// never merges, and one whose ancestor the merge rejected is dropped.
 export const create_merge_orchestrator = ({ is_landed, merge }) => {
     const fetched = new Map();
+    const rejected = new Set();
     let tail = Promise.resolve();
     let scheduled = false;
     // Iterative, since a long chain would overflow a recursive walk. A cycle
@@ -38,6 +39,19 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
         }
         return [...fetched.values()].filter(({ hash }) => ready.get(hash) === true);
     };
+    // Drops every waiting entry that descends from a rejected one.
+    const drop_rejected_descendants = () => {
+        for (let changed = true; changed;) {
+            changed = false;
+            for (const [hash, entry] of fetched) {
+                if (!entry.entry.next.some((parent) => rejected.has(parent)))
+                    continue;
+                fetched.delete(hash);
+                rejected.add(hash);
+                changed = true;
+            }
+        }
+    };
     const run = async () => {
         scheduled = false;
         const batch = ready_batch();
@@ -55,9 +69,18 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
                 fetched.set(entry.hash, entry);
             throw error;
         }
+        // A ready entry that did not land failed verification at merge.
+        for (const { hash } of batch)
+            if (!is_landed(hash))
+                rejected.add(hash);
+        drop_rejected_descendants();
     };
     return {
         add: (entry) => {
+            if (entry.entry.next.some((parent) => rejected.has(parent))) {
+                rejected.add(entry.hash);
+                return;
+            }
             fetched.set(entry.hash, entry);
             if (scheduled)
                 return;
@@ -74,6 +97,9 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
                     return;
             }
         },
-        discard: () => { fetched.clear(); }
+        discard: () => {
+            fetched.clear();
+            rejected.clear();
+        }
     };
 };

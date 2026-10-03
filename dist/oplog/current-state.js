@@ -2,7 +2,7 @@
 // envelope.timestamp DESC, entry.hash ASC) and take the first. The hash
 // tiebreak compares raw multihash bytes, never the base58btc string.
 import { is_record } from '#types/guards.ts';
-const compare_bytes = (a, b) => {
+export const compare_bytes = (a, b) => {
     const length = Math.min(a.length, b.length);
     for (let index = 0; index < length; index++) {
         const difference = (a[index] ?? 0) - (b[index] ?? 0);
@@ -11,8 +11,8 @@ const compare_bytes = (a, b) => {
     }
     return a.length - b.length;
 };
-// PUT carries the envelope timestamp and DEL its own, both at value.timestamp.
-const envelope_timestamp = ({ entry }) => {
+// PUT carries the envelope or record timestamp and DEL its own, all at value.timestamp.
+export const envelope_timestamp = ({ entry }) => {
     const { payload } = entry;
     const value = is_record(payload) ? payload.value : undefined;
     return is_record(value) && typeof value.timestamp === 'number' ? value.timestamp : 0;

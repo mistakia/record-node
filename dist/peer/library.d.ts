@@ -2,7 +2,7 @@ import { type ResolvedAcChain } from '#access-control/resolve.ts';
 import type { ContentStore } from '#fabric/content-store.ts';
 import type { KeyPair } from '#identity/key-pair.ts';
 import type { VerifiedEntry } from '#oplog/accept.ts';
-import { type Oplog } from '#oplog/dag.ts';
+import { type AccessChange, type Oplog } from '#oplog/dag.ts';
 import { type MergeResult } from '#oplog/merge.ts';
 import type { Projector } from '#query-db/projector.ts';
 import type { LibraryType } from '#types/library.ts';
@@ -33,6 +33,7 @@ export interface LibraryManager {
     register: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];
+        access?: AccessChange;
     }) => Promise<void>;
     merge: (input: {
         library_address: string;
@@ -51,5 +52,6 @@ export declare const create_library_manager: ({ content_store, projector, state_
     on_entries?: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];
+        inert: readonly VerifiedEntry[];
     }) => void;
 }) => LibraryManager;

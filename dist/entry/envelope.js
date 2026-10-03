@@ -3,7 +3,7 @@ import { is_protocol_cid } from '#encoding/cid.ts';
 import { assert_envelope_tags } from '#encoding/size-bounds.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { is_record } from '#types/guards.ts';
-const ENVELOPE_TYPES = ['track', 'log', 'about'];
+export const ENVELOPE_TYPES = ['track', 'log', 'about'];
 const ENVELOPE_ID_PATTERN = /^[0-9a-f]{64}$/;
 const invalid = (message) => new ProtocolError('invalid_shape', message);
 const is_envelope_type = (value) => ENVELOPE_TYPES.includes(value);

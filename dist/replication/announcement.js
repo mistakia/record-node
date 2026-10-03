@@ -12,7 +12,7 @@ import { is_put } from '#entry/operations.ts';
 import { validate_about_content } from '#entry/payload.ts';
 import { decode_signed_entry } from '#entry/signed.ts';
 import { RECORD_TOPIC } from '#fabric/pubsub.ts';
-import { verify_entry } from '#oplog/accept.ts';
+import { check_entry } from '#oplog/accept.ts';
 import { ProtocolError } from '#types/errors.ts';
 export const create_announcer = ({ pubsub, interval_ms, timers, build }) => {
     const last_announced = new Map();
@@ -63,7 +63,11 @@ export const authenticate_announced = async ({ announced, get_block }) => {
         const hashed = decode_signed_entry(bytes);
         if (hashed.hash !== hint.hash || hashed.entry.id !== address)
             return undefined;
-        const { operation } = verify_entry({ hashed, chain });
+        // Only a write-list About is taken as a hint: a grantee's would need its
+        // causal past to verify (§3.5.9), which an announcement does not carry.
+        const { operation } = check_entry({ hashed, chain });
+        if (!chain.write_list.includes(hashed.entry.key))
+            return undefined;
         if (!is_put(operation) || operation.value.type !== 'about' || operation.key !== compute_about_id(address))
             return undefined;
         const content = validate_about_content({ value: hint.payload.value.content, library_address: address });

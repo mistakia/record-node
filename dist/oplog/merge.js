@@ -1,14 +1,13 @@
 // Merging remote entries (§4.5). Merge is set union over verified entries
 // plus total-order resolution per key, so it is associative and commutative.
+import { compute_cid_string } from '#encoding/cid.ts';
 import { decode_signed_entry } from '#entry/signed.ts';
-import { is_operation } from '#entry/operations.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { verify_entry } from "./accept.js";
-import { merge_clock_time } from "./clock.js";
-import { insert_entry, refresh_current_state } from "./dag.js";
-const verify_block = ({ oplog, bytes }) => {
+import { insert_entry, refresh_access_state, refresh_current_state } from "./dag.js";
+const caught = (run) => {
     try {
-        return verify_entry({ hashed: decode_signed_entry(bytes), chain: oplog.chain });
+        return run();
     }
     catch (error) {
         if (error instanceof ProtocolError)
@@ -17,21 +16,42 @@ const verify_block = ({ oplog, bytes }) => {
     }
 };
 // Takes signed-entry blocks as fetched, so size and canonical-form checks
-// run before decoding is trusted and before any signature work.
+// run before decoding is trusted and before any signature work. An entry is
+// verified once its next are in the oplog (§5.4.2 item 5), so the batch is
+// taken in clock order: a valid entry's clock exceeds its parents' (§4.2),
+// and an entry whose parent is missing or was rejected is rejected too.
 export const merge_entries = ({ oplog, blocks }) => {
-    // Step 1: an entry that fails verification is dropped.
-    const results = blocks.map((bytes) => verify_block({ oplog, bytes }));
-    const rejected = results.filter((result) => result instanceof ProtocolError);
-    const verified = results.filter((result) => !(result instanceof ProtocolError));
-    // Steps 2 and 4: idempotent insertion keeps heads equal to heads(E_local ∪ E_remote).
-    const merged = verified.filter((entry) => insert_entry({ oplog, entry }));
-    // Step 3: advance the Lamport clock.
-    oplog.clock_time = merge_clock_time({
-        local_time: oplog.clock_time,
-        remote_times: merged.map(({ entry }) => entry.clock.time)
-    });
-    // Step 5: re-resolve every touched key over all of its known entries.
-    const keys = new Set(merged.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : []));
+    const rejected = [];
+    const decoded = [];
+    for (const bytes of blocks) {
+        const result = caught(() => decode_signed_entry(bytes));
+        if (result instanceof ProtocolError)
+            rejected.push({ hash: compute_cid_string(bytes), error: result });
+        else if (!oplog.entries.has(result.hash))
+            decoded.push(result);
+    }
+    decoded.sort((a, b) => a.entry.clock.time - b.entry.clock.time || (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0));
+    // Steps 1, 2, and 4: verify, then insert idempotently, which keeps heads
+    // equal to heads(E_local ∪ E_remote). Step 3 advances no clock.
+    const merged = [];
+    for (const hashed of decoded) {
+        if (oplog.entries.has(hashed.hash))
+            continue;
+        const result = caught(() => verify_entry({ oplog, hashed }));
+        if (result instanceof ProtocolError) {
+            rejected.push({ hash: hashed.hash, error: result });
+            continue;
+        }
+        insert_entry({ oplog, entry: result });
+        merged.push(result);
+    }
+    // Step 5: re-resolve every touched key, and every key an entry made inert
+    // holds, over all of its known entries.
+    const access = refresh_access_state({ oplog, added: merged });
+    const keys = new Set(access.keys);
+    for (const { state_key } of merged)
+        if (state_key !== undefined)
+            keys.add(state_key);
     refresh_current_state({ oplog, keys });
-    return { merged, rejected };
+    return { merged, rejected, access };
 };

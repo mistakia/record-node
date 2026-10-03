@@ -6,7 +6,7 @@ import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { create_memory_network } from '#adapter/memory/network.ts'
 import type { PubSub } from '#fabric/pubsub.ts'
-import type { VerifiedEntry } from '#oplog/accept.ts'
+import type { HashedEntry } from '#entry/signed.ts'
 import { create_oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { decode_heads_message, encode_heads_batches } from '#replication/messages.ts'
@@ -28,7 +28,7 @@ export const create_replicator_rig = ({ chain, fetch, timers = SYSTEM_TIMERS, co
   const remote = network.join({ content_store: create_memory_content_store() })
   const oplog = create_oplog({ chain })
   const log: string[] = []
-  const batches: VerifiedEntry[][] = []
+  const batches: HashedEntry[][] = []
   let merging = 0
   let peak_merging = 0
   const pubsub: PubSub = {

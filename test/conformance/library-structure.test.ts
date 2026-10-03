@@ -96,7 +96,7 @@ describe('library-structure', () => {
     const listens = await open_test_library({ name: 'listens', type: 'listens', writers: [writer] })
     const db = open_query_db()
     const projector = create_projector({ db, read_content: block_store.get })
-    const project = (entry: ReturnType<typeof append_track>) => projector.project_append({ oplog, entry })
+    const project = (entry: ReturnType<typeof append_track>) => projector.project_entries({ oplog, entries: [entry] })
 
     const first = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One', timestamp: 100 })
     await project(first)
@@ -109,7 +109,7 @@ describe('library-structure', () => {
     await project(await set_about({ oplog, key_pair: writer, block_store, profile: { name: 'Library' } }))
     for (const time of [1, 2, 3]) {
       const entry = append_listen({ oplog: listens.oplog, track_id: 'a'.repeat(64), address: oplog.chain.address, key_pair: writer, timestamp: time })
-      await projector.project_append({ oplog: listens.oplog, entry })
+      await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
     }
 
     const rebuilt = open_query_db()
@@ -157,11 +157,15 @@ describe('library-structure', () => {
       const db = open_query_db()
       const projector = create_projector({ db, read_content: jittered_reader(block_store) })
       // Batches merge while earlier batches are still loading content, so
-      // per-batch projection runs concurrently with later merges (§4.5).
+      // per-batch projection runs concurrently with later merges (§4.5). The
+      // writers interleave at random, but a batch never precedes a parent's,
+      // since an entry merges only once its next have (§5.4.2 item 5).
+      const clock_of = (bytes: Uint8Array) => decode_signed_entry(bytes).entry.clock.time
+      const ordered = shuffled(blocks, seed).sort((a, b) => clock_of(a) - clock_of(b))
       const projections = []
-      for (const batch of in_batches(shuffled(blocks, seed), 3)) {
+      for (const batch of in_batches(ordered, 3)) {
         const result = merge_entries({ oplog, blocks: batch })
-        projections.push(projector.project_merge({ oplog, result }))
+        projections.push(projector.project_entries({ oplog, entries: result.merged, keys: result.access.keys }))
         await new Promise((resolve) => setTimeout(resolve, seed % 3))
       }
       await Promise.all(projections)

@@ -1,4 +1,5 @@
-import type { Envelope } from '#types/entry.ts';
+import type { Envelope, EnvelopeType } from '#types/entry.ts';
+export declare const ENVELOPE_TYPES: readonly EnvelopeType[];
 export declare const validate_envelope: (value: unknown) => Envelope;
 type EnvelopeInput = {
     id: string;

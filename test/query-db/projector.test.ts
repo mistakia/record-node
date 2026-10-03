@@ -40,7 +40,7 @@ describe('query-db projector', () => {
       tags: ['deep', 'night'],
       timestamp: 5000
     })
-    await projector.project_append({ oplog, entry })
+    await projector.project_entries({ oplog, entries: [entry] })
     const track = get_track({ db, track_id: compute_track_id('AQAA-track'), own_library_address: oplog.chain.address })
     expect(track).toMatchObject({
       library_address: oplog.chain.address,
@@ -72,8 +72,8 @@ describe('query-db projector', () => {
   test('a relabel replaces tags and keeps the first-seen time', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const track_id = compute_track_id('AQAA-track')
-    await projector.project_append({ oplog, entry: await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['old'], timestamp: 10 }) })
-    await projector.project_append({ oplog, entry: await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['new'], timestamp: 20 }) })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['old'], timestamp: 10 })] })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['new'], timestamp: 20 })] })
     const track = get_track({ db, track_id })
     expect(track?.tags.map(({ tag }) => tag)).toEqual(['new'])
     expect(track?.added_at_ms).toBe(10)
@@ -82,8 +82,8 @@ describe('query-db projector', () => {
   test('a current DEL tombstones the key and removes its rows', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const track_id = compute_track_id('AQAA-track')
-    await projector.project_append({ oplog, entry: await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['x'], resolver: [{ extractor: 'y', id: '1' }] }) })
-    await projector.project_append({ oplog, entry: delete_track({ oplog, key_pair: writer, key: track_id }) })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['x'], resolver: [{ extractor: 'y', id: '1' }] })] })
+    await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: track_id })] })
     expect(get_track({ db, track_id })).toBeUndefined()
     expect(db.prepare('SELECT op FROM entries WHERE key = ?').get(track_id)?.op).toBe('DEL')
     for (const table of ['tracks', 'tags', 'resolvers']) {
@@ -95,8 +95,8 @@ describe('query-db projector', () => {
   test('links and the profile project from log and about payloads', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const other = await open_test_library({ name: 'other' })
-    await projector.project_append({ oplog, entry: await add_link({ oplog, key_pair: writer, block_store, address: other.chain.address, alias: 'friend' }) })
-    await projector.project_append({ oplog, entry: await set_about({ oplog, key_pair: writer, block_store, profile: { name: 'Mine', bio: 'Bio' } }) })
+    await projector.project_entries({ oplog, entries: [await add_link({ oplog, key_pair: writer, block_store, address: other.chain.address, alias: 'friend' })] })
+    await projector.project_entries({ oplog, entries: [await set_about({ oplog, key_pair: writer, block_store, profile: { name: 'Mine', bio: 'Bio' } })] })
     expect(list_linked_libraries({ db, library_address: oplog.chain.address })).toEqual([{ address: other.chain.address, alias: 'friend' }])
     expect(get_about({ db, library_address: oplog.chain.address })).toEqual({
       library_address: oplog.chain.address,
@@ -112,7 +112,7 @@ describe('query-db projector', () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const track_id = compute_track_id('AQAA-late')
     const entry = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-late', title: 'Late', store: false })
-    await projector.project_append({ oplog, entry })
+    await projector.project_entries({ oplog, entries: [entry] })
     expect(get_track({ db, track_id })).toMatchObject({ title: null, audio_cid: null, artwork: [] })
     await store_content({ block_store, value: track_content({ fingerprint: 'AQAA-late', title: 'Late' }) })
     await projector.project_keys({ oplog, keys: [track_id] })
@@ -126,9 +126,9 @@ describe('query-db projector', () => {
     const track_id = 'b'.repeat(64)
     for (const timestamp of [300, 100, 200]) {
       const entry = append_listen({ oplog: listens.oplog, track_id, address: '/record/x/y', key_pair: writer, timestamp })
-      await projector.project_append({ oplog: listens.oplog, entry })
+      await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
       // Projection is idempotent per entry.
-      await projector.project_append({ oplog: listens.oplog, entry })
+      await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
     }
     expect(get_listen_count({ db, track_id })).toEqual({ track_id, count: 3, timestamps_ms: [300, 200, 100] })
   })
@@ -136,8 +136,8 @@ describe('query-db projector', () => {
   test('remove_library drops every row of one library only', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const other = await open_test_library({ name: 'other', writers: [writer] })
-    await projector.project_append({ oplog, entry: await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', tags: ['t'] }) })
-    await projector.project_append({ oplog: other.oplog, entry: await add_track({ oplog: other.oplog, key_pair: writer, block_store, fingerprint: 'AQAA-2' }) })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', tags: ['t'] })] })
+    await projector.project_entries({ oplog: other.oplog, entries: [await add_track({ oplog: other.oplog, key_pair: writer, block_store, fingerprint: 'AQAA-2' })] })
     await projector.remove_library({ library_address: oplog.chain.address })
     const libraries = db.prepare('SELECT DISTINCT library_address FROM entries UNION SELECT DISTINCT library_address FROM tags').all()
     expect(libraries.map(({ library_address }) => library_address)).toEqual([other.chain.address])

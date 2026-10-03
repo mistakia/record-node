@@ -156,7 +156,7 @@ describe('data-model', () => {
       forged_block(oplog.chain.address, { op: 'DEL', key: ID, value: { type, timestamp: 1 } }))
     const { merged, rejected } = merge_entries({ oplog, blocks })
     expect(merged).toEqual([])
-    expect(rejected.map(({ code }) => code)).toEqual(['invalid_operation', 'invalid_operation', 'invalid_operation'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['invalid_operation', 'invalid_operation', 'invalid_operation'])
     expect(oplog.entries.size).toBe(0)
   })
 
@@ -173,6 +173,6 @@ describe('data-model', () => {
     const put = forged_block(oplog.chain.address, track_put())
     const { merged, rejected } = merge_entries({ oplog, blocks: [listen, del, put] })
     expect(merged.length).toBe(1)
-    expect(rejected.map(({ code }) => code)).toEqual(['invalid_operation', 'invalid_operation'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['invalid_operation', 'invalid_operation'])
   })
 })

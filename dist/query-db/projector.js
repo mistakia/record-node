@@ -3,7 +3,7 @@
 // each key: the projector never re-sorts entries itself, it writes whatever
 // entry the oplog holds as current after an append or a merge.
 import { compute_about_id } from '#entry/id.ts';
-import { is_operation, is_put } from '#entry/operations.ts';
+import { is_envelope_operation, is_put } from '#entry/operations.ts';
 import { decode_payload, validate_about_content, validate_log_content, validate_track_content } from '#entry/payload.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { is_record } from '#types/guards.ts';
@@ -118,7 +118,7 @@ const write_key = ({ statements, oplog, key, entry, content }) => {
     const library_address = oplog.chain.address;
     for (const statement of statements.clear_key)
         statement.run(library_address, key);
-    if (entry === undefined || !is_operation(entry.operation)) {
+    if (entry === undefined || !is_envelope_operation(entry.operation)) {
         statements.delete_entry.run(library_address, key);
         return;
     }
@@ -191,21 +191,37 @@ export const create_projector = ({ db, read_content }) => {
             write_listen({ statements, library_address: oplog.chain.address, entry });
         statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]');
     });
-    const project_entries = ({ oplog, entries }) => enqueue(async () => {
+    // An identity library projects no rows: its records are read from the
+    // oplog (§4.8). Only its marker is kept, so a restart skips the replay.
+    const write_identity = (oplog) => in_transaction(db, () => {
+        statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]');
+    });
+    const project_entries = ({ oplog, entries, keys = [] }) => enqueue(async () => {
         if (oplog.chain.type === 'listens') {
             write_listens(oplog, entries);
             return;
         }
-        const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : []);
-        await write_keys({ oplog, keys });
+        if (oplog.chain.type === 'identity') {
+            write_identity(oplog);
+            return;
+        }
+        const touched = new Set(keys);
+        for (const { state_key } of entries)
+            if (state_key !== undefined)
+                touched.add(state_key);
+        await write_keys({ oplog, keys: touched });
     });
     return {
-        project_append: ({ oplog, entry }) => project_entries({ oplog, entries: [entry] }),
-        project_merge: ({ oplog, result }) => project_entries({ oplog, entries: result.merged }),
-        project_keys: ({ oplog, keys }) => enqueue(() => write_keys({ oplog, keys })),
+        project_entries,
+        project_keys: ({ oplog, keys }) => enqueue(async () => {
+            if (oplog.chain.type === 'recordstore')
+                await write_keys({ oplog, keys });
+        }),
         project_library: ({ oplog }) => enqueue(async () => {
             if (oplog.chain.type === 'listens')
                 write_listens(oplog, oplog.entries.values());
+            else if (oplog.chain.type === 'identity')
+                write_identity(oplog);
             else
                 await write_keys({ oplog, keys: oplog.key_entries.keys() });
         }),

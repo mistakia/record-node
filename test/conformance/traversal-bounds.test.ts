@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { build_unsigned_entry, MAX_ENTRY_POINTERS } from '#entry/build.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
-import type { VerifiedEntry } from '#oplog/accept.ts'
+import type { HashedEntry } from '#entry/signed.ts'
 import { create_oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { create_merge_orchestrator } from '#replication/merge-orchestrator.ts'
@@ -75,7 +75,7 @@ describe('traversal-bounds', () => {
     // Validly signed by a listed writer, and still rejected.
     const { merged, rejected } = merge_entries({ oplog, blocks: [fan_out('next'), fan_out('refs')] })
     expect(merged).toEqual([])
-    expect(rejected.map(({ code }) => code)).toEqual(['size_exceeded', 'size_exceeded'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['size_exceeded', 'size_exceeded'])
   })
 
   test('§5.4.2 [MUST] a rejected fan-out entry enqueues none of its children', async () => {
@@ -171,7 +171,7 @@ describe('traversal-bounds', () => {
     const tip = nth(dag.entries, 2)
     const target = create_oplog({ chain: dag.chain })
     const batches: string[][] = []
-    const orchestrator = create_merge_orchestrator<VerifiedEntry>({
+    const orchestrator = create_merge_orchestrator<HashedEntry>({
       is_landed: (hash) => target.entries.has(hash),
       merge: async (entries) => {
         batches.push(entries.map(({ hash }) => hash))

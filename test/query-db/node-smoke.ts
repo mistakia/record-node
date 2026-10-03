@@ -29,7 +29,7 @@ const blocks = [...blocks_of(alice_log), ...blocks_of(bob_log)]
 const oplog = create_oplog({ chain })
 const db = open_query_db()
 const projector = create_projector({ db, read_content: jittered_reader(block_store) })
-await Promise.all(in_batches(blocks, 2).map((batch) => projector.project_merge({ oplog, result: merge_entries({ oplog, blocks: batch }) })))
+await Promise.all(in_batches(blocks, 2).map((batch) => projector.project_entries({ oplog, entries: merge_entries({ oplog, blocks: batch }).merged })))
 
 const rebuilt = open_query_db()
 await rebuild_query_db({ db: rebuilt, read_content: block_store.get, libraries: [{ chain, blocks }] })

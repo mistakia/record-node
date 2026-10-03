@@ -4,8 +4,7 @@
 // library still holds; the store's pins themselves do not count references.
 import { create_ac_chain } from '#access-control/create.ts';
 import { resolve_ac_chain } from '#access-control/resolve.ts';
-import { is_operation } from '#entry/operations.ts';
-import { append_entry, create_oplog } from '#oplog/dag.ts';
+import { append_entry_with_access, create_oplog } from '#oplog/dag.ts';
 import { merge_entries } from '#oplog/merge.ts';
 import { PeerError } from '#types/peer.ts';
 import { load_entry_blocks } from "./load.js";
@@ -24,16 +23,16 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry }) });
         }
     };
-    const register = async ({ library_address, entries }) => {
+    const register = async ({ library_address, entries, access }) => {
         const handle = require_library(library_address);
         for (const entry of entries)
             await content_store.put(entry.hash, entry.bytes);
         await pin_entries(handle, entries);
         await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] });
-        const projected = Promise.all(entries.map(async (entry) => { await projector.project_append({ oplog: handle.oplog, entry }); }));
+        const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] });
         indexing = projected.catch(() => { });
         await projected;
-        on_entries?.({ library_address, entries });
+        on_entries?.({ library_address, entries, inert: access?.inert ?? [] });
     };
     // Resolving the chain is the gate (§3.5.1): a library that fails it never
     // gets an oplog. Its objects are pinned before any entry is loaded.
@@ -98,8 +97,8 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         list: () => [...libraries.values()],
         append: async ({ library_address, payload, key_pair }) => {
             const { oplog } = require_library(library_address);
-            const entry = append_entry({ oplog, payload, key_pair });
-            await register({ library_address, entries: [entry] });
+            const { entry, access } = append_entry_with_access({ oplog, payload, key_pair });
+            await register({ library_address, entries: [entry], access });
             return entry;
         },
         register,
@@ -107,17 +106,17 @@ export const create_library_manager = ({ content_store, projector, state_store, 
             const { oplog } = require_library(library_address);
             const result = merge_entries({ oplog, blocks });
             if (result.merged.length > 0)
-                await register({ library_address, entries: result.merged });
+                await register({ library_address, entries: result.merged, access: result.access });
             return result;
         },
         reindex: async ({ library_address, entries }) => {
             const handle = require_library(library_address);
             await pin_entries(handle, entries);
-            const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : []);
+            const keys = entries.flatMap(({ state_key }) => state_key === undefined ? [] : [state_key]);
             const projected = projector.project_keys({ oplog: handle.oplog, keys });
             indexing = projected.catch(() => { });
             await projected;
-            on_entries?.({ library_address, entries });
+            on_entries?.({ library_address, entries, inert: [] });
         },
         settled: async () => { await indexing; }
     };

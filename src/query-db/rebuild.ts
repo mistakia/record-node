@@ -7,8 +7,7 @@ import type { DatabaseSync } from 'node:sqlite'
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { create_oplog, type Oplog } from '#oplog/dag.ts'
-import { merge_entries } from '#oplog/merge.ts'
-import type { ProtocolError } from '#types/errors.ts'
+import { merge_entries, type MergeResult } from '#oplog/merge.ts'
 import { create_projector, type ContentReader } from './projector.ts'
 import { apply_schema, drop_schema } from './schema.ts'
 
@@ -21,7 +20,7 @@ export interface LibraryReplay {
 export interface RebuildResult {
   readonly oplogs: readonly Oplog[]
   // Stored blocks that failed verification and were left out of the replay.
-  readonly rejected: readonly ProtocolError[]
+  readonly rejected: MergeResult['rejected']
 }
 
 export const rebuild_query_db = async ({ db, libraries, read_content }: {
@@ -33,7 +32,7 @@ export const rebuild_query_db = async ({ db, libraries, read_content }: {
   apply_schema(db)
   const projector = create_projector({ db, read_content })
   const oplogs: Oplog[] = []
-  const rejected: ProtocolError[] = []
+  const rejected: Array<MergeResult['rejected'][number]> = []
   for (const { chain, blocks } of libraries) {
     const oplog = create_oplog({ chain })
     rejected.push(...merge_entries({ oplog, blocks: [...blocks] }).rejected)

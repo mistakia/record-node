@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ResolvedAcChain } from '#access-control/resolve.ts';
 import { type Oplog } from '#oplog/dag.ts';
-import type { ProtocolError } from '#types/errors.ts';
+import { type MergeResult } from '#oplog/merge.ts';
 import { type ContentReader } from './projector.ts';
 export interface LibraryReplay {
     readonly chain: ResolvedAcChain;
@@ -9,7 +9,7 @@ export interface LibraryReplay {
 }
 export interface RebuildResult {
     readonly oplogs: readonly Oplog[];
-    readonly rejected: readonly ProtocolError[];
+    readonly rejected: MergeResult['rejected'];
 }
 export declare const rebuild_query_db: ({ db, libraries, read_content }: {
     db: DatabaseSync;

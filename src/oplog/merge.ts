@@ -1,21 +1,25 @@
 // Merging remote entries (§4.5). Merge is set union over verified entries
 // plus total-order resolution per key, so it is associative and commutative.
 
-import { decode_signed_entry } from '#entry/signed.ts'
-import { is_operation } from '#entry/operations.ts'
+import type { CanonicalBytes } from '#encoding/canonical-bytes.ts'
+import { compute_cid_string } from '#encoding/cid.ts'
+import { decode_signed_entry, type HashedEntry } from '#entry/signed.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { verify_entry, type VerifiedEntry } from './accept.ts'
-import { merge_clock_time } from './clock.ts'
-import { insert_entry, refresh_current_state, type Oplog } from './dag.ts'
+import { insert_entry, refresh_access_state, refresh_current_state, type AccessChange, type Oplog } from './dag.ts'
 
 export interface MergeResult {
   readonly merged: readonly VerifiedEntry[]
-  readonly rejected: readonly ProtocolError[]
+  // hash is the CID of the block as received, decodable or not.
+  readonly rejected: ReadonlyArray<{ readonly hash: string, readonly error: ProtocolError }>
+  // What a revocation in the batch changed: entries, merged now or before,
+  // that became inert, and the keys whose current state moved either way.
+  readonly access: AccessChange
 }
 
-const verify_block = ({ oplog, bytes }: { oplog: Oplog, bytes: Uint8Array }): VerifiedEntry | ProtocolError => {
+const caught = <T>(run: () => T): T | ProtocolError => {
   try {
-    return verify_entry({ hashed: decode_signed_entry(bytes), chain: oplog.chain })
+    return run()
   } catch (error) {
     if (error instanceof ProtocolError) return error
     throw error
@@ -23,21 +27,37 @@ const verify_block = ({ oplog, bytes }: { oplog: Oplog, bytes: Uint8Array }): Ve
 }
 
 // Takes signed-entry blocks as fetched, so size and canonical-form checks
-// run before decoding is trusted and before any signature work.
+// run before decoding is trusted and before any signature work. An entry is
+// verified once its next are in the oplog (§5.4.2 item 5), so the batch is
+// taken in clock order: a valid entry's clock exceeds its parents' (§4.2),
+// and an entry whose parent is missing or was rejected is rejected too.
 export const merge_entries = ({ oplog, blocks }: { oplog: Oplog, blocks: readonly Uint8Array[] }): MergeResult => {
-  // Step 1: an entry that fails verification is dropped.
-  const results = blocks.map((bytes) => verify_block({ oplog, bytes }))
-  const rejected = results.filter((result) => result instanceof ProtocolError)
-  const verified = results.filter((result): result is VerifiedEntry => !(result instanceof ProtocolError))
-  // Steps 2 and 4: idempotent insertion keeps heads equal to heads(E_local ∪ E_remote).
-  const merged = verified.filter((entry) => insert_entry({ oplog, entry }))
-  // Step 3: advance the Lamport clock.
-  oplog.clock_time = merge_clock_time({
-    local_time: oplog.clock_time,
-    remote_times: merged.map(({ entry }) => entry.clock.time)
-  })
-  // Step 5: re-resolve every touched key over all of its known entries.
-  const keys = new Set(merged.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : []))
+  const rejected: Array<{ hash: string, error: ProtocolError }> = []
+  const decoded: HashedEntry[] = []
+  for (const bytes of blocks) {
+    const result = caught(() => decode_signed_entry(bytes))
+    if (result instanceof ProtocolError) rejected.push({ hash: compute_cid_string(bytes as CanonicalBytes), error: result })
+    else if (!oplog.entries.has(result.hash)) decoded.push(result)
+  }
+  decoded.sort((a, b) => a.entry.clock.time - b.entry.clock.time || (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0))
+  // Steps 1, 2, and 4: verify, then insert idempotently, which keeps heads
+  // equal to heads(E_local ∪ E_remote). Step 3 advances no clock.
+  const merged: VerifiedEntry[] = []
+  for (const hashed of decoded) {
+    if (oplog.entries.has(hashed.hash)) continue
+    const result = caught(() => verify_entry({ oplog, hashed }))
+    if (result instanceof ProtocolError) {
+      rejected.push({ hash: hashed.hash, error: result })
+      continue
+    }
+    insert_entry({ oplog, entry: result })
+    merged.push(result)
+  }
+  // Step 5: re-resolve every touched key, and every key an entry made inert
+  // holds, over all of its known entries.
+  const access = refresh_access_state({ oplog, added: merged })
+  const keys = new Set(access.keys)
+  for (const { state_key } of merged) if (state_key !== undefined) keys.add(state_key)
   refresh_current_state({ oplog, keys })
-  return { merged, rejected }
+  return { merged, rejected, access }
 }

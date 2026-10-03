@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { assert_signed_entry_shape, hash_signed_entry } from '#entry/signed.ts'
+import { assert_signed_entry_shape, hash_signed_entry, type HashedEntry } from '#entry/signed.ts'
 import { build_del_operation } from '#entry/operations.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { resolve_current_state } from '#oplog/current-state.ts'
@@ -15,16 +15,39 @@ const writers = [generate_key_pair(), generate_key_pair(), generate_key_pair()] 
 const [alice, bob, carol] = writers
 const RACE = 'race-fingerprint'
 
-const race_put = ({ key_pair, address, time, timestamp, n = 0 }: {
+// A chain of alice's entries at clock times 1 to height. An entry merged at
+// clock time t cites rung t - 1, since §4.2 verifies the time against next.
+const ladder = (address: string, height: number): HashedEntry[] => {
+  const rungs: HashedEntry[] = []
+  for (let time = 1; time <= height; time++) {
+    const next = rungs.length === 0 ? [] : [(rungs[rungs.length - 1] as HashedEntry).hash]
+    rungs.push(sign_raw({
+      private_key: alice.private_key,
+      fields: { id: address, payload: track_put({ fingerprint: `rung-${time}`, timestamp: time }), next, clock: { id: alice.public_key, time } }
+    }))
+  }
+  return rungs
+}
+
+const race_put = ({ key_pair, address, time, timestamp, n = 0, rungs = [] }: {
   key_pair: KeyPair
   address: string
   time: number
   timestamp: number
   n?: number
+  rungs?: readonly HashedEntry[]
 }) => sign_raw({
   private_key: key_pair.private_key,
-  fields: { id: address, payload: track_put({ fingerprint: RACE, timestamp, content: { n } }), clock: { id: key_pair.public_key, time } }
+  fields: {
+    id: address,
+    payload: track_put({ fingerprint: RACE, timestamp, content: { n } }),
+    // Without rungs the entry exercises ordering only, as the F5 race set does.
+    next: time === 1 || rungs.length === 0 ? [] : [(rungs[time - 2] as HashedEntry).hash],
+    clock: { id: key_pair.public_key, time }
+  }
 })
+
+const bytes_of = (entries: readonly HashedEntry[]): Uint8Array[] => entries.map(({ bytes }) => bytes)
 
 const race_key = track_put({ fingerprint: RACE }).key
 
@@ -65,11 +88,13 @@ describe('merge-ordering', () => {
 
   test('§4.4.2 [MUST] peers holding the same signed entries agree on the order', async () => {
     const { oplog } = await open_test_library({ writers: [...writers] })
-    const blocks = writers.flatMap((key_pair, index) => [
-      race_put({ key_pair, address: oplog.chain.address, time: 3, timestamp: 50, n: index }).bytes,
-      race_put({ key_pair, address: oplog.chain.address, time: 1 + index, timestamp: 70, n: 10 + index }).bytes
-    ])
+    const rungs = ladder(oplog.chain.address, 2)
+    const blocks = [...bytes_of(rungs), ...writers.flatMap((key_pair, index) => [
+      race_put({ key_pair, address: oplog.chain.address, time: 3, timestamp: 50, n: index, rungs }).bytes,
+      race_put({ key_pair, address: oplog.chain.address, time: 1 + index, timestamp: 70, n: 10 + index, rungs }).bytes
+    ])]
     const forward = fresh(oplog, blocks)
+    expect(forward.entries.size).toBe(8)
     const backward = fresh(oplog, [...blocks].reverse())
     expect(forward.current.get(race_key)?.hash).toBe(backward.current.get(race_key)?.hash as string)
     expect(oplog_state(forward)).toEqual(oplog_state(backward))
@@ -99,23 +124,30 @@ describe('merge-ordering', () => {
 
   test('§4.4.2 [MUST] PUT and DEL effects apply only to the current entry', async () => {
     const { oplog } = await open_test_library({ writers: [alice, bob] })
-    const newer = race_put({ key_pair: alice, address: oplog.chain.address, time: 5, timestamp: 5, n: 1 })
-    const older_put = race_put({ key_pair: bob, address: oplog.chain.address, time: 2, timestamp: 9, n: 2 })
+    const rungs = ladder(oplog.chain.address, 4)
+    const newer = race_put({ key_pair: alice, address: oplog.chain.address, time: 5, timestamp: 5, n: 1, rungs })
+    const older_put = race_put({ key_pair: bob, address: oplog.chain.address, time: 2, timestamp: 9, n: 2, rungs })
     const older_del = sign_raw({
       private_key: bob.private_key,
-      fields: { id: oplog.chain.address, payload: build_del_operation({ key: race_key, type: 'track', timestamp: 9 }), clock: { id: bob.public_key, time: 3 } }
+      fields: {
+        id: oplog.chain.address,
+        payload: build_del_operation({ key: race_key, type: 'track', timestamp: 9 }),
+        next: [(rungs[1] as HashedEntry).hash],
+        clock: { id: bob.public_key, time: 3 }
+      }
     })
-    merge_entries({ oplog, blocks: [newer.bytes, older_put.bytes, older_del.bytes] })
-    expect(oplog.entries.size).toBe(3)
+    merge_entries({ oplog, blocks: [...bytes_of(rungs), newer.bytes, older_put.bytes, older_del.bytes] })
+    expect(oplog.entries.size).toBe(rungs.length + 3)
     expect(get_live_entry({ oplog, key: race_key })?.hash).toBe(newer.hash)
   })
 
   test('§4.4.2 [MUST] recomputing on merge uses every known entry for the key', async () => {
     const { oplog } = await open_test_library({ writers: [alice, bob] })
-    const high = race_put({ key_pair: alice, address: oplog.chain.address, time: 9, timestamp: 1 })
-    const low = race_put({ key_pair: bob, address: oplog.chain.address, time: 3, timestamp: 1 })
-    merge_entries({ oplog, blocks: [high.bytes] })
-    merge_entries({ oplog, blocks: [low.bytes] })
+    const rungs = ladder(oplog.chain.address, 8)
+    const high = race_put({ key_pair: alice, address: oplog.chain.address, time: 9, timestamp: 1, rungs })
+    const low = race_put({ key_pair: bob, address: oplog.chain.address, time: 3, timestamp: 1, rungs })
+    merge_entries({ oplog, blocks: [...bytes_of(rungs), high.bytes] })
+    expect(merge_entries({ oplog, blocks: [low.bytes] }).merged.length).toBe(1)
     // Resolving over the newly arrived entry alone would pick low.
     expect(oplog.current.get(race_key)?.hash).toBe(high.hash)
   })
@@ -130,7 +162,6 @@ describe('merge-ordering', () => {
     expect([...oplog.entries.keys()]).toEqual([good.hash])
     expect([...oplog.heads]).toEqual([good.hash])
     expect(oplog.current.get(race_key)?.hash).toBe(good.hash)
-    expect(oplog.clock_time).toBe(1)
   })
 
   test('§4.5 [MUST] inserting an entry whose hash already exists is a no-op', async () => {
@@ -163,10 +194,12 @@ describe('merge-ordering', () => {
 
   test('§4.5 [MUST] concurrent merge batches end in the same query-index state as one merge over their union', async () => {
     const { oplog } = await open_test_library({ writers: [...writers] })
+    const rungs = ladder(oplog.chain.address, 4)
     const blocks = writers.flatMap((key_pair, index) => [1, 2, 3].map((time) =>
-      race_put({ key_pair, address: oplog.chain.address, time: time + index, timestamp: 10 * time, n: index * 10 + time }).bytes))
-    const batched = fresh(oplog, blocks.slice(0, 4), blocks.slice(4))
-    const union = fresh(oplog, [...blocks].reverse())
+      race_put({ key_pair, address: oplog.chain.address, time: time + index, timestamp: 10 * time, n: index * 10 + time, rungs }).bytes))
+    const batched = fresh(oplog, [...bytes_of(rungs), ...blocks.slice(0, 4)], blocks.slice(4))
+    const union = fresh(oplog, [...bytes_of(rungs), ...blocks].reverse())
+    expect(union.entries.size).toBe(rungs.length + blocks.length)
     expect([...batched.current].map(([key, { hash }]) => [key, hash])).toEqual([...union.current].map(([key, { hash }]) => [key, hash]))
   })
 })

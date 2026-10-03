@@ -5,11 +5,10 @@
 
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain, type ResolvedAcChain } from '#access-control/resolve.ts'
-import { is_operation } from '#entry/operations.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
-import { append_entry, create_oplog, type Oplog } from '#oplog/dag.ts'
+import { append_entry_with_access, create_oplog, type AccessChange, type Oplog } from '#oplog/dag.ts'
 import { merge_entries, type MergeResult } from '#oplog/merge.ts'
 import type { Projector } from '#query-db/projector.ts'
 import type { LibraryType } from '#types/library.ts'
@@ -38,8 +37,9 @@ export interface LibraryManager {
   list: () => LibraryHandle[]
   // Signs, stores, pins, and indexes one local entry.
   append: (input: { library_address: string, payload: unknown, key_pair: KeyPair }) => Promise<VerifiedEntry>
-  // Stores, pins, and indexes entries already in the oplog (an ingest PUT).
-  register: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => Promise<void>
+  // Stores, pins, and indexes entries already in the oplog (an ingest PUT),
+  // and re-indexes the keys a revocation among them moved.
+  register: (input: { library_address: string, entries: readonly VerifiedEntry[], access?: AccessChange }) => Promise<void>
   // Remote entry blocks (§4.5), as replication fetched them.
   merge: (input: { library_address: string, blocks: readonly Uint8Array[] }) => Promise<MergeResult>
   // Pins and re-indexes entries whose content payload reached the store
@@ -53,8 +53,8 @@ export const create_library_manager = ({ content_store, projector, state_store, 
   content_store: ContentStore
   projector: Projector
   state_store: LibraryStateStore
-  // After entries are indexed.
-  on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => void
+  // After entries are indexed, with the entries a revocation among them made inert.
+  on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[], inert: readonly VerifiedEntry[] }) => void
 }): LibraryManager => {
   const libraries = new Map<string, LibraryHandle>()
   let indexing: Promise<unknown> = Promise.resolve()
@@ -71,15 +71,19 @@ export const create_library_manager = ({ content_store, projector, state_store, 
     }
   }
 
-  const register = async ({ library_address, entries }: { library_address: string, entries: readonly VerifiedEntry[] }) => {
+  const register = async ({ library_address, entries, access }: {
+    library_address: string
+    entries: readonly VerifiedEntry[]
+    access?: AccessChange
+  }) => {
     const handle = require_library(library_address)
     for (const entry of entries) await content_store.put(entry.hash, entry.bytes)
     await pin_entries(handle, entries)
     await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] })
-    const projected = Promise.all(entries.map(async (entry) => { await projector.project_append({ oplog: handle.oplog, entry }) }))
+    const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] })
     indexing = projected.catch(() => {})
     await projected
-    on_entries?.({ library_address, entries })
+    on_entries?.({ library_address, entries, inert: access?.inert ?? [] })
   }
 
   // Resolving the chain is the gate (§3.5.1): a library that fails it never
@@ -142,25 +146,25 @@ export const create_library_manager = ({ content_store, projector, state_store, 
     list: () => [...libraries.values()],
     append: async ({ library_address, payload, key_pair }) => {
       const { oplog } = require_library(library_address)
-      const entry = append_entry({ oplog, payload, key_pair })
-      await register({ library_address, entries: [entry] })
+      const { entry, access } = append_entry_with_access({ oplog, payload, key_pair })
+      await register({ library_address, entries: [entry], access })
       return entry
     },
     register,
     merge: async ({ library_address, blocks }) => {
       const { oplog } = require_library(library_address)
       const result = merge_entries({ oplog, blocks })
-      if (result.merged.length > 0) await register({ library_address, entries: result.merged })
+      if (result.merged.length > 0) await register({ library_address, entries: result.merged, access: result.access })
       return result
     },
     reindex: async ({ library_address, entries }) => {
       const handle = require_library(library_address)
       await pin_entries(handle, entries)
-      const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : [])
+      const keys = entries.flatMap(({ state_key }) => state_key === undefined ? [] : [state_key])
       const projected = projector.project_keys({ oplog: handle.oplog, keys })
       indexing = projected.catch(() => {})
       await projected
-      on_entries?.({ library_address, entries })
+      on_entries?.({ library_address, entries, inert: [] })
     },
     settled: async () => { await indexing }
   }

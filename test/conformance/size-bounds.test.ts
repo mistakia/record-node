@@ -41,7 +41,7 @@ describe('size-bounds', () => {
     const { oplog } = await open_test_library({ writers: [writer] })
     const oversized = sign_raw({ private_key: writer.private_key, fields: oversized_fields(oplog.chain.address) })
     expect(() => decode_signed_entry(oversized.bytes)).toThrow('signed entry is')
-    expect(merge_entries({ oplog, blocks: [oversized.bytes] }).rejected.map(({ code }) => code)).toEqual(['size_exceeded'])
+    expect(merge_entries({ oplog, blocks: [oversized.bytes] }).rejected.map(({ error }) => error.code)).toEqual(['size_exceeded'])
   })
 
   test('§2.8.3 [MUST] an envelope payload over 1 MiB of dag-cbor is rejected', () => {
@@ -82,6 +82,6 @@ describe('size-bounds', () => {
     const bad_signature_tags = encode_canonical({ ...many_tags.entry, sig: '00' })
     const { rejected } = merge_entries({ oplog, blocks: [unsigned_oversized, bad_signature_tags] })
     // Size, not signature, is the reason even though both signatures are invalid.
-    expect(rejected.map(({ code }) => code)).toEqual(['size_exceeded', 'size_exceeded'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['size_exceeded', 'size_exceeded'])
   })
 })

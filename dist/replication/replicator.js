@@ -4,18 +4,19 @@
 // only stops publishing and new fetches (§5.4.4); fetch failures never touch
 // the oplog, so an unreachable library keeps what it has (§5.4.5).
 import { decode_signed_entry } from '#entry/signed.ts';
-import { verify_entry } from '#oplog/accept.ts';
+import { check_entry } from '#oplog/accept.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { create_heads_publisher, create_heads_receiver } from "./heads-exchange.js";
 import { create_merge_orchestrator } from "./merge-orchestrator.js";
 import { create_traversal } from "./traversal.js";
-// Every fetched entry passes the same append verification as a local one
-// (§3.5, §3.5.4), and must hash to the CID it was fetched by.
+// A fetched entry must hash to the CID it was fetched by and pass every
+// check the entry alone decides; the clock and a capability need its causal
+// past, so the merge checks those once its next have landed (§5.4.2 item 5).
 export const verify_fetched = (chain) => (hash, bytes) => {
     const hashed = decode_signed_entry(bytes);
     if (hashed.hash !== hash)
         throw new ProtocolError('cid_mismatch', `fetched ${hash}, got ${hashed.hash}`);
-    return verify_entry({ hashed, chain });
+    return check_entry({ hashed, chain }).hashed;
 };
 export const create_replicator = ({ oplog, pubsub, fetch_block, merge, concurrency, timeout_ms, heads_interval_ms, timers, on_status, on_peer_join, on_peer_leave }) => {
     const library_address = oplog.chain.address;

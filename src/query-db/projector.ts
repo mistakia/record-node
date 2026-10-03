@@ -6,7 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 
 import { compute_about_id } from '#entry/id.ts'
-import { is_operation, is_put } from '#entry/operations.ts'
+import { is_envelope_operation, is_put } from '#entry/operations.ts'
 import {
   decode_payload,
   validate_about_content,
@@ -15,7 +15,6 @@ import {
 } from '#entry/payload.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import type { Oplog } from '#oplog/dag.ts'
-import type { MergeResult } from '#oplog/merge.ts'
 import type { Envelope, ListenPayload } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { is_record } from '#types/guards.ts'
@@ -27,10 +26,9 @@ export type ContentReader = (cid: string) => Promise<Uint8Array | undefined>
 type Content = Record<string, unknown>
 
 export interface Projector {
-  // After append_entry on the oplog.
-  project_append: (input: { oplog: Oplog, entry: VerifiedEntry }) => Promise<void>
-  // After merge_entries on the oplog.
-  project_merge: (input: { oplog: Oplog, result: MergeResult }) => Promise<void>
+  // After append_entry or merge_entries: the new entries, and any other keys
+  // whose current state changed, such as those an inert entry held.
+  project_entries: (input: { oplog: Oplog, entries: readonly VerifiedEntry[], keys?: Iterable<string> }) => Promise<void>
   // Re-projects keys from the oplog's current state, e.g. once their content
   // payload reaches the local store.
   project_keys: (input: { oplog: Oplog, keys: Iterable<string> }) => Promise<void>
@@ -197,7 +195,7 @@ const write_key = ({ statements, oplog, key, entry, content }: {
 }) => {
   const library_address = oplog.chain.address
   for (const statement of statements.clear_key) statement.run(library_address, key)
-  if (entry === undefined || !is_operation(entry.operation)) {
+  if (entry === undefined || !is_envelope_operation(entry.operation)) {
     statements.delete_entry.run(library_address, key)
     return
   }
@@ -280,22 +278,35 @@ export const create_projector = ({ db, read_content }: {
     statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]')
   })
 
-  const project_entries = ({ oplog, entries }: { oplog: Oplog, entries: readonly VerifiedEntry[] }) =>
+  // An identity library projects no rows: its records are read from the
+  // oplog (§4.8). Only its marker is kept, so a restart skips the replay.
+  const write_identity = (oplog: Oplog) => in_transaction(db, () => {
+    statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]')
+  })
+
+  const project_entries = ({ oplog, entries, keys = [] }: { oplog: Oplog, entries: readonly VerifiedEntry[], keys?: Iterable<string> }) =>
     enqueue(async () => {
       if (oplog.chain.type === 'listens') {
         write_listens(oplog, entries)
         return
       }
-      const keys = entries.flatMap(({ operation }) => is_operation(operation) ? [operation.key] : [])
-      await write_keys({ oplog, keys })
+      if (oplog.chain.type === 'identity') {
+        write_identity(oplog)
+        return
+      }
+      const touched = new Set(keys)
+      for (const { state_key } of entries) if (state_key !== undefined) touched.add(state_key)
+      await write_keys({ oplog, keys: touched })
     })
 
   return {
-    project_append: ({ oplog, entry }) => project_entries({ oplog, entries: [entry] }),
-    project_merge: ({ oplog, result }) => project_entries({ oplog, entries: result.merged }),
-    project_keys: ({ oplog, keys }) => enqueue(() => write_keys({ oplog, keys })),
+    project_entries,
+    project_keys: ({ oplog, keys }) => enqueue(async () => {
+      if (oplog.chain.type === 'recordstore') await write_keys({ oplog, keys })
+    }),
     project_library: ({ oplog }) => enqueue(async () => {
       if (oplog.chain.type === 'listens') write_listens(oplog, oplog.entries.values())
+      else if (oplog.chain.type === 'identity') write_identity(oplog)
       else await write_keys({ oplog, keys: oplog.key_entries.keys() })
     }),
     remove_library: ({ library_address }) => enqueue(async () => {

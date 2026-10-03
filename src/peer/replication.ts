@@ -7,7 +7,7 @@
 import { resolve_ac_chain } from '#access-control/resolve.ts'
 import type { Network } from '#fabric/network.ts'
 import { RECORD_TOPIC } from '#fabric/pubsub.ts'
-import type { VerifiedEntry } from '#oplog/accept.ts'
+import type { HashedEntry } from '#entry/signed.ts'
 import { get_library_summary } from '#query-db/queries.ts'
 import { create_replicator, type Replicator } from '#replication/replicator.ts'
 import { SYSTEM_TIMERS, type Timers } from '#replication/timers.ts'
@@ -53,7 +53,7 @@ export const create_peer_replication = ({ context, network, describe_library, ti
     await content_store.get(cid) ?? await network.fetch_block(cid, { signal: AbortSignal.timeout(config.traversal_timeout_ms) })
   const contents = create_content_fetcher({ context, get_block })
 
-  const merge_into = (library_address: string) => async (entries: VerifiedEntry[]) => {
+  const merge_into = (library_address: string) => async (entries: HashedEntry[]) => {
     const { merged } = await libraries.merge({ library_address, blocks: entries.map(({ bytes }) => bytes) })
     if (merged.length === 0) return
     const { length } = get_library_summary({ db, library_address })

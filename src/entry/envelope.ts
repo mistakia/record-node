@@ -6,7 +6,7 @@ import type { Envelope, EnvelopeType } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { is_record } from '#types/guards.ts'
 
-const ENVELOPE_TYPES: readonly EnvelopeType[] = ['track', 'log', 'about']
+export const ENVELOPE_TYPES: readonly EnvelopeType[] = ['track', 'log', 'about']
 const ENVELOPE_ID_PATTERN = /^[0-9a-f]{64}$/
 
 const invalid = (message: string) => new ProtocolError('invalid_shape', message)

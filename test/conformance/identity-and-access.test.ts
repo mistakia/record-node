@@ -8,13 +8,14 @@ import { bytesToHex } from '@noble/hashes/utils.js'
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain } from '#access-control/resolve.ts'
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
-import { parse_library_address, validate_library_name } from '#encoding/library-address.ts'
+import { build_ac_chain, derive_library_address, identity_library_address, parse_library_address, validate_discriminator, validate_library_name } from '#encoding/library-address.ts'
 import { decode_signed_entry } from '#entry/signed.ts'
 import { generate_key_pair, validate_compressed_pubkey } from '#identity/key-pair.ts'
 import { create_oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { append_track, blocks_of, open_test_library, sign_raw } from '#test/helpers/library.ts'
 import { create_memory_block_store } from '#test/helpers/memory-block-store.ts'
+import { ac_chain_vector, library_address_vector } from './vectors.ts'
 
 const writer = generate_key_pair()
 const point = secp256k1.Point.fromBytes(secp256k1.getPublicKey(writer.private_key, true))
@@ -84,5 +85,26 @@ describe('identity-and-access', () => {
     await expect(create_ac_chain({ name: 'bad name', type: 'recordstore', write_keys: [writer.public_key], block_store }))
       .rejects.toThrow('library name must match')
     expect(block_store.blocks.size).toBe(0)
+  })
+
+  test('§3.6.1 [vector] F8 the address follows from (key, type, discriminator), and recordstore library reproduces F3', () => {
+    for (const { type, discriminator, manifest_cid } of library_address_vector.manifests) {
+      const { address, manifest, wrapper, write_list } = build_ac_chain({ name: discriminator, type, write_keys: [library_address_vector.key] })
+      expect(manifest.cid).toBe(manifest_cid)
+      expect(address).toBe(`/record/${manifest_cid}/${discriminator}`)
+      expect(derive_library_address({ key: library_address_vector.key, type, discriminator })).toBe(address)
+      expect([write_list.cid, wrapper.cid]).toEqual([ac_chain_vector.write_list.cid, ac_chain_vector.wrapper.cid])
+    }
+    expect(derive_library_address({ key: library_address_vector.key, type: 'recordstore', discriminator: 'library' })).toBe(ac_chain_vector.library_address)
+  })
+
+  test('§3.6.2 [vector] F8 the identity library address follows from the key alone', () => {
+    expect(identity_library_address(library_address_vector.key)).toBe(library_address_vector.identity_library_address)
+  })
+
+  test('§3.6.1 [MUST] a new discriminator matches §3.7 and is 1 to 64 characters long', () => {
+    expect(validate_discriminator('mixes-2')).toBe('mixes-2')
+    expect(validate_discriminator('x'.repeat(64))).toBe('x'.repeat(64))
+    for (const name of ['', 'x'.repeat(65), 'bad name', 'a/b']) expect(() => validate_discriminator(name)).toThrow()
   })
 })

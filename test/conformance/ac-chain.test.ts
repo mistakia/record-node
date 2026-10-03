@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain } from '#access-control/resolve.ts'
-import { verify_entry_authorisation } from '#access-control/verify.ts'
+import { authorise_entry } from '#access-control/capability.ts'
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
 import { build_library_address } from '#encoding/library-address.ts'
@@ -162,7 +162,7 @@ describe('ac-chain', () => {
   test('§3.5.3 [MUST] replicating peers verify the signer appears in the write-list', async () => {
     const { oplog } = await open_test_library({ writers: [writer] })
     const { rejected } = merge_entries({ oplog, blocks: [signed_put(outsider, oplog.chain.address).bytes] })
-    expect(rejected.map(({ code }) => code)).toEqual(['unauthorised_writer'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['unauthorised_writer'])
     expect(oplog.entries.size).toBe(0)
   })
 
@@ -173,14 +173,19 @@ describe('ac-chain', () => {
     const claimed = sign_raw({ private_key: writer.private_key, fields: genuine.entry as never })
     const relabelled = { ...claimed.entry, key: outsider.public_key }
     const { rejected, merged } = merge_entries({ oplog, blocks: [encode_canonical(relabelled), genuine.bytes] })
-    expect(rejected.map(({ code }) => code)).toEqual(['invalid_signature'])
+    expect(rejected.map(({ error }) => error.code)).toEqual(['invalid_signature'])
     expect(merged.map(({ hash }) => hash)).toEqual([genuine.hash])
   })
 
-  test('§3.5.4 [MUST] entry.key membership in the write-list is checked by plain string equality', () => {
-    const { entry } = signed_put(writer, '/record/x/library')
-    expect(verify_entry_authorisation({ entry, write_list: [outsider.public_key, writer.public_key] })).toEqual({ ok: true })
-    expect(verify_entry_authorisation({ entry, write_list: [outsider.public_key] })).toEqual({ ok: false, reason: 'unauthorised_writer' })
+  test('§3.5.4 [MUST] entry.key membership in the write-list is checked by plain string equality', async () => {
+    const listed = await open_test_library({ writers: [outsider, writer] })
+    const unlisted = await open_test_library({ writers: [outsider] })
+    const authorise = ({ oplog }: typeof listed) => {
+      const hashed = signed_put(writer, oplog.chain.address)
+      return authorise_entry({ oplog, hashed, operation: hashed.entry.payload as never })
+    }
+    expect(authorise(listed)).toEqual({ ok: true })
+    expect(authorise(unlisted)).toMatchObject({ ok: false, code: 'unauthorised_writer' })
   })
 
   test('§3.5.4 [MUST] an entry failing either check is rejected, including one signed by a key outside the write-list', async () => {
@@ -189,7 +194,7 @@ describe('ac-chain', () => {
     append_track({ oplog, key_pair })
     const tampered = { ...signed_put(writer, oplog.chain.address).entry, sig: signed_put(outsider, oplog.chain.address).entry.sig }
     const { rejected } = merge_entries({ oplog, blocks: [encode_canonical(tampered), signed_put(outsider, oplog.chain.address).bytes] })
-    expect(rejected.map(({ code }) => code)).toEqual(['invalid_signature', 'unauthorised_writer'])
+    expect(rejected.map(({ error }) => error.code).sort()).toEqual(['invalid_signature', 'unauthorised_writer'])
     expect(oplog.entries.size).toBe(1)
   })
 })

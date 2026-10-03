@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { compute_track_id } from '#entry/id.ts'
-import { verify_entry_authorisation } from '#access-control/verify.ts'
+import { check_entry } from '#oplog/accept.ts'
 import type { Track } from '#types/peer.ts'
 import { append_track, create_memory_peers, wait_for_event } from '#test/helpers/network.ts'
 
@@ -28,7 +28,9 @@ describe('two-peer replication', () => {
     const replicated = b.context.libraries.get(a_address)?.oplog.entries.get(entry.hash)
     expect(replicated?.bytes).toEqual(entry.bytes)
     const chain = b.context.libraries.get(a_address)?.oplog.chain
-    expect(verify_entry_authorisation({ entry: replicated?.entry as never, write_list: chain?.write_list ?? [] }).ok).toBe(true)
+    if (replicated === undefined || chain === undefined) throw new Error('the entry did not replicate')
+    expect(check_entry({ hashed: replicated, chain }).hashed.hash).toBe(entry.hash)
+    expect(chain.write_list).toContain(replicated.entry.key)
 
     const { items } = await b.list_tracks({ ...QUERY, library_addresses: [a_address] })
     expect(items.map(({ id }) => id)).toEqual([compute_track_id('AQADtEmSaImS')])

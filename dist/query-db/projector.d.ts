@@ -1,16 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { VerifiedEntry } from '#oplog/accept.ts';
 import type { Oplog } from '#oplog/dag.ts';
-import type { MergeResult } from '#oplog/merge.ts';
 export type ContentReader = (cid: string) => Promise<Uint8Array | undefined>;
 export interface Projector {
-    project_append: (input: {
+    project_entries: (input: {
         oplog: Oplog;
-        entry: VerifiedEntry;
-    }) => Promise<void>;
-    project_merge: (input: {
-        oplog: Oplog;
-        result: MergeResult;
+        entries: readonly VerifiedEntry[];
+        keys?: Iterable<string>;
     }) => Promise<void>;
     project_keys: (input: {
         oplog: Oplog;

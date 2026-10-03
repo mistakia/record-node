@@ -1,6 +1,6 @@
 import type { ResolvedAcChain } from '#access-control/resolve.ts';
+import { type HashedEntry } from '#entry/signed.ts';
 import type { PubSub } from '#fabric/pubsub.ts';
-import { type VerifiedEntry } from '#oplog/accept.ts';
 import type { Oplog } from '#oplog/dag.ts';
 import type { ReplicationStatus } from '#types/peer.ts';
 import type { Timers } from './timers.ts';
@@ -25,7 +25,7 @@ export interface ReplicatorOptions {
     fetch_block: (cid: string, options: {
         signal: AbortSignal;
     }) => Promise<Uint8Array | undefined>;
-    merge: (entries: VerifiedEntry[]) => Promise<void>;
+    merge: (entries: HashedEntry[]) => Promise<void>;
     concurrency: number;
     timeout_ms: number;
     heads_interval_ms: number;
@@ -34,5 +34,5 @@ export interface ReplicatorOptions {
     on_peer_join?: (peer_id: string) => void;
     on_peer_leave?: (peer_id: string) => void;
 }
-export declare const verify_fetched: (chain: ResolvedAcChain) => (hash: string, bytes: Uint8Array) => VerifiedEntry;
+export declare const verify_fetched: (chain: ResolvedAcChain) => (hash: string, bytes: Uint8Array) => HashedEntry;
 export declare const create_replicator: ({ oplog, pubsub, fetch_block, merge, concurrency, timeout_ms, heads_interval_ms, timers, on_status, on_peer_join, on_peer_leave }: ReplicatorOptions) => Replicator;

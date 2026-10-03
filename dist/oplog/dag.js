@@ -1,13 +1,18 @@
-// The append-only entry DAG of one library (§4.1, §4.3, §4.4) and local append.
+// The append-only entry DAG of one library (§4.1, §4.3, §4.4), its access
+// state (§3.5.9, §3.5.10), and local append.
+import { effective_revocations, inert_under, is_write_list_key } from '#access-control/capability.ts';
 import { build_unsigned_entry } from '#entry/build.ts';
-import { is_operation, is_put, validate_operation } from '#entry/operations.ts';
+import { is_access_record, is_put, validate_operation } from '#entry/operations.ts';
 import { hash_signed_entry } from '#entry/signed.ts';
 import { sign_entry } from '#identity/signing.ts';
 import { ProtocolError } from '#types/errors.ts';
+import { is_record } from '#types/guards.ts';
 import { verify_entry } from "./accept.js";
-import { next_clock_time } from "./clock.js";
+import { in_causal_past } from "./causal.js";
 import { resolve_current_state } from "./current-state.js";
 import { duplicate_key } from "./duplicate-key.js";
+// §4.2 and §5.4.2 item 2: an append cites at most this many heads.
+export const MAX_CITED_HEADS = 256;
 // An oplog exists only over a verified AC chain (§3.5.1).
 export const create_oplog = ({ chain }) => ({
     chain,
@@ -16,7 +21,11 @@ export const create_oplog = ({ chain }) => ({
     referenced: new Set(),
     key_entries: new Map(),
     current: new Map(),
-    clock_time: 0
+    capabilities: new Map(),
+    revocations: new Map(),
+    delegated: new Set(),
+    effective: new Set(),
+    inert: new Set()
 });
 // Idempotent: an entry whose hash is already present is a no-op (§4.5 step 2).
 // Heads stay equal to heads(all entries) whatever order entries arrive in.
@@ -30,29 +39,73 @@ export const insert_entry = ({ oplog, entry }) => {
     }
     if (!oplog.referenced.has(entry.hash))
         oplog.heads.add(entry.hash);
-    if (is_operation(entry.operation)) {
-        const hashes = oplog.key_entries.get(entry.operation.key) ?? new Set();
-        oplog.key_entries.set(entry.operation.key, hashes.add(entry.hash));
+    if (entry.state_key !== undefined) {
+        const hashes = oplog.key_entries.get(entry.state_key) ?? new Set();
+        oplog.key_entries.set(entry.state_key, hashes.add(entry.hash));
     }
+    if (is_access_record(entry.operation)) {
+        const index = entry.operation.value.type === 'capability' ? oplog.capabilities : oplog.revocations;
+        index.set(entry.hash, entry);
+    }
+    if (!is_write_list_key(oplog, entry.entry.key))
+        oplog.delegated.add(entry.hash);
     return true;
 };
-// Re-resolves each key over every known entry for it, never only the new ones (§4.4.2).
+// Re-resolves each key over every known entry for it, never only the new ones,
+// and never an inert one (§4.4.2).
 export const refresh_current_state = ({ oplog, keys }) => {
     for (const key of keys) {
-        const hashes = oplog.key_entries.get(key) ?? new Set();
-        const current = resolve_current_state([...hashes].map((hash) => oplog.entries.get(hash)));
+        const hashes = [...oplog.key_entries.get(key) ?? []].filter((hash) => !oplog.inert.has(hash));
+        const current = resolve_current_state(hashes.map((hash) => oplog.entries.get(hash)));
         if (current === undefined)
             oplog.current.delete(key);
         else
             oplog.current.set(key, current);
     }
 };
+// Brings the effective set and the inert set up to date after inserting
+// `added`. A new revocation can change the effective set in either direction,
+// so every delegated entry is judged again; otherwise only the new ones are.
+export const refresh_access_state = ({ oplog, added }) => {
+    const revocation_added = added.some(({ hash }) => oplog.revocations.has(hash));
+    if (revocation_added) {
+        const effective = effective_revocations(oplog, oplog.revocations.values());
+        oplog.effective.clear();
+        for (const { hash } of effective)
+            oplog.effective.add(hash);
+    }
+    if (oplog.effective.size === 0 && oplog.inert.size === 0)
+        return { inert: [], keys: new Set() };
+    const effective = [...oplog.effective].map((hash) => oplog.entries.get(hash));
+    const judged = revocation_added ? [...oplog.delegated] : added.filter(({ hash }) => oplog.delegated.has(hash)).map(({ hash }) => hash);
+    const inert = [];
+    const keys = new Set();
+    for (const hash of judged) {
+        const entry = oplog.entries.get(hash);
+        // A revocation's own effect is decided only by the effective set.
+        const is_inert = oplog.revocations.has(hash) ? !oplog.effective.has(hash) : inert_under(oplog, entry, effective);
+        if (is_inert === oplog.inert.has(hash))
+            continue;
+        if (is_inert) {
+            oplog.inert.add(hash);
+            inert.push(entry);
+        }
+        else {
+            oplog.inert.delete(hash);
+        }
+        if (entry.state_key !== undefined)
+            keys.add(entry.state_key);
+    }
+    return { inert, keys };
+};
 // The current entry for a key if it is a PUT; a current DEL tombstones the key.
 export const get_live_entry = ({ oplog, key }) => {
     const current = oplog.current.get(key);
-    return current !== undefined && is_put(current.operation) ? current : undefined;
+    return current !== undefined && 'op' in current.operation && current.operation.op === 'PUT' ? current : undefined;
 };
 const assert_not_duplicate = ({ oplog, payload }) => {
+    if (oplog.chain.type !== 'recordstore')
+        return;
     const operation = validate_operation({ payload, library_type: oplog.chain.type });
     if (!is_put(operation))
         return;
@@ -65,28 +118,36 @@ const assert_not_duplicate = ({ oplog, payload }) => {
         throw new ProtocolError('duplicate_entry', `PUT ${operation.key} duplicates live entry ${live.hash}`);
     }
 };
-// Signs and appends a local operation: next is the current heads, the clock
-// follows the append rule, and the entry passes the same verification as a
-// remote one. A duplicate PUT (§2.10) is rejected before anything is appended.
-export const append_entry = ({ oplog, payload, key_pair }) => {
-    assert_not_duplicate({ oplog, payload });
-    const heads = [...oplog.heads].sort();
-    const time = next_clock_time({
-        local_time: oplog.clock_time,
-        head_times: heads.map((hash) => oplog.entries.get(hash)?.entry.clock.time ?? 0)
-    });
-    const unsigned_entry = build_unsigned_entry({
-        id: oplog.chain.address,
-        payload,
-        next: heads,
-        refs: [],
-        clock: { id: key_pair.public_key, time }
-    });
-    const hashed = hash_signed_entry(sign_entry({ unsigned_entry, private_key: key_pair.private_key }));
-    const entry = verify_entry({ hashed, chain: oplog.chain });
-    insert_entry({ oplog, entry });
-    oplog.clock_time = time;
-    if (is_operation(entry.operation))
-        refresh_current_state({ oplog, keys: [entry.operation.key] });
-    return entry;
+const clock_of = (oplog, hash) => oplog.entries.get(hash)?.entry.clock.time ?? 0;
+// §4.2: every head when there are at most 256, otherwise the 256 with the
+// greatest clock.time. A write under a capability must also keep that
+// capability in its causal past (§3.5.9 step 2).
+const select_next = (oplog, capability_id) => {
+    const heads = [...oplog.heads].sort((a, b) => clock_of(oplog, b) - clock_of(oplog, a) || (a < b ? -1 : 1));
+    const next = heads.slice(0, MAX_CITED_HEADS);
+    const reaches = (hash) => capability_id === undefined || hash === capability_id ||
+        in_causal_past({ entries: oplog.entries, ancestor: capability_id, next: [hash] });
+    if (heads.length > MAX_CITED_HEADS && !next.some(reaches)) {
+        const head = heads.slice(MAX_CITED_HEADS).find(reaches);
+        if (head !== undefined)
+            next[next.length - 1] = head;
+    }
+    return next.sort();
 };
+// Signs and appends a local operation: next follows §4.2, and the entry passes
+// the same verification as a remote one. A duplicate PUT (§2.10) is rejected
+// before anything is appended. Also reports what a revocation changed.
+export const append_entry_with_access = ({ oplog, payload, key_pair }) => {
+    assert_not_duplicate({ oplog, payload });
+    const capability_id = is_record(payload) && typeof payload.capability_id === 'string' ? payload.capability_id : undefined;
+    const next = select_next(oplog, capability_id);
+    const time = next.reduce((max, hash) => Math.max(max, clock_of(oplog, hash)), 0) + 1;
+    const unsigned_entry = build_unsigned_entry({ id: oplog.chain.address, payload, next, refs: [], clock: { id: key_pair.public_key, time } });
+    const hashed = hash_signed_entry(sign_entry({ unsigned_entry, private_key: key_pair.private_key }));
+    const entry = verify_entry({ oplog, hashed });
+    insert_entry({ oplog, entry });
+    const access = refresh_access_state({ oplog, added: [entry] });
+    refresh_current_state({ oplog, keys: entry.state_key === undefined ? access.keys : new Set([...access.keys, entry.state_key]) });
+    return { entry, access };
+};
+export const append_entry = (input) => append_entry_with_access(input).entry;

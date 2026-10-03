@@ -20,6 +20,10 @@ export type ProtocolErrorCode =
   | 'invalid_operation'
   | 'invalid_signature'
   | 'unauthorised_writer'
+  | 'invalid_clock'
+  | 'capability_denied'
+  | 'capability_expired'
+  | 'capability_revoked'
   | 'duplicate_entry'
   | 'topic_too_long'
 

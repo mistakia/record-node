@@ -63,6 +63,5 @@ export const blocks_of = (oplog: Oplog): Uint8Array[] => [...oplog.entries.value
 export const oplog_state = (oplog: Oplog) => ({
   entries: [...oplog.entries.keys()].sort(),
   heads: [...oplog.heads].sort(),
-  clock_time: oplog.clock_time,
   current: [...oplog.current].map(([key, entry]) => [key, entry.hash]).sort()
 })

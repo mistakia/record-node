@@ -4,6 +4,7 @@
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
+import type { HashedEntry } from '#entry/signed.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { create_oplog, type Oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
@@ -59,7 +60,7 @@ export const traverse = ({ chain, fetch, concurrency = 4, timeout_ms = 5000, lan
   landed?: Set<string>
   timers?: Timers
 }) => {
-  const verified: VerifiedEntry[] = []
+  const verified: HashedEntry[] = []
   const fetches: string[] = []
   const traversal = create_traversal({
     fetch: async (hash, options) => {
