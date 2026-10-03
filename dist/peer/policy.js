@@ -7,11 +7,13 @@ import { is_put } from '#entry/operations.ts';
 import { PeerError } from '#types/peer.ts';
 import { find_own_library, link_set } from "./ownership.js";
 // The policy a library replicates under, or undefined for one that is
-// neither own nor linked.
-export const effective_policy = (context, address) => {
-    if (find_own_library(context, address) !== undefined)
+// neither own nor linked. scope saves a caller describing many libraries
+// from deriving ownership for each.
+export const effective_policy = (context, address, scope) => {
+    const own = scope === undefined ? find_own_library(context, address) : scope.own.get(address);
+    if (own !== undefined)
         return { mode: 'full', filter: null };
-    const link = link_set(context).find((candidate) => candidate.address === address);
+    const link = scope === undefined ? link_set(context).find((candidate) => candidate.address === address) : scope.links.get(address);
     if (link === undefined)
         return undefined;
     const stored = context.policies.get(address);
@@ -40,11 +42,17 @@ export const track_view = ({ library_address, entry, content }) => {
     };
     return Object.fromEntries(Object.entries(view).filter(([, value]) => value !== undefined && value !== null));
 };
-// The pin predicate the library manager applies to each Track entry. Before
-// the identity opens, and for the identity library itself, everything keeps.
-export const keeps_blobs = (context) => (library_address) => {
-    if (context.identity === undefined || library_address === context.identity.identity_address)
+// The pin predicate the library manager applies to each Track entry. A
+// library whose write list holds the identity key is an own library, always
+// full; that is read from the chain, since the predicate runs while the
+// library opens, before it is listed. Before the identity opens, everything
+// keeps.
+export const keeps_blobs = (context) => (chain) => {
+    if (context.identity === undefined)
         return () => true;
+    if (chain.write_list.includes(context.identity.key_pair.public_key))
+        return () => true;
+    const library_address = chain.address;
     const policy = effective_policy(context, library_address);
     if (policy === undefined || policy.mode === 'index_only')
         return () => false;

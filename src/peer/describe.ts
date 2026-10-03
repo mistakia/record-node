@@ -6,7 +6,7 @@ import { get_about, get_library_summary } from '#query-db/queries.ts'
 import type { Library } from '#types/peer.ts'
 import { held_capability_ids } from './capabilities.ts'
 import type { PeerContext } from './context.ts'
-import { find_own_library, link_set } from './ownership.ts'
+import { library_scope, type LibraryScope } from './ownership.ts'
 import { effective_policy } from './policy.ts'
 import { to_api_library, type LibraryReplication } from './views.ts'
 
@@ -28,10 +28,11 @@ const replication_of = (context: PeerContext, address: string): LibraryReplicati
 }
 
 // Undefined for a library that is neither own, nor linked, nor one the
-// identity holds a capability in.
-export const describe_library = (context: PeerContext, address: string): Library | undefined => {
-  const own = find_own_library(context, address)
-  const link = link_set(context).find((candidate) => candidate.address === address)
+// identity holds a capability in. A caller describing many libraries passes
+// one scope for all of them.
+export const describe_library = (context: PeerContext, address: string, scope: LibraryScope = library_scope(context)): Library | undefined => {
+  const own = scope.own.get(address)
+  const link = scope.links.get(address)
   const held = held_capability_ids(context, address)
   if (own === undefined && link === undefined && held.length === 0) return undefined
   const handle = context.libraries.get(address)
@@ -46,7 +47,7 @@ export const describe_library = (context: PeerContext, address: string): Library
     is_retired: own?.retired ?? false,
     is_linked: link !== undefined,
     held_capability_ids: held,
-    replication_mode: effective_policy(context, address)?.mode ?? null,
+    replication_mode: effective_policy(context, address, scope)?.mode ?? null,
     is_loading: handle === undefined,
     replication: replication_of(context, address)
   })

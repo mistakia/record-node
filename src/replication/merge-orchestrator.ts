@@ -25,6 +25,9 @@ export const create_merge_orchestrator = <T extends MergeCandidate>({ is_landed,
 }): MergeOrchestrator<T> => {
   const fetched = new Map<string, T>()
   const rejected = new Set<string>()
+  // Waiting entries by the parents they name, to reach a rejected entry's
+  // descendants without scanning everything that waits.
+  const children = new Map<string, Set<string>>()
   let tail: Promise<void> = Promise.resolve()
   let scheduled = false
 
@@ -56,15 +59,30 @@ export const create_merge_orchestrator = <T extends MergeCandidate>({ is_landed,
     return [...fetched.values()].filter(({ hash }) => ready.get(hash) === true)
   }
 
-  // Drops every waiting entry that descends from a rejected one.
-  const drop_rejected_descendants = () => {
-    for (let changed = true; changed;) {
-      changed = false
-      for (const [hash, entry] of fetched) {
-        if (!entry.entry.next.some((parent) => rejected.has(parent))) continue
-        fetched.delete(hash)
-        rejected.add(hash)
-        changed = true
+  const remember = (entry: T) => {
+    fetched.set(entry.hash, entry)
+    for (const parent of entry.entry.next) children.set(parent, (children.get(parent) ?? new Set()).add(entry.hash))
+  }
+
+  const forget = (entry: T) => {
+    fetched.delete(entry.hash)
+    for (const parent of entry.entry.next) {
+      const siblings = children.get(parent)
+      siblings?.delete(entry.hash)
+      if (siblings?.size === 0) children.delete(parent)
+    }
+  }
+
+  // Drops every waiting entry that descends from the newly rejected ones.
+  const drop_rejected_descendants = (roots: readonly string[]) => {
+    const queue = [...roots]
+    for (let hash = queue.pop(); hash !== undefined; hash = queue.pop()) {
+      for (const child of [...children.get(hash) ?? []]) {
+        const entry = fetched.get(child)
+        if (entry === undefined || rejected.has(child)) continue
+        forget(entry)
+        rejected.add(child)
+        queue.push(child)
       }
     }
   }
@@ -73,18 +91,19 @@ export const create_merge_orchestrator = <T extends MergeCandidate>({ is_landed,
     scheduled = false
     const batch = ready_batch()
     if (batch.length === 0) return
-    for (const { hash } of batch) fetched.delete(hash)
+    for (const entry of batch) forget(entry)
     try {
       await merge(batch)
     } catch (error) {
       // Kept for the next run rather than lost to the traversal, which never
       // fetches an entry twice.
-      for (const entry of batch) fetched.set(entry.hash, entry)
+      for (const entry of batch) remember(entry)
       throw error
     }
     // A ready entry that did not land failed verification at merge.
-    for (const { hash } of batch) if (!is_landed(hash)) rejected.add(hash)
-    drop_rejected_descendants()
+    const failed = batch.filter(({ hash }) => !is_landed(hash)).map(({ hash }) => hash)
+    for (const hash of failed) rejected.add(hash)
+    drop_rejected_descendants(failed)
   }
 
   return {
@@ -93,7 +112,7 @@ export const create_merge_orchestrator = <T extends MergeCandidate>({ is_landed,
         rejected.add(entry.hash)
         return
       }
-      fetched.set(entry.hash, entry)
+      remember(entry)
       if (scheduled) return
       scheduled = true
       tail = tail.then(run).catch((error: unknown) => {
@@ -110,6 +129,7 @@ export const create_merge_orchestrator = <T extends MergeCandidate>({ is_landed,
     discard: () => {
       fetched.clear()
       rejected.clear()
+      children.clear()
     }
   }
 }

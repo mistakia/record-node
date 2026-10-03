@@ -62,7 +62,7 @@ export declare const create_library_manager: ({ content_store, projector, state_
     content_store: ContentStore;
     projector: Projector;
     state_store: LibraryStateStore;
-    keeps_blobs?: (library_address: string) => KeepsBlobs;
+    keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs;
     retained?: () => ReadonlySet<string>;
     on_entries?: (input: {
         library_address: string;

@@ -56,7 +56,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         content_store,
         projector: create_projector({ db, read_content: content_store.get }),
         state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
-        keeps_blobs: (address) => keeps_blobs(context)(address),
+        keeps_blobs: (chain) => keeps_blobs(context)(chain),
         retained: () => context.blobs.retained(),
         on_entries: (input) => {
             project_entry_events({ context, ...input });
@@ -165,9 +165,16 @@ export const start_peer = async (peer) => {
 };
 // Refuses new work, stops replicating once in-flight merges land, lets queued
 // writes, ingests, and index updates finish, then closes the network, store,
-// and index. A stopped peer does not start again.
+// index, and data-directory lock. A stopped peer does not start again, and
+// stopping it again waits on the first stop.
+const stops = new WeakMap();
 export const stop_peer = async (peer) => {
     const { context } = peer;
+    const running = stops.get(context) ?? stop_context(context);
+    stops.set(context, running);
+    await running;
+};
+const stop_context = async (context) => {
     context.stopping = true;
     context.blobs.stop();
     await context.replication?.stop();

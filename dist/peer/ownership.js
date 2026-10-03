@@ -72,3 +72,7 @@ export const visible_addresses = (context) => [
     ...linked_addresses(context)
 ];
 export const own_recordstore_addresses = (context) => own_libraries(context).filter(({ type }) => type === 'recordstore').map(({ address }) => address);
+export const library_scope = (context) => ({
+    own: new Map(own_libraries(context).map((library) => [library.address, library])),
+    links: new Map(link_set(context).map((link) => [link.address, link]))
+});

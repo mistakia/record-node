@@ -7,6 +7,11 @@ import { ProtocolError } from '#types/errors.ts';
 import { PeerError } from '#types/peer.ts';
 import { require_identity } from "./context.js";
 import { default_write_target, find_own_library } from "./ownership.js";
+// An own library, once retired, refuses new local writes (§4.8.3).
+export const assert_writable = (context, { address }) => {
+    if (find_own_library(context, address)?.retired === true)
+        throw new PeerError('conflict', `library is retired: ${address}`);
+};
 export const resolve_write_target = (context, { library_address, capability_id }) => {
     const address = library_address ?? default_write_target(context);
     if (address === undefined) {
@@ -17,8 +22,7 @@ export const resolve_write_target = (context, { library_address, capability_id }
         throw new PeerError('not_found', `library not open: ${address}`);
     if (handle.chain.type !== 'recordstore')
         throw new PeerError('invalid', `writes go to a recordstore library, not a ${handle.chain.type} one: ${address}`);
-    if (find_own_library(context, address)?.retired === true)
-        throw new PeerError('conflict', `library is retired: ${address}`);
+    assert_writable(context, { address });
     if (handle.chain.write_list.includes(require_identity(context).key_pair.public_key)) {
         return { address, handle, capability_id: undefined };
     }

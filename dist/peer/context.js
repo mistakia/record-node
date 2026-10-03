@@ -1,4 +1,5 @@
 // State shared by the peer's lifecycle and its ApiPeer methods.
+import { assert_writable } from "./write-target.js";
 export const require_identity = (context) => {
     if (context.identity === undefined)
         throw new Error('the peer is not started');
@@ -39,8 +40,11 @@ export const require_toolchain = async (context) => {
     return await context.toolchain;
 };
 // Runs one ingest pipeline against a write target and indexes a new entry.
+// The target is checked again once the ingest's turn comes, since a library
+// retired while it queued refuses new writes (§4.8.3).
 export const ingest_into = (context, target, run) => serialise_ingest(context, async () => {
     const { key_pair } = require_identity(context);
+    assert_writable(context, target);
     const track = await run({ oplog: target.handle.oplog, key_pair, content_store: context.content_store, capability_id: target.capability_id });
     const entry = target.handle.oplog.entries.get(track.entry_hash);
     if (!track.existing && entry !== undefined)

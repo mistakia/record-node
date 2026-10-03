@@ -98,3 +98,14 @@ export const visible_addresses = (context: PeerContext): string[] => [
 
 export const own_recordstore_addresses = (context: PeerContext): string[] =>
   own_libraries(context).filter(({ type }) => type === 'recordstore').map(({ address }) => address)
+
+// Ownership and links derived once, for a caller that describes many libraries.
+export interface LibraryScope {
+  readonly own: ReadonlyMap<string, OwnLibrary>
+  readonly links: ReadonlyMap<string, Link>
+}
+
+export const library_scope = (context: PeerContext): LibraryScope => ({
+  own: new Map(own_libraries(context).map((library) => [library.address, library])),
+  links: new Map(link_set(context).map((link) => [link.address, link]))
+})

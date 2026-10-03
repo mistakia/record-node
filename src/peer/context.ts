@@ -16,7 +16,7 @@ import type { DataDirectoryLock } from './lock.ts'
 import type { LibraryManager } from './library.ts'
 import type { PeerReplication } from './replication.ts'
 import type { ResolveUrl } from './resolver.ts'
-import type { WriteTarget } from './write-target.ts'
+import { assert_writable, type WriteTarget } from './write-target.ts'
 import type { StoredPolicy } from './state.ts'
 import type { PeerStore } from './store.ts'
 
@@ -107,9 +107,12 @@ export const require_toolchain = async (context: PeerContext): Promise<Toolchain
 }
 
 // Runs one ingest pipeline against a write target and indexes a new entry.
+// The target is checked again once the ingest's turn comes, since a library
+// retired while it queued refuses new writes (§4.8.3).
 export const ingest_into = (context: PeerContext, target: WriteTarget, run: (target: TrackTarget) => Promise<IngestedTrack>): Promise<IngestedTrack> =>
   serialise_ingest(context, async () => {
     const { key_pair } = require_identity(context)
+    assert_writable(context, target)
     const track = await run({ oplog: target.handle.oplog, key_pair, content_store: context.content_store, capability_id: target.capability_id })
     const entry = target.handle.oplog.entries.get(track.entry_hash)
     if (!track.existing && entry !== undefined) await context.libraries.register({ library_address: target.address, entries: [entry] })

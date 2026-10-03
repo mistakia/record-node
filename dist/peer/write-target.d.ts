@@ -6,6 +6,9 @@ export interface WriteTarget {
     readonly handle: LibraryHandle;
     readonly capability_id: string | undefined;
 }
+export declare const assert_writable: (context: PeerContext, { address }: {
+    address: string;
+}) => void;
 export declare const resolve_write_target: (context: PeerContext, { library_address, capability_id }: {
     library_address?: string | undefined;
     capability_id?: string | undefined;

@@ -5,6 +5,9 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 import { randomBytes } from 'node:crypto'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
@@ -13,7 +16,7 @@ import { canonical_cid } from '#entry/identity-record.ts'
 import { compute_log_id } from '#entry/id.ts'
 import { build_put_operation } from '#entry/operations.ts'
 import { get_live_entry } from '#oplog/dag.ts'
-import type { Peer } from '#peer/peer.ts'
+import { stop_peer, type Peer } from '#peer/peer.ts'
 import { append_track, create_memory_peers, wait_until } from '#test/helpers/network.ts'
 
 const peers = create_memory_peers()
@@ -124,5 +127,21 @@ describe('identity library', () => {
       await wait_until(async () => !await device.content_store.is_pinned(cid))
     }
     await expect(first.unpin_track(cid)).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  test('§4.6.1 [MUST] an own library keeps its audio pinned across a restart, so removing a pin record never unpins it', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-own-pins-'))
+    const first = await peers.start({ config: { data_dir } })
+    const { audio_cid } = await append_track({ peer: first, fingerprint: 'AQADownpin', audio: 'audio the own library holds' })
+    await stop_peer(first)
+    const restarted = await peers.start({ config: { data_dir } })
+    expect(await restarted.content_store.is_pinned(audio_cid)).toBe(true)
+    const own = restarted.context.libraries.get(restarted.identity().own_address)
+    expect(own?.pins.get(audio_cid)).toBe(true)
+    await restarted.pin_track(audio_cid)
+    await restarted.unpin_track(audio_cid)
+    await wait_until(async () => (await records(restarted, 'pin')).every(({ op }) => op === 'DEL'))
+    await restarted.context.libraries.settled()
+    expect(await restarted.content_store.is_pinned(audio_cid)).toBe(true)
   })
 })

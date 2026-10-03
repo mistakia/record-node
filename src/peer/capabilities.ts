@@ -27,12 +27,16 @@ const earliest_expiry = (conditions: unknown): number | null => {
 const revocation_of = (oplog: Oplog, capability_id: string): string | null =>
   [...oplog.effective].find((hash) => (record_of(oplog.entries.get(hash) as VerifiedEntry).revokes) === capability_id) ?? null
 
-// expired is advisory: it reads the node's clock, while verification reads
-// each write's own timestamp (§3.5.8).
+// A capability is only as usable as its chain (§3.5.9 step 5 and 6): it
+// reads as revoked when any capability above it is, and expires with the
+// earliest expiry above it. expired is advisory: it reads the node's clock,
+// while verification reads each write's own timestamp (§3.5.8).
 export const describe_capability = (oplog: Oplog, entry: VerifiedEntry, now = Date.now()): Capability => {
   const record = record_of(entry)
-  const revoked_by = revocation_of(oplog, entry.hash)
-  const expires_at_ms = earliest_expiry(record.conditions)
+  const chain = capability_chain(oplog, entry.hash)
+  const revoked_by = chain.map((hash) => revocation_of(oplog, hash)).find((hash) => hash !== null) ?? null
+  const expiries = chain.map((hash) => earliest_expiry(record_of(oplog.entries.get(hash) as VerifiedEntry).conditions)).filter((at) => at !== null)
+  const expires_at_ms = expiries.length === 0 ? null : Math.min(...expiries)
   const status = revoked_by !== null
     ? 'revoked'
     : oplog.inert.has(entry.hash)
@@ -69,8 +73,17 @@ export const held_capabilities = (context: PeerContext): Capability[] => {
     .map((entry) => describe_capability(oplog, entry)))
 }
 
-export const held_capability_ids = (context: PeerContext, address: string): string[] =>
-  held_capabilities(context).filter(({ library_address, status }) => library_address === address && status === 'active').map(({ capability_id }) => capability_id)
+// The active capabilities this identity holds in one library.
+export const held_capability_ids = (context: PeerContext, address: string): string[] => {
+  const oplog = context.libraries.get(address)?.oplog
+  if (oplog === undefined) return []
+  const { public_key } = require_identity(context).key_pair
+  return [...oplog.capabilities.values()]
+    .filter((entry) => grantee_matches(record_of(entry).grantee, public_key))
+    .map((entry) => describe_capability(oplog, entry))
+    .filter(({ status }) => status === 'active')
+    .map(({ capability_id }) => capability_id)
+}
 
 // The node issues only what it could verify writes under (§3.5.5).
 export const issue_capability = async (context: PeerContext, { library_address, grantee, actions, filter, conditions, capability_id }: {

@@ -3,7 +3,7 @@
 // replication state.
 import { get_about, get_library_summary } from '#query-db/queries.ts';
 import { held_capability_ids } from "./capabilities.js";
-import { find_own_library, link_set } from "./ownership.js";
+import { library_scope } from "./ownership.js";
 import { effective_policy } from "./policy.js";
 import { to_api_library } from "./views.js";
 // The replicator's counters; without one, every entry the oplog holds is all
@@ -23,10 +23,11 @@ const replication_of = (context, address) => {
     };
 };
 // Undefined for a library that is neither own, nor linked, nor one the
-// identity holds a capability in.
-export const describe_library = (context, address) => {
-    const own = find_own_library(context, address);
-    const link = link_set(context).find((candidate) => candidate.address === address);
+// identity holds a capability in. A caller describing many libraries passes
+// one scope for all of them.
+export const describe_library = (context, address, scope = library_scope(context)) => {
+    const own = scope.own.get(address);
+    const link = scope.links.get(address);
     const held = held_capability_ids(context, address);
     if (own === undefined && link === undefined && held.length === 0)
         return undefined;
@@ -42,7 +43,7 @@ export const describe_library = (context, address) => {
         is_retired: own?.retired ?? false,
         is_linked: link !== undefined,
         held_capability_ids: held,
-        replication_mode: effective_policy(context, address)?.mode ?? null,
+        replication_mode: effective_policy(context, address, scope)?.mode ?? null,
         is_loading: handle === undefined,
         replication: replication_of(context, address)
     });

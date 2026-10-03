@@ -25,3 +25,8 @@ export declare const link_set: (context: PeerContext) => Link[];
 export declare const linked_addresses: (context: PeerContext) => string[];
 export declare const visible_addresses: (context: PeerContext) => string[];
 export declare const own_recordstore_addresses: (context: PeerContext) => string[];
+export interface LibraryScope {
+    readonly own: ReadonlyMap<string, OwnLibrary>;
+    readonly links: ReadonlyMap<string, Link>;
+}
+export declare const library_scope: (context: PeerContext) => LibraryScope;

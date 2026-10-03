@@ -71,7 +71,8 @@ export const finish_pending_unlinks = async (context) => {
 };
 export const link_address = async (context, { address, alias }) => {
     await serialise_write(context, async () => {
-        if (address === require_identity(context).identity_address || find_own_library(context, address) !== undefined) {
+        // A recorded library counts here even before its chain is fetched.
+        if (address === require_identity(context).identity_address || identity_state(context).libraries.has(address)) {
             throw new PeerError('conflict', `a peer does not link its own library: ${address}`);
         }
         const timestamp = Date.now();

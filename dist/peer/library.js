@@ -39,7 +39,7 @@ export const create_library_manager = ({ content_store, projector, state_store, 
         return handle;
     };
     const pin_entries = async (handle, entries) => {
-        const keeps = keeps_blobs(handle.chain.address);
+        const keeps = keeps_blobs(handle.chain);
         for (const entry of entries) {
             await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) });
         }

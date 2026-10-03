@@ -10,14 +10,14 @@ import { build_put_operation } from '#entry/operations.ts'
 import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { PeerError, type About, type AboutUpdate, type ApiPeer, type Library } from '#types/peer.ts'
-import { held_capabilities, issue_capability, list_capabilities, revoke_capability } from './capabilities.ts'
+import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from './capabilities.ts'
 import { require_identity, serialise_write, type PeerContext } from './context.ts'
 import { describe_library } from './describe.ts'
 import {
   connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library
 } from './identity-library.ts'
 import { record_listen } from './listens.ts'
-import { default_own_library, find_own_library, identity_state, linked_addresses, own_libraries, own_recordstore_addresses } from './ownership.ts'
+import { default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from './ownership.ts'
 import { effective_policy, get_replication_policy, validate_policy } from './policy.ts'
 import { to_api_about, to_api_track } from './views.ts'
 import { append_write, resolve_write_target } from './write-target.ts'
@@ -38,12 +38,13 @@ const require_library = (context: PeerContext, address: string): Library => {
 
 // The libraries GET /libraries lists: own ones, the link set, and any the
 // identity holds a capability in. The identity library is never listed.
-const known_addresses = (context: PeerContext): string[] => {
-  const addresses = new Set([...own_libraries(context).map(({ address }) => address), ...linked_addresses(context)])
+const list_known = (context: PeerContext): Library[] => {
+  const scope = library_scope(context)
+  const addresses = new Set([...scope.own.keys(), ...scope.links.keys()])
   for (const { chain } of context.libraries.list()) {
-    if (chain.type === 'recordstore' && !addresses.has(chain.address) && describe_library(context, chain.address) !== undefined) addresses.add(chain.address)
+    if (chain.type === 'recordstore' && !addresses.has(chain.address) && held_capability_ids(context, chain.address).length > 0) addresses.add(chain.address)
   }
-  return [...addresses]
+  return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? [])
 }
 
 // Writes an About entry, owned or under a capability granting
@@ -84,7 +85,7 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
   'get_replication_policy' | 'set_replication_policy' | 'list_capabilities' | 'issue_capability' | 'revoke_capability' |
   'get_about' | 'set_about' | 'list_listens' | 'record_listen' | 'get_identity' | 'list_own_libraries' | 'create_own_library' |
   'retire_own_library' | 'list_held_capabilities' | 'read_meta_log'> => ({
-  list_libraries: async () => known_addresses(context).flatMap((address) => describe_library(context, address) ?? []),
+  list_libraries: async () => list_known(context),
 
   get_library: async (address) => describe_library(context, address),
 
@@ -174,7 +175,10 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
     return { public_key: key_pair.public_key, meta_log_address: identity_address, own_library_address: default_own_library(context) ?? '' }
   },
 
-  list_own_libraries: async () => own_libraries(context).flatMap(({ address }) => describe_library(context, address) ?? []),
+  list_own_libraries: async () => {
+    const scope = library_scope(context)
+    return [...scope.own.keys()].flatMap((address) => describe_library(context, address, scope) ?? [])
+  },
 
   create_own_library: async ({ discriminator, about }) => {
     const address = await create_own_library(context, { discriminator })

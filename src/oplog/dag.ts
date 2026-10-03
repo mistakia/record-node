@@ -100,7 +100,7 @@ export const refresh_access_state = ({ oplog, added }: { oplog: Oplog, added: re
     oplog.effective.clear()
     for (const { hash } of effective) oplog.effective.add(hash)
   }
-  if (oplog.effective.size === 0 && oplog.inert.size === 0) return { inert: [], keys: new Set() }
+  if (!revocation_added && oplog.effective.size === 0 && oplog.inert.size === 0) return { inert: [], keys: new Set() }
   const effective = [...oplog.effective].map((hash) => oplog.entries.get(hash) as VerifiedEntry)
   const judged = revocation_added ? [...oplog.delegated] : added.filter(({ hash }) => oplog.delegated.has(hash)).map(({ hash }) => hash)
   const inert: VerifiedEntry[] = []

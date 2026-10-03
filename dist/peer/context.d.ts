@@ -13,7 +13,7 @@ import type { DataDirectoryLock } from './lock.ts';
 import type { LibraryManager } from './library.ts';
 import type { PeerReplication } from './replication.ts';
 import type { ResolveUrl } from './resolver.ts';
-import type { WriteTarget } from './write-target.ts';
+import { type WriteTarget } from './write-target.ts';
 import type { StoredPolicy } from './state.ts';
 import type { PeerStore } from './store.ts';
 export interface PeerIdentity {

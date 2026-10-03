@@ -9,12 +9,12 @@ import { build_put_operation } from '#entry/operations.ts';
 import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { PeerError } from '#types/peer.ts';
-import { held_capabilities, issue_capability, list_capabilities, revoke_capability } from "./capabilities.js";
+import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from "./capabilities.js";
 import { require_identity, serialise_write } from "./context.js";
 import { describe_library } from "./describe.js";
 import { connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library } from "./identity-library.js";
 import { record_listen } from "./listens.js";
-import { default_own_library, find_own_library, identity_state, linked_addresses, own_libraries, own_recordstore_addresses } from "./ownership.js";
+import { default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from "./ownership.js";
 import { effective_policy, get_replication_policy, validate_policy } from "./policy.js";
 import { to_api_about, to_api_track } from "./views.js";
 import { append_write, resolve_write_target } from "./write-target.js";
@@ -33,13 +33,14 @@ const require_library = (context, address) => {
 };
 // The libraries GET /libraries lists: own ones, the link set, and any the
 // identity holds a capability in. The identity library is never listed.
-const known_addresses = (context) => {
-    const addresses = new Set([...own_libraries(context).map(({ address }) => address), ...linked_addresses(context)]);
+const list_known = (context) => {
+    const scope = library_scope(context);
+    const addresses = new Set([...scope.own.keys(), ...scope.links.keys()]);
     for (const { chain } of context.libraries.list()) {
-        if (chain.type === 'recordstore' && !addresses.has(chain.address) && describe_library(context, chain.address) !== undefined)
+        if (chain.type === 'recordstore' && !addresses.has(chain.address) && held_capability_ids(context, chain.address).length > 0)
             addresses.add(chain.address);
     }
-    return [...addresses];
+    return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? []);
 };
 // Writes an About entry, owned or under a capability granting
 // library.update_about (§2.6, §3.5.6). The address field is stamped and null
@@ -70,7 +71,7 @@ const read_about = (context, address) => {
 };
 const listens_addresses = (context) => own_libraries(context).filter(({ type }) => type === 'listens').map(({ address }) => address);
 export const create_library_methods = (context) => ({
-    list_libraries: async () => known_addresses(context).flatMap((address) => describe_library(context, address) ?? []),
+    list_libraries: async () => list_known(context),
     get_library: async (address) => describe_library(context, address),
     // A link is a record in the identity library (§4.8.4).
     link_library: async ({ address, alias }) => {
@@ -149,7 +150,10 @@ export const create_library_methods = (context) => ({
         const { key_pair, identity_address } = require_identity(context);
         return { public_key: key_pair.public_key, meta_log_address: identity_address, own_library_address: default_own_library(context) ?? '' };
     },
-    list_own_libraries: async () => own_libraries(context).flatMap(({ address }) => describe_library(context, address) ?? []),
+    list_own_libraries: async () => {
+        const scope = library_scope(context);
+        return [...scope.own.keys()].flatMap((address) => describe_library(context, address, scope) ?? []);
+    },
     create_own_library: async ({ discriminator, about }) => {
         const address = await create_own_library(context, { discriminator });
         if (about !== undefined && Object.values(about).some((value) => typeof value === 'string')) {

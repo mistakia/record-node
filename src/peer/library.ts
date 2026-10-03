@@ -72,9 +72,10 @@ export const create_library_manager = ({ content_store, projector, state_store, 
   content_store: ContentStore
   projector: Projector
   state_store: LibraryStateStore
-  // Whether a library's policy keeps a track's item 6 (§4.6.1); every library
-  // keeps them by default.
-  keeps_blobs?: (library_address: string) => KeepsBlobs
+  // Whether a library's policy keeps a track's item 6 (§4.6.1), judged from
+  // its resolved chain, since it runs before the library is listed; every
+  // library keeps them by default.
+  keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs
   // Canonical CIDs the identity library pins (§4.6.2): never released here.
   retained?: () => ReadonlySet<string>
   // After entries are indexed, with the entries a revocation among them made inert.
@@ -99,7 +100,7 @@ export const create_library_manager = ({ content_store, projector, state_store, 
   }
 
   const pin_entries = async (handle: LibraryHandle, entries: Iterable<VerifiedEntry>) => {
-    const keeps = keeps_blobs(handle.chain.address)
+    const keeps = keeps_blobs(handle.chain)
     for (const entry of entries) {
       await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) })
     }

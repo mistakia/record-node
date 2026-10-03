@@ -6,6 +6,9 @@
 export const create_merge_orchestrator = ({ is_landed, merge }) => {
     const fetched = new Map();
     const rejected = new Set();
+    // Waiting entries by the parents they name, to reach a rejected entry's
+    // descendants without scanning everything that waits.
+    const children = new Map();
     let tail = Promise.resolve();
     let scheduled = false;
     // Iterative, since a long chain would overflow a recursive walk. A cycle
@@ -39,16 +42,31 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
         }
         return [...fetched.values()].filter(({ hash }) => ready.get(hash) === true);
     };
-    // Drops every waiting entry that descends from a rejected one.
-    const drop_rejected_descendants = () => {
-        for (let changed = true; changed;) {
-            changed = false;
-            for (const [hash, entry] of fetched) {
-                if (!entry.entry.next.some((parent) => rejected.has(parent)))
+    const remember = (entry) => {
+        fetched.set(entry.hash, entry);
+        for (const parent of entry.entry.next)
+            children.set(parent, (children.get(parent) ?? new Set()).add(entry.hash));
+    };
+    const forget = (entry) => {
+        fetched.delete(entry.hash);
+        for (const parent of entry.entry.next) {
+            const siblings = children.get(parent);
+            siblings?.delete(entry.hash);
+            if (siblings?.size === 0)
+                children.delete(parent);
+        }
+    };
+    // Drops every waiting entry that descends from the newly rejected ones.
+    const drop_rejected_descendants = (roots) => {
+        const queue = [...roots];
+        for (let hash = queue.pop(); hash !== undefined; hash = queue.pop()) {
+            for (const child of [...children.get(hash) ?? []]) {
+                const entry = fetched.get(child);
+                if (entry === undefined || rejected.has(child))
                     continue;
-                fetched.delete(hash);
-                rejected.add(hash);
-                changed = true;
+                forget(entry);
+                rejected.add(child);
+                queue.push(child);
             }
         }
     };
@@ -57,8 +75,8 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
         const batch = ready_batch();
         if (batch.length === 0)
             return;
-        for (const { hash } of batch)
-            fetched.delete(hash);
+        for (const entry of batch)
+            forget(entry);
         try {
             await merge(batch);
         }
@@ -66,14 +84,14 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
             // Kept for the next run rather than lost to the traversal, which never
             // fetches an entry twice.
             for (const entry of batch)
-                fetched.set(entry.hash, entry);
+                remember(entry);
             throw error;
         }
         // A ready entry that did not land failed verification at merge.
-        for (const { hash } of batch)
-            if (!is_landed(hash))
-                rejected.add(hash);
-        drop_rejected_descendants();
+        const failed = batch.filter(({ hash }) => !is_landed(hash)).map(({ hash }) => hash);
+        for (const hash of failed)
+            rejected.add(hash);
+        drop_rejected_descendants(failed);
     };
     return {
         add: (entry) => {
@@ -81,7 +99,7 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
                 rejected.add(entry.hash);
                 return;
             }
-            fetched.set(entry.hash, entry);
+            remember(entry);
             if (scheduled)
                 return;
             scheduled = true;
@@ -100,6 +118,7 @@ export const create_merge_orchestrator = ({ is_landed, merge }) => {
         discard: () => {
             fetched.clear();
             rejected.clear();
+            children.clear();
         }
     };
 };

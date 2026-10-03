@@ -5,6 +5,7 @@ import { build_track_envelope } from '#entry/envelope.ts'
 import { build_identity_del, build_identity_put, canonical_cid, identity_record_key } from '#entry/identity-record.ts'
 import { build_del_operation, build_put_operation, is_put } from '#entry/operations.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
+import { resolve_current_state } from '#oplog/current-state.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import { get_track, list_tags, list_tracks } from '#query-db/queries.ts'
 import type { Envelope } from '#types/entry.ts'
@@ -24,8 +25,14 @@ const library_track = (context: PeerContext, { address, track_id }: { address: s
   return track
 }
 
+// The envelope a write builds on. Under a capability it is the §3.5.6 base
+// entry, which ignores inertness, so the new PUT keeps exactly the tags the
+// verifier will check it against.
 const live_envelope = (target: WriteTarget, track_id: string): Envelope => {
-  const live = get_live_entry({ oplog: target.handle.oplog, key: track_id })
+  const { oplog } = target.handle
+  const live = target.capability_id === undefined
+    ? get_live_entry({ oplog, key: track_id })
+    : resolve_current_state([...oplog.key_entries.get(track_id) ?? []].flatMap((hash) => oplog.entries.get(hash) ?? []))
   if (live === undefined || !is_put(live.operation) || live.operation.value.type !== 'track') {
     throw new PeerError('not_found', `not in ${target.address}: ${track_id}`)
   }

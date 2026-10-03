@@ -18,6 +18,11 @@ export interface WriteTarget {
   readonly capability_id: string | undefined
 }
 
+// An own library, once retired, refuses new local writes (§4.8.3).
+export const assert_writable = (context: PeerContext, { address }: { address: string }): void => {
+  if (find_own_library(context, address)?.retired === true) throw new PeerError('conflict', `library is retired: ${address}`)
+}
+
 export const resolve_write_target = (context: PeerContext, { library_address, capability_id }: {
   library_address?: string | undefined
   capability_id?: string | undefined
@@ -29,7 +34,7 @@ export const resolve_write_target = (context: PeerContext, { library_address, ca
   const handle = context.libraries.get(address)
   if (handle === undefined) throw new PeerError('not_found', `library not open: ${address}`)
   if (handle.chain.type !== 'recordstore') throw new PeerError('invalid', `writes go to a recordstore library, not a ${handle.chain.type} one: ${address}`)
-  if (find_own_library(context, address)?.retired === true) throw new PeerError('conflict', `library is retired: ${address}`)
+  assert_writable(context, { address })
   if ((handle.chain.write_list as readonly string[]).includes(require_identity(context).key_pair.public_key)) {
     return { address, handle, capability_id: undefined }
   }

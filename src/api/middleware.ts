@@ -77,7 +77,8 @@ export const no_cache: RequestHandler = (_req, res, next) => {
 }
 
 export const bearer_token = (header: string | undefined): string | undefined => {
-  const match = /^Bearer (.+)$/.exec(header ?? '')
+  // The auth scheme is case-insensitive (RFC 7235).
+  const match = /^Bearer (.+)$/i.exec(header ?? '')
   return match?.[1]
 }
 

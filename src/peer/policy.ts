@@ -4,11 +4,12 @@
 // full, and one carried over from a v1.0 Log entry to index_only.
 
 import { filter_matches, filter_shape } from '#access-control/filter.ts'
+import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { is_put } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { PeerError, type ReplicationMode, type ReplicationPolicy, type SpecNode } from '#types/peer.ts'
 import type { PeerContext } from './context.ts'
-import { find_own_library, link_set } from './ownership.ts'
+import { find_own_library, link_set, type LibraryScope } from './ownership.ts'
 import type { KeepsBlobs } from './pins.ts'
 import type { StoredPolicy } from './state.ts'
 
@@ -18,10 +19,12 @@ export interface EffectivePolicy {
 }
 
 // The policy a library replicates under, or undefined for one that is
-// neither own nor linked.
-export const effective_policy = (context: PeerContext, address: string): EffectivePolicy | undefined => {
-  if (find_own_library(context, address) !== undefined) return { mode: 'full', filter: null }
-  const link = link_set(context).find((candidate) => candidate.address === address)
+// neither own nor linked. scope saves a caller describing many libraries
+// from deriving ownership for each.
+export const effective_policy = (context: PeerContext, address: string, scope?: LibraryScope): EffectivePolicy | undefined => {
+  const own = scope === undefined ? find_own_library(context, address) : scope.own.get(address)
+  if (own !== undefined) return { mode: 'full', filter: null }
+  const link = scope === undefined ? link_set(context).find((candidate) => candidate.address === address) : scope.links.get(address)
   if (link === undefined) return undefined
   const stored = context.policies.get(address)
   if (stored !== undefined) return { mode: stored.mode, filter: stored.mode === 'selective' ? (stored.filter ?? null) as SpecNode | null : null }
@@ -55,10 +58,15 @@ export const track_view = ({ library_address, entry, content }: {
   return Object.fromEntries(Object.entries(view).filter(([, value]) => value !== undefined && value !== null))
 }
 
-// The pin predicate the library manager applies to each Track entry. Before
-// the identity opens, and for the identity library itself, everything keeps.
-export const keeps_blobs = (context: PeerContext) => (library_address: string): KeepsBlobs => {
-  if (context.identity === undefined || library_address === context.identity.identity_address) return () => true
+// The pin predicate the library manager applies to each Track entry. A
+// library whose write list holds the identity key is an own library, always
+// full; that is read from the chain, since the predicate runs while the
+// library opens, before it is listed. Before the identity opens, everything
+// keeps.
+export const keeps_blobs = (context: PeerContext) => (chain: ResolvedAcChain): KeepsBlobs => {
+  if (context.identity === undefined) return () => true
+  if ((chain.write_list as readonly string[]).includes(context.identity.key_pair.public_key)) return () => true
+  const library_address = chain.address
   const policy = effective_policy(context, library_address)
   if (policy === undefined || policy.mode === 'index_only') return () => false
   if (policy.mode === 'full') return () => true

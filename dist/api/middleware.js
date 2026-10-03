@@ -51,7 +51,8 @@ export const no_cache = (_req, res, next) => {
     next();
 };
 export const bearer_token = (header) => {
-    const match = /^Bearer (.+)$/.exec(header ?? '');
+    // The auth scheme is case-insensitive (RFC 7235).
+    const match = /^Bearer (.+)$/i.exec(header ?? '');
     return match?.[1];
 };
 export const authenticate_requests = (authenticate) => async (req, _res, next) => {
