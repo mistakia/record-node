@@ -15,7 +15,7 @@ import type { LibraryType } from '#types/library.ts'
 import { PeerError } from '#types/peer.ts'
 import { load_entry_blocks } from './load.ts'
 import { chain_pins, entry_pins, pin_into, type PinSet } from './pins.ts'
-import type { HeadsStore } from './state.ts'
+import type { LibraryStateStore } from './state.ts'
 
 export interface LibraryHandle {
   readonly chain: ResolvedAcChain
@@ -29,7 +29,13 @@ export interface LibraryManager {
   create_library: (input: { name: string, type: LibraryType, write_keys: readonly string[] }) => Promise<LibraryHandle>
   open_library: (library_address: string) => Promise<LibraryHandle>
   close_library: (library_address: string) => Promise<void>
+  // An unlink runs in two calls: begin_unlink persists the marker, then
+  // unlink_library releases what the library held, its heads, and its index
+  // rows, and clears the marker last. A crash in between leaves the marker,
+  // and pending_unlinks names it at the next start.
+  begin_unlink: (library_address: string) => Promise<void>
   unlink_library: (library_address: string) => Promise<void>
+  pending_unlinks: () => Promise<string[]>
   get: (library_address: string) => LibraryHandle | undefined
   list: () => LibraryHandle[]
   // Signs, stores, pins, and indexes one local entry.
@@ -42,10 +48,10 @@ export interface LibraryManager {
   settled: () => Promise<void>
 }
 
-export const create_library_manager = ({ content_store, projector, heads_store, on_entries }: {
+export const create_library_manager = ({ content_store, projector, state_store, on_entries }: {
   content_store: ContentStore
   projector: Projector
-  heads_store: HeadsStore
+  state_store: LibraryStateStore
   // After entries are indexed.
   on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[] }) => void
 }): LibraryManager => {
@@ -68,7 +74,7 @@ export const create_library_manager = ({ content_store, projector, heads_store, 
     const handle = require_library(library_address)
     for (const entry of entries) await content_store.put(entry.hash, entry.bytes)
     await pin_entries(handle, entries)
-    await heads_store.save({ library_address, heads: [...handle.oplog.heads] })
+    await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] })
     const projected = Promise.all(entries.map(async (entry) => { await projector.project_append({ oplog: handle.oplog, entry }) }))
     indexing = projected.catch(() => {})
     await projected
@@ -86,11 +92,11 @@ export const create_library_manager = ({ content_store, projector, heads_store, 
     const chain = await resolve_ac_chain({ library_address, block_store: content_store })
     const handle: LibraryHandle = { chain, oplog: create_oplog({ chain }), pins: new Map(), open: true }
     await pin_into({ content_store, pins: handle.pins, items: chain_pins(chain) })
-    const heads = (await heads_store.load()).get(library_address) ?? []
+    const heads = (await state_store.load()).heads.get(library_address) ?? []
     merge_entries({ oplog: handle.oplog, blocks: await load_entry_blocks({ heads, content_store }) })
     await pin_entries(handle, handle.oplog.entries.values())
     libraries.set(library_address, handle)
-    await heads_store.save({ library_address, heads: [...handle.oplog.heads] })
+    await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] })
     await projector.project_library({ oplog: handle.oplog })
     return handle
   }
@@ -104,19 +110,26 @@ export const create_library_manager = ({ content_store, projector, heads_store, 
     close_library: async (library_address) => {
       require_library(library_address).open = false
     },
+    begin_unlink: async (library_address) => {
+      await state_store.set_unlinking({ library_address, unlinking: true })
+    },
     // §4.6: release the chain, the entries, and the content this library held
-    // unless another library still holds the same CID.
+    // unless another library still holds the same CID. Every step is
+    // idempotent, so a finish after a crash repeats it safely. A library that
+    // was never opened holds no pins.
     unlink_library: async (library_address) => {
-      const handle = require_library(library_address)
+      const handle = libraries.get(library_address)
       libraries.delete(library_address)
       const held_elsewhere = new Set([...libraries.values()].flatMap(({ pins }) => [...pins.keys()]))
-      for (const cid of handle.pins.keys()) {
+      for (const cid of handle?.pins.keys() ?? []) {
         if (!held_elsewhere.has(cid)) await content_store.unpin(cid)
       }
-      handle.pins.clear()
-      await heads_store.save({ library_address, heads: undefined })
+      handle?.pins.clear()
+      await state_store.save_heads({ library_address, heads: undefined })
       await projector.remove_library({ library_address })
+      await state_store.set_unlinking({ library_address, unlinking: false })
     },
+    pending_unlinks: async () => [...(await state_store.load()).unlinking],
     get: (library_address) => libraries.get(library_address),
     list: () => [...libraries.values()],
     append: async ({ library_address, payload, key_pair }) => {

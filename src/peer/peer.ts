@@ -15,7 +15,7 @@ import { list_linked_libraries } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
 import type { ApiPeer } from '#types/peer.ts'
-import { try_open_library, create_library_methods } from './api-libraries.ts'
+import { create_library_methods, finish_pending_unlinks, try_open_library } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
 import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
 import { drain_queues, ingest_into_own, require_identity, require_toolchain, serialise_write, type PeerContext, type PeerIdentity } from './context.ts'
@@ -26,7 +26,7 @@ import { create_library_manager } from './library.ts'
 import { LISTENS_LIBRARY_NAME } from './listens.ts'
 import { project_entry_events } from './notify.ts'
 import { create_resolver, refuse_input_errors, type ResolveUrl } from './resolver.ts'
-import { create_file_heads_store, create_memory_heads_store } from './state.ts'
+import { create_file_state_store, create_memory_state_store } from './state.ts'
 import { open_peer_store } from './store.ts'
 
 export const OWN_LIBRARY_NAME = 'record'
@@ -76,7 +76,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   const libraries = create_library_manager({
     content_store,
     projector: create_projector({ db, read_content: content_store.get }),
-    heads_store: paths === undefined ? create_memory_heads_store() : create_file_heads_store({ path: paths.libraries }),
+    state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
     on_entries: (input) => { project_entry_events({ context, ...input }) }
   })
   const context: PeerContext = {
@@ -128,8 +128,9 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   }
 }
 
-// Checks the toolchain, then opens the own libraries and everything they link.
-// A toolchain refusal disables ingest and leaves the rest of the peer up.
+// Checks the toolchain, opens the own libraries and everything they link, and
+// finishes any unlink a crash cut short. A toolchain refusal disables ingest
+// and leaves the rest of the peer up.
 export const start_peer = async (peer: Peer): Promise<void> => {
   const { context } = peer
   if (context.stopping) throw new Error('a stopped peer does not start again; create a new one')
@@ -139,6 +140,7 @@ export const start_peer = async (peer: Peer): Promise<void> => {
   context.toolchain.catch(() => {})
   const key_pair = await load_key_pair({ path: data_dir === undefined ? undefined : data_paths(data_dir).identity })
   context.identity = await open_identity(context, key_pair)
+  await serialise_write(context, async () => { await finish_pending_unlinks(context) })
 }
 
 // Refuses new work, lets queued writes, ingests, and index updates finish,

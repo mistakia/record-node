@@ -1,7 +1,7 @@
 import { type ResolvedEntry } from 'record-resolver';
 import type { IngestedTrack } from '#types/ingest.ts';
 import type { Download } from './download.ts';
-import type { TrackTarget } from './put-track.ts';
+import { type TrackTarget } from './put-track.ts';
 import type { Toolchain } from './toolchain.ts';
 export type FindBySource = (source: {
     extractor: string;

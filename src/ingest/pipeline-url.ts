@@ -10,7 +10,7 @@ import { to_resolver_entry, type ResolvedEntry, type ResolverEntry } from 'recor
 import type { IngestedTrack } from '#types/ingest.ts'
 import type { Download } from './download.ts'
 import { ingest_local_file } from './pipeline-local.ts'
-import type { TrackTarget } from './put-track.ts'
+import { add_track_resolver, type TrackTarget } from './put-track.ts'
 import type { Toolchain } from './toolchain.ts'
 
 // The library's track for a source pointer, if it has one (§2.4.2 cache key).
@@ -43,7 +43,7 @@ export const ingest_resolved_entry = async ({ entry, target, toolchain, find_by_
     const file_path = join(temp_dir, `download${extension_of(entry)}`)
     await download({ url: entry.url, headers: entry.http_headers, output_path: file_path })
     // Step 4: the local pipeline, with the stripped record attached.
-    return await ingest_local_file({
+    const track = await ingest_local_file({
       file_path,
       target,
       toolchain,
@@ -51,6 +51,10 @@ export const ingest_resolved_entry = async ({ entry, target, toolchain, find_by_
       ...(tags === undefined ? {} : { tags }),
       ...(timestamp === undefined ? {} : { timestamp })
     })
+    // Audio the library already held keeps its entry, so the source is added
+    // to it: the next request for this source then dedups at step 2 (§2.10).
+    if (!track.existing) return track
+    return await add_track_resolver({ target, track_id: track.track_id, resolver }) ?? track
   } finally {
     await rm(temp_dir, { recursive: true, force: true })
   }

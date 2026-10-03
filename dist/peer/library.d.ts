@@ -7,7 +7,7 @@ import { type MergeResult } from '#oplog/merge.ts';
 import type { Projector } from '#query-db/projector.ts';
 import type { LibraryType } from '#types/library.ts';
 import { type PinSet } from './pins.ts';
-import type { HeadsStore } from './state.ts';
+import type { LibraryStateStore } from './state.ts';
 export interface LibraryHandle {
     readonly chain: ResolvedAcChain;
     readonly oplog: Oplog;
@@ -22,7 +22,9 @@ export interface LibraryManager {
     }) => Promise<LibraryHandle>;
     open_library: (library_address: string) => Promise<LibraryHandle>;
     close_library: (library_address: string) => Promise<void>;
+    begin_unlink: (library_address: string) => Promise<void>;
     unlink_library: (library_address: string) => Promise<void>;
+    pending_unlinks: () => Promise<string[]>;
     get: (library_address: string) => LibraryHandle | undefined;
     list: () => LibraryHandle[];
     append: (input: {
@@ -40,10 +42,10 @@ export interface LibraryManager {
     }) => Promise<MergeResult>;
     settled: () => Promise<void>;
 }
-export declare const create_library_manager: ({ content_store, projector, heads_store, on_entries }: {
+export declare const create_library_manager: ({ content_store, projector, state_store, on_entries }: {
     content_store: ContentStore;
     projector: Projector;
-    heads_store: HeadsStore;
+    state_store: LibraryStateStore;
     on_entries?: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];

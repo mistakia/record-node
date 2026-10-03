@@ -17,3 +17,11 @@ export declare const put_track: ({ target, content, tags, timestamp }: {
     tags?: readonly string[] | undefined;
     timestamp?: number | undefined;
 }) => Promise<IngestedTrack>;
+export declare const add_track_resolver: ({ target, track_id, resolver }: {
+    target: TrackTarget;
+    track_id: string;
+    resolver: {
+        readonly extractor: string;
+        readonly id: string;
+    };
+}) => Promise<IngestedTrack | undefined>;

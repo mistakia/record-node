@@ -39,6 +39,28 @@ export const try_open_library = async (context: PeerContext, address: string): P
   }
 }
 
+// §4.6, restartable: the marker is on disk before anything changes, then the
+// DEL ends the link and the manager releases what only this library held,
+// clearing the marker last. Every step is idempotent.
+const unlink_address = async (context: PeerContext, address: string): Promise<void> => {
+  const { key_pair, own_address } = require_identity(context)
+  await context.libraries.begin_unlink(address)
+  if (get_live_entry({ oplog: own_oplog(context), key: compute_log_id(address) }) !== undefined) {
+    const payload = build_del_operation({ key: compute_log_id(address), type: 'log' })
+    await context.libraries.append({ library_address: own_address, payload, key_pair })
+  }
+  await context.libraries.unlink_library(address)
+}
+
+// Finishes every unlink a crash cut short. The library is opened first, so its
+// pin set is rebuilt from what it holds before the release runs again.
+export const finish_pending_unlinks = async (context: PeerContext): Promise<void> => {
+  for (const address of await context.libraries.pending_unlinks()) {
+    await try_open_library(context, address)
+    await unlink_address(context, address)
+  }
+}
+
 const describe_library = (context: PeerContext, address: string): Library | undefined => {
   const own_address = require_identity(context).own_address
   const is_own = address === own_address
@@ -85,16 +107,11 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
     return require_library(context, address)
   },
 
-  // §4.6: the DEL ends the link, and the manager releases what only it held.
   unlink_library: async (address) => {
     await serialise_write(context, async () => {
-      const { key_pair, own_address, listens_address } = require_identity(context)
+      const { own_address, listens_address } = require_identity(context)
       if (address === own_address || address === listens_address) throw new PeerError('forbidden', `the own libraries cannot be unlinked: ${address}`)
-      if (get_live_entry({ oplog: own_oplog(context), key: compute_log_id(address) }) !== undefined) {
-        const payload = build_del_operation({ key: compute_log_id(address), type: 'log' })
-        await context.libraries.append({ library_address: own_address, payload, key_pair })
-      }
-      if (context.libraries.get(address) !== undefined) await context.libraries.unlink_library(address)
+      await unlink_address(context, address)
     })
     context.events.emit({ type: 'library:unlinked', payload: { library_address: address } })
   },
