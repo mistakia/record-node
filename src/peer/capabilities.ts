@@ -6,6 +6,7 @@ import {
   assert_issuable_capability, build_capability_record, build_revocation_record, condition_shape, grantee_matches, record_key
 } from '#access-control/capability-record.ts'
 import { capability_chain, is_write_list_key } from '#access-control/capability.ts'
+import { is_protocol_cid } from '#encoding/cid.ts'
 import { build_record_put_operation, is_access_record } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import type { Oplog } from '#oplog/dag.ts'
@@ -101,8 +102,10 @@ export const issue_capability = async (context: PeerContext, { library_address, 
   return describe_capability(target.handle.oplog, entry)
 })
 
-// The owner revokes any capability; another identity, one in whose chain it
-// signed, citing a capability it holds (§3.5.10). Verification decides.
+// The owner revokes any capability, including one this node has not merged,
+// such as a delegated grant still in flight; another identity, one in whose
+// chain it signed, citing a capability it holds (§3.5.10). Verification
+// decides.
 export const revoke_capability = async (context: PeerContext, { library_address, revokes, capability_id }: {
   library_address: string
   revokes: string
@@ -110,8 +113,13 @@ export const revoke_capability = async (context: PeerContext, { library_address,
 }): Promise<void> => {
   await serialise_write(context, async () => {
     const target = resolve_write_target(context, { library_address, capability_id })
-    if (!target.handle.oplog.capabilities.has(revokes)) throw new PeerError('not_found', `no capability ${revokes} in ${library_address}`)
-    if (target.capability_id === undefined && revocation_of(target.handle.oplog, revokes) !== null) return
+    const { oplog } = target.handle
+    if (target.capability_id === undefined) {
+      if (!is_protocol_cid(revokes)) throw new PeerError('not_found', `not a capability id: ${revokes}`)
+      if (revocation_of(oplog, revokes) !== null) return
+    } else if (!oplog.capabilities.has(revokes)) {
+      throw new PeerError('not_found', `no capability ${revokes} in ${library_address}`)
+    }
     const value = build_revocation_record({ revokes })
     await append_write(context, target, build_record_put_operation({ key: record_key(value), value, capability_id: target.capability_id }))
   })

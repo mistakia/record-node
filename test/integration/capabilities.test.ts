@@ -90,6 +90,27 @@ describe('capabilities', () => {
       .rejects.toMatchObject({ code: 'capability_revoked' })
   })
 
+  test('§3.5.10 [MUST] the owner revokes a capability its node has not merged', async () => {
+    const owner = await peers.start()
+    const other = await peers.start()
+    const address = owner.identity().own_address
+    // A capability id the owner's library has never seen, as a delegated
+    // grant still in flight would be.
+    const unseen = await other.issue_capability({
+      library_address: other.identity().own_address,
+      grantee: { type: 'key', key: owner.identity().key_pair.public_key },
+      actions: ['library.append_track']
+    })
+    const revocations = () => [...(owner.context.libraries.get(address)?.oplog.revocations.values() ?? [])]
+      .filter((entry) => (entry.operation as unknown as { value: { revokes: string } }).value.revokes === unseen.capability_id)
+    await owner.revoke_capability({ library_address: address, capability_id: unseen.capability_id })
+    expect(revocations()).toHaveLength(1)
+    // Revoking it again appends nothing, and a malformed id names no capability.
+    await owner.revoke_capability({ library_address: address, capability_id: unseen.capability_id })
+    expect(revocations()).toHaveLength(1)
+    await expect(owner.revoke_capability({ library_address: address, capability_id: 'not-a-cid' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   test('§3.5.8 [MUST] a write timestamped after expires_at is refused as expired', async () => {
     const { owner, grantee, address } = await pair()
     const capability = await owner.issue_capability({
