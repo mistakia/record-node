@@ -3,6 +3,7 @@
 // an external network.
 
 import type { NetworkConfig } from '#adapter/libp2p/config.ts'
+import type { PeerConfig } from '#peer/config.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
 import { preflight_bypassed } from './network.ts'
 
@@ -19,9 +20,9 @@ export const dial_address = async (peer: Peer): Promise<string> => {
 export const create_libp2p_peers = () => {
   const running: Peer[] = []
   return {
-    start: async (network: Partial<NetworkConfig> = {}): Promise<Peer> => {
+    start: async (network: Partial<NetworkConfig> = {}, config: Partial<PeerConfig> = {}): Promise<Peer> => {
       const peer = await create_peer({
-        config: { allow_toolchain_mismatch: preflight_bypassed, traversal_timeout_ms: 5000, network: { ...LOOPBACK, ...network } }
+        config: { allow_toolchain_mismatch: preflight_bypassed, traversal_timeout_ms: 5000, ...config, network: { ...LOOPBACK, ...network } }
       })
       await start_peer(peer)
       running.push(peer)

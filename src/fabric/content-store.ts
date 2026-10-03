@@ -28,6 +28,8 @@ export interface ContentStore extends BlockStore {
   unpin: (cid: string) => Promise<void>
   // True for a pinned CID and for any block under a recursive pin.
   is_pinned: (cid: string) => Promise<boolean>
+  // Deletes the block unless a pin covers it; true when it was deleted.
+  evict: (cid: string) => Promise<boolean>
   // Imports one blob as a single UnixFS file and returns its base58btc CID.
   import_blob: (source: BlobSource) => Promise<string>
 }

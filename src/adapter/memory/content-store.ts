@@ -13,6 +13,14 @@ export const create_memory_content_store = (): ContentStore => {
   const covered_by = async ({ cid, recursive }: { cid: CID, recursive: boolean }) =>
     (await walk_blocks({ cid, recursive, read: async (next) => blocks.get(format_cid(next)) })).map(format_cid)
 
+  const is_pinned = async (key: string) => {
+    if (pins.has(key)) return true
+    for (const [pinned, recursive] of pins) {
+      if (recursive && (await covered_by({ cid: parse_content_cid(pinned), recursive })).includes(key)) return true
+    }
+    return false
+  }
+
   return {
     get: async (cid) => blocks.get(format_cid(parse_content_cid(cid))),
     put: async (cid, bytes) => {
@@ -31,13 +39,11 @@ export const create_memory_content_store = (): ContentStore => {
     unpin: async (cid) => {
       pins.delete(format_cid(parse_content_cid(cid)))
     },
-    is_pinned: async (cid) => {
+    is_pinned: async (cid) => await is_pinned(format_cid(parse_content_cid(cid))),
+    evict: async (cid) => {
       const key = format_cid(parse_content_cid(cid))
-      if (pins.has(key)) return true
-      for (const [pinned, recursive] of pins) {
-        if (recursive && (await covered_by({ cid: parse_content_cid(pinned), recursive })).includes(key)) return true
-      }
-      return false
+      if (!blocks.has(key) || await is_pinned(key)) return false
+      return blocks.delete(key)
     },
     import_blob: async (source) => await import_unixfs_file({
       source,

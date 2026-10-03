@@ -4,13 +4,15 @@
 // bootstrap list, mDNS, and the content network's own DHT, each able to
 // bootstrap the peer alone.
 
+import { getCiphers } from 'node:crypto'
+
 import { bootstrap } from '@libp2p/bootstrap'
 import { gossipsub, type GossipSub } from '@libp2p/gossipsub'
 import { identify } from '@libp2p/identify'
 import type { Libp2p, PeerInfo } from '@libp2p/interface'
 import { kadDHT, passthroughMapper } from '@libp2p/kad-dht'
 import { mdns } from '@libp2p/mdns'
-import { noise } from '@libp2p/noise'
+import { noise, pureJsCrypto } from '@libp2p/noise'
 import { ping } from '@libp2p/ping'
 import { preSharedKey } from '@libp2p/pnet'
 import { tcp } from '@libp2p/tcp'
@@ -49,10 +51,15 @@ type Libp2pInit = Parameters<typeof withLibp2pLight>[1]
 // core on 13, whose hasher types differ only nominally.
 const SHA3_512_HASHER = hasher_from({ name: 'sha3-512', code: SHA3_512_CODE, encode: (bytes) => sha3_512(bytes) }) as unknown as HeliaHasher
 
+// Noise switches to node:crypto's chacha20-poly1305 for larger frames; a
+// runtime without that cipher (Bun 1.4) would drop every such frame, so it
+// gets the pure-JS implementation instead.
+const NOISE_INIT = getCiphers().includes('chacha20-poly1305') ? {} : { crypto: pureJsCrypto }
+
 export const create_libp2p_options = ({ listen, bootstrap: bootstrap_list, mdns: use_mdns, dht }: NetworkConfig): Libp2pOptions<RecordServices> => ({
   addresses: { listen: [...listen] },
   transports: [tcp()],
-  connectionEncrypters: [noise()],
+  connectionEncrypters: [noise(NOISE_INIT)],
   streamMuxers: [yamux()],
   connectionProtector: preSharedKey({ psk: utf8ToBytes(RECORD_SWARM_KEY) }),
   peerDiscovery: [

@@ -39,6 +39,8 @@ describe('config', () => {
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
     await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
     await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')
+    await expect(load_config({ config_path: config_file({ audio_cache_max_bytes: 0 }) })).rejects.toThrow('audio_cache_max_bytes')
+    await expect(load_config({ config_path: config_file({ audio_fetch_timeout_ms: 'soon' }) })).rejects.toThrow('audio_fetch_timeout_ms')
   })
 
   test('fills a partial network config from the §5.5.1 defaults, or turns the network off', async () => {

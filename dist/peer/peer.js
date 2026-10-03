@@ -11,6 +11,7 @@ import { list_linked_libraries } from '#query-db/queries.ts';
 import { open_query_db } from '#query-db/schema.ts';
 import { create_library_methods, describe_library, finish_pending_unlinks, try_open_library } from "./api-libraries.js";
 import { create_track_methods } from "./api-tracks.js";
+import { create_audio_source } from "./audio.js";
 import { data_paths, resolve_peer_config } from "./config.js";
 import { drain_queues, ingest_into_own, require_identity, require_toolchain, serialise_write } from "./context.js";
 import { create_event_bus } from "./events.js";
@@ -46,6 +47,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     const db = open_query_db();
     const events = create_event_bus();
     const content_store = store.content_store;
+    const network = join_network?.({ content_store }) ?? store.network;
     const libraries = create_library_manager({
         content_store,
         projector: create_projector({ db, read_content: content_store.get }),
@@ -64,6 +66,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         events,
         resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
         download,
+        audio: create_audio_source({ content_store, network, timeout_ms: config.audio_fetch_timeout_ms, max_bytes: config.audio_cache_max_bytes }),
         replication: undefined,
         identity: undefined,
         toolchain: undefined,
@@ -71,7 +74,6 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         ingests: Promise.resolve(),
         stopping: false
     };
-    const network = join_network?.({ content_store }) ?? store.network;
     if (network !== undefined) {
         context.replication = create_peer_replication({ context, network, describe_library: (address) => describe_library(context, address) });
     }

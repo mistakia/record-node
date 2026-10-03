@@ -35,8 +35,8 @@ export const open_peer_store = async ({ data_dir, network }: {
   const datastore = paths === undefined ? new MemoryDatastore() : new FsDatastore(paths.datastore)
   if (network === false) {
     const helia = await createHeliaLight({ blockstore, datastore, codecs: [dag_cbor] }).start()
-    return { helia, content_store: create_helia_content_store({ helia }), network: undefined }
+    return { helia, content_store: create_helia_content_store({ helia, blockstore }), network: undefined }
   }
   const helia = await create_networked_helia({ blockstore, datastore, network })
-  return { helia, content_store: create_helia_content_store({ helia }), network: create_libp2p_network({ helia }) }
+  return { helia, content_store: create_helia_content_store({ helia, blockstore }), network: create_libp2p_network({ helia }) }
 }

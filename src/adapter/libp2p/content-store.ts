@@ -8,8 +8,13 @@
 // drops a block still under a live pin. Instead each covered block carries a
 // depth-0 Helia pin whose metadata counts the pins covering it, so Helia's
 // isPinned and gc stay correct.
+//
+// Eviction deletes from the raw blockstore Helia wraps: Helia's own delete
+// first cancels reproviding, which throws on a node with no content router.
+// Pin, unpin, and evict run one at a time, so no pin lands between evict's
+// pin check and its delete.
 
-import type { Helia } from 'helia'
+import type { createHeliaLight, Helia } from 'helia'
 
 import { collect_bytes, format_cid, import_unixfs_file, parse_content_cid as parse_cid, verify_block, walk_blocks } from '#fabric/block.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
@@ -37,7 +42,20 @@ const drain = async (iterable: AsyncIterable<unknown>) => {
   while ((await iterator.next()).done !== true) { /* consume */ }
 }
 
-export const create_helia_content_store = ({ helia }: { helia: Helia }): ContentStore => {
+type RawBlockstore = NonNullable<NonNullable<Parameters<typeof createHeliaLight>[0]>['blockstore']>
+
+export const create_helia_content_store = ({ helia, blockstore }: {
+  helia: Helia
+  // The blockstore Helia was created over.
+  blockstore: RawBlockstore
+}): ContentStore => {
+  let pin_queue: Promise<unknown> = Promise.resolve()
+  const exclusive = async <T>(job: () => Promise<T>): Promise<T> => {
+    const run = pin_queue.then(job)
+    pin_queue = run.catch(() => {})
+    return await run
+  }
+
   const read_block = async (cid: HeliaCid): Promise<Uint8Array | undefined> => {
     try {
       return await collect_bytes(helia.blockstore.get(cid, OFFLINE))
@@ -90,7 +108,7 @@ export const create_helia_content_store = ({ helia }: { helia: Helia }): Content
       await helia.blockstore.put(as_helia_cid(parsed), bytes)
     },
     has: async (cid) => await helia.blockstore.has(parse_content_cid(cid)),
-    pin: async (cid, { recursive = false } = {}) => {
+    pin: async (cid, { recursive = false } = {}) => await exclusive(async () => {
       const parsed = parse_content_cid(cid)
       const root = (await get_block_pin(parsed))?.root
       if (root === 'recursive' || (root === 'direct' && !recursive)) return
@@ -99,16 +117,22 @@ export const create_helia_content_store = ({ helia }: { helia: Helia }): Content
       for (const block of root === 'direct' ? covered.slice(1) : covered) await reference(block)
       const block_pin = await get_block_pin(parsed)
       if (block_pin !== undefined) await set_block_pin(parsed, { ...block_pin, root: recursive ? 'recursive' : 'direct' })
-    },
-    unpin: async (cid) => {
+    }),
+    unpin: async (cid) => await exclusive(async () => {
       const parsed = parse_content_cid(cid)
       const block_pin = await get_block_pin(parsed)
       if (block_pin?.root === undefined) return
       const { root, ...rest } = block_pin
       await set_block_pin(parsed, rest)
       for (const block of await covered_by({ cid: parsed, recursive: root === 'recursive' })) await release(block)
-    },
+    }),
     is_pinned: async (cid) => await helia.pins.isPinned(parse_content_cid(cid)),
+    evict: async (cid) => await exclusive(async () => {
+      const parsed = parse_content_cid(cid)
+      if (await helia.pins.isPinned(parsed) || !(await blockstore.has(parsed as never))) return false
+      await blockstore.delete(parsed as never)
+      return true
+    }),
     import_blob: async (source) => await import_unixfs_file({
       source,
       put: async (cid, bytes) => { await helia.blockstore.put(cid, bytes) }

@@ -52,7 +52,7 @@ export const audio_router = (peer: ApiPeer): Router => {
   router.get('/:cid', async (req, res) => {
     const bytes = await absent_on_invalid_cid(peer.get_audio(req.params.cid), undefined)
     if (bytes === undefined) {
-      throw new ApiError({ status: 404, code: 'NOT_FOUND', message: `not in the local content store: ${req.params.cid}` })
+      throw new ApiError({ status: 404, code: 'NOT_FOUND', message: `not available locally or from peers: ${req.params.cid}` })
     }
     await send_audio(req, res, bytes)
   })

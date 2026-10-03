@@ -10,7 +10,6 @@ import { preSharedKey } from '@libp2p/pnet'
 import { utf8ToBytes } from '@noble/hashes/utils.js'
 import { createLibp2p } from 'libp2p'
 
-import { create_helia_content_store } from '#adapter/libp2p/content-store.ts'
 import { create_libp2p_options, RECORD_SWARM_KEY, type NetworkedHelia } from '#adapter/libp2p/node.ts'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { create_memory_network } from '#adapter/memory/network.ts'
@@ -22,7 +21,7 @@ import type { Peer } from '#peer/peer.ts'
 import { build_loaded_about_entry, encode_heads_message } from '#replication/messages.ts'
 import { create_replicator } from '#replication/replicator.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
-import { create_offline_helia } from '#test/helpers/helia.ts'
+import { open_offline_helia_store } from '#test/helpers/helia.ts'
 import { create_libp2p_peers, dial_address, LOOPBACK } from '#test/helpers/libp2p.ts'
 import { content_cid_of, open_test_library } from '#test/helpers/library.ts'
 import { append_track, create_memory_peers, wait_for_event, wait_until } from '#test/helpers/network.ts'
@@ -37,9 +36,9 @@ import {
 } from './vectors.ts'
 
 const import_with_helia = async (source: string | Uint8Array) => {
-  const helia = await create_offline_helia()
+  const { helia, content_store } = await open_offline_helia_store()
   try {
-    return await create_helia_content_store({ helia }).import_blob(source)
+    return await content_store.import_blob(source)
   } finally {
     await helia.stop()
   }

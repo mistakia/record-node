@@ -9,6 +9,7 @@ import type { TrackTarget } from '#ingest/put-track.ts'
 import type { Toolchain } from '#ingest/toolchain.ts'
 import { list_linked_libraries } from '#query-db/queries.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
+import type { AudioSource } from './audio.ts'
 import type { PeerConfig } from './config.ts'
 import type { EventBus } from './events.ts'
 import type { LibraryManager } from './library.ts'
@@ -31,6 +32,7 @@ export interface PeerContext {
   readonly events: EventBus
   readonly resolve: ResolveUrl
   readonly download: Download
+  readonly audio: AudioSource
   // Set when the peer has a network; a networkless peer only opens libraries.
   replication: PeerReplication | undefined
   // Set by start_peer, and replaced by an identity import.

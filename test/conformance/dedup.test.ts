@@ -4,13 +4,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { create_helia_content_store } from '#adapter/libp2p/content-store.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { compute_fingerprint } from '#ingest/fingerprint.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
 import { get_live_entry } from '#oplog/dag.ts'
-import { create_offline_helia } from '#test/helpers/helia.ts'
+import { open_offline_helia_store } from '#test/helpers/helia.ts'
 import { make_tagged_copy, open_ingest_target, scratch_dir, stored_content, toolchain } from '#test/helpers/ingest.ts'
 import { append_track, oplog_state, open_test_library, track_put } from '#test/helpers/library.ts'
 import { ProtocolError } from '#types/errors.ts'
@@ -45,9 +44,9 @@ describe('dedup', () => {
   test('§2.10 [MUST] tag-stripped blobs are byte-identical for the same source audio, so content.hash is stable across peers', async () => {
     const tagged = await make_tagged_copy({ dir: scratch_dir(), covers: ['red'] })
     const memory_peer = await open_ingest_target()
-    const helia = await create_offline_helia()
+    const { helia, content_store } = await open_offline_helia_store()
     try {
-      const helia_peer = { ...(await open_ingest_target()), content_store: create_helia_content_store({ helia }) }
+      const helia_peer = { ...(await open_ingest_target()), content_store }
       const hashes = []
       for (const [target, file_path] of [[memory_peer, f7.fixture_path], [helia_peer, tagged]] as const) {
         const { content_cid } = await ingest_local_file({ file_path, target, toolchain })

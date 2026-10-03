@@ -10,22 +10,21 @@ import { sha256 } from 'multiformats/hashes/sha2'
 
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain } from '#access-control/resolve.ts'
-import { create_helia_content_store } from '#adapter/libp2p/content-store.ts'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { build_multi_block_input, multi_block_vector } from '#test/conformance/vectors.ts'
-import { create_offline_helia } from '#test/helpers/helia.ts'
+import { open_offline_helia_store } from '#test/helpers/helia.ts'
 
 const MIB = 1024 * 1024
 
 const backends: Array<[string, () => Promise<{ store: ContentStore, stop: () => Promise<unknown> }>]> = [
   ['memory', async () => ({ store: create_memory_content_store(), stop: async () => {} })],
   ['helia', async () => {
-    const helia = await create_offline_helia()
-    return { store: create_helia_content_store({ helia }), stop: async () => await helia.stop() }
+    const { helia, content_store } = await open_offline_helia_store()
+    return { store: content_store, stop: async () => await helia.stop() }
   }]
 ]
 
@@ -74,6 +73,25 @@ describe.each(backends)('%s ContentStore', (_name, open) => {
 
   test('accepts a CIDv0', async () => {
     expect(await store.has('QmY7Yh4UquoXHLPFo2XbhXkhBvFoPwmQUSa92pxnxjQuPU')).toBe(false)
+  })
+
+  test('evicts an unpinned block, and never one a direct or recursive pin covers', async () => {
+    const loose = await raw_block(new TextEncoder().encode('loose'))
+    const direct = await raw_block(new TextEncoder().encode('direct'))
+    const leaf = await raw_block(new TextEncoder().encode('leaf'))
+    for (const block of [loose, direct, leaf]) await store.put(block.cid, block.bytes)
+    const root = await dag_pb_node([leaf.cid])
+    await store.put(root.cid, root.bytes)
+    await store.pin(direct.cid)
+    await store.pin(root.cid, { recursive: true })
+    expect(await store.evict(loose.cid)).toBe(true)
+    expect(await store.has(loose.cid)).toBe(false)
+    expect(await store.evict(loose.cid)).toBe(false)
+    expect(await Promise.all([direct, root, leaf].map(async ({ cid }) => await store.evict(cid)))).toEqual([false, false, false])
+    expect(await Promise.all([direct, root, leaf].map(async ({ cid }) => await store.has(cid)))).toEqual([true, true, true])
+    // Once unpinned, it goes.
+    await store.unpin(root.cid)
+    expect(await store.evict(leaf.cid)).toBe(true)
   })
 
   test('serves as the BlockStore for an AC chain', async () => {

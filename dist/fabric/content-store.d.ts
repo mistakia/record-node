@@ -11,5 +11,6 @@ export interface ContentStore extends BlockStore {
     pin: (cid: string, options?: PinOptions) => Promise<void>;
     unpin: (cid: string) => Promise<void>;
     is_pinned: (cid: string) => Promise<boolean>;
+    evict: (cid: string) => Promise<boolean>;
     import_blob: (source: BlobSource) => Promise<string>;
 }

@@ -5,6 +5,7 @@ import type { Download } from '#ingest/download.ts';
 import type { TrackTarget } from '#ingest/put-track.ts';
 import type { Toolchain } from '#ingest/toolchain.ts';
 import type { IngestedTrack } from '#types/ingest.ts';
+import type { AudioSource } from './audio.ts';
 import type { PeerConfig } from './config.ts';
 import type { EventBus } from './events.ts';
 import type { LibraryManager } from './library.ts';
@@ -25,6 +26,7 @@ export interface PeerContext {
     readonly events: EventBus;
     readonly resolve: ResolveUrl;
     readonly download: Download;
+    readonly audio: AudioSource;
     replication: PeerReplication | undefined;
     identity: PeerIdentity | undefined;
     toolchain: Promise<Toolchain> | undefined;

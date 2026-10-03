@@ -17,14 +17,13 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import { describe, expect, test } from 'bun:test'
 
-import { create_helia_content_store } from '#adapter/libp2p/content-store.ts'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { compute_fingerprint } from '#ingest/fingerprint.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
 import { run_tool } from '#ingest/subprocess.ts'
 import { PINNED_FFMPEG_VERSION, PINNED_FPCALC_VERSION } from '#ingest/toolchain.ts'
-import { create_offline_helia } from '#test/helpers/helia.ts'
+import { open_offline_helia_store } from '#test/helpers/helia.ts'
 import {
   open_ingest_target,
   preflight_bypassed,
@@ -80,9 +79,9 @@ describe('F7 audio pipeline', () => {
     const stripped = await strip_to_bytes({ file_path: f7.fixture_path })
     expect(bytesToHex(sha256(stripped))).toBe(f7.audio_identity_sha256)
     expect(await create_memory_content_store().import_blob(stripped)).toBe(f7.audio_cid)
-    const helia = await create_offline_helia()
+    const { helia, content_store } = await open_offline_helia_store()
     try {
-      expect(await create_helia_content_store({ helia }).import_blob(stripped)).toBe(f7.audio_cid)
+      expect(await content_store.import_blob(stripped)).toBe(f7.audio_cid)
     } finally {
       await helia.stop()
     }

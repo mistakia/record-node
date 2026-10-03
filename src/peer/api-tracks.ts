@@ -2,7 +2,6 @@
 
 import { build_track_envelope } from '#entry/envelope.ts'
 import { build_del_operation, build_put_operation, is_put } from '#entry/operations.ts'
-import { read_unixfs_file } from '#fabric/unixfs.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import { get_track, list_tags, list_tracks } from '#query-db/queries.ts'
@@ -14,15 +13,6 @@ import { to_api_track, to_api_tracks } from './views.ts'
 
 // A CID that is no UnixFS file, or whose blocks are not all local, is no
 // audio this peer can serve.
-const read_local_audio = async (context: PeerContext, cid: string): Promise<Uint8Array | undefined> => {
-  try {
-    return await read_unixfs_file({ cid, read: context.content_store.get })
-  } catch (error) {
-    if (error instanceof ProtocolError && (error.code === 'invalid_shape' || error.code === 'content_unavailable')) return undefined
-    throw error
-  }
-}
-
 // The own library's view of one track.
 const own_track = (context: PeerContext, track_id: string): Track => {
   const { own_address } = require_identity(context)
@@ -102,6 +92,6 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
     tags: (current) => current.includes(tag) ? current.filter((label) => label !== tag) : undefined
   }),
 
-  get_audio: async (cid) => await read_local_audio(context, cid),
-  has_audio: async (cid) => await read_local_audio(context, cid) !== undefined
+  get_audio: async (cid) => await context.audio.read(cid),
+  has_audio: async (cid) => await context.audio.read_local(cid) !== undefined
 })

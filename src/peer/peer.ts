@@ -18,6 +18,7 @@ import type { IngestedTrack } from '#types/ingest.ts'
 import type { ApiPeer } from '#types/peer.ts'
 import { create_library_methods, describe_library, finish_pending_unlinks, try_open_library } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
+import { create_audio_source } from './audio.ts'
 import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
 import { drain_queues, ingest_into_own, require_identity, require_toolchain, serialise_write, type PeerContext, type PeerIdentity } from './context.ts'
 import { create_event_bus } from './events.ts'
@@ -78,6 +79,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   const db = open_query_db()
   const events = create_event_bus()
   const content_store = store.content_store
+  const network = join_network?.({ content_store }) ?? store.network
   const libraries = create_library_manager({
     content_store,
     projector: create_projector({ db, read_content: content_store.get }),
@@ -96,6 +98,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     events,
     resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
     download,
+    audio: create_audio_source({ content_store, network, timeout_ms: config.audio_fetch_timeout_ms, max_bytes: config.audio_cache_max_bytes }),
     replication: undefined,
     identity: undefined,
     toolchain: undefined,
@@ -103,7 +106,6 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     ingests: Promise.resolve(),
     stopping: false
   }
-  const network = join_network?.({ content_store }) ?? store.network
   if (network !== undefined) {
     context.replication = create_peer_replication({ context, network, describe_library: (address) => describe_library(context, address) })
   }

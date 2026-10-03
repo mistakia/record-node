@@ -12,6 +12,8 @@ export interface PeerConfig {
     readonly allow_toolchain_mismatch: boolean;
     readonly traversal_concurrency: number;
     readonly traversal_timeout_ms: number;
+    readonly audio_fetch_timeout_ms: number;
+    readonly audio_cache_max_bytes: number;
     readonly heads_interval_ms: number;
     readonly announce_interval_ms: number;
     readonly network: NetworkConfig | false;

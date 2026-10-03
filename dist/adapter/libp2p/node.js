@@ -3,12 +3,13 @@
 // content-addressed fetch. Peer discovery (§5.2) is configuration here: a
 // bootstrap list, mDNS, and the content network's own DHT, each able to
 // bootstrap the peer alone.
+import { getCiphers } from 'node:crypto';
 import { bootstrap } from '@libp2p/bootstrap';
 import { gossipsub } from '@libp2p/gossipsub';
 import { identify } from '@libp2p/identify';
 import { kadDHT, passthroughMapper } from '@libp2p/kad-dht';
 import { mdns } from '@libp2p/mdns';
-import { noise } from '@libp2p/noise';
+import { noise, pureJsCrypto } from '@libp2p/noise';
 import { ping } from '@libp2p/ping';
 import { preSharedKey } from '@libp2p/pnet';
 import { tcp } from '@libp2p/tcp';
@@ -27,10 +28,14 @@ export const RECORD_SWARM_KEY = '/key/swarm/psk/1.0.0/\n/base16/\ncbad12031badbc
 // hasher to verify a block it receives. Helia is on multiformats 14 and the
 // core on 13, whose hasher types differ only nominally.
 const SHA3_512_HASHER = hasher_from({ name: 'sha3-512', code: SHA3_512_CODE, encode: (bytes) => sha3_512(bytes) });
+// Noise switches to node:crypto's chacha20-poly1305 for larger frames; a
+// runtime without that cipher (Bun 1.4) would drop every such frame, so it
+// gets the pure-JS implementation instead.
+const NOISE_INIT = getCiphers().includes('chacha20-poly1305') ? {} : { crypto: pureJsCrypto };
 export const create_libp2p_options = ({ listen, bootstrap: bootstrap_list, mdns: use_mdns, dht }) => ({
     addresses: { listen: [...listen] },
     transports: [tcp()],
-    connectionEncrypters: [noise()],
+    connectionEncrypters: [noise(NOISE_INIT)],
     streamMuxers: [yamux()],
     connectionProtector: preSharedKey({ psk: utf8ToBytes(RECORD_SWARM_KEY) }),
     peerDiscovery: [
