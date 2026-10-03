@@ -11,5 +11,5 @@ export declare const attach_event_bridge: ({ http_server, peer, authenticate, co
     http_server: Server;
     peer: ApiPeer;
     authenticate: Authenticate | undefined;
-    cors_origins?: readonly string[] | undefined;
+    cors_origins: readonly string[];
 }) => EventBridge;

@@ -42,6 +42,7 @@ describe('config', () => {
     expect((await load_config({ config_path: config_file({ cors_origins: ['app://record'] }) })).cors_origins).toEqual(['app://record'])
     await expect(load_config({ config_path: config_file({ cors_origins: 'app://record' }) })).rejects.toThrow('cors_origins')
     await expect(load_config({ config_path: config_file({ cors_origins: [1] }) })).rejects.toThrow('cors_origins')
+    await expect(load_config({ config_path: config_file({ cors_origins: ['null'] }) })).rejects.toThrow('origin null')
   })
 
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {

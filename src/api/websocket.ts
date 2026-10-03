@@ -25,7 +25,7 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
   http_server: Server
   peer: ApiPeer
   authenticate: Authenticate | undefined
-  cors_origins?: readonly string[] | undefined
+  cors_origins: readonly string[]
 }): EventBridge => {
   const wss = new WebSocketServer({ noServer: true })
   const clients = new Set<WebSocket>()

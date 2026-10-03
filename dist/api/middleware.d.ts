@@ -16,8 +16,9 @@ export declare class ApiError extends Error {
     });
 }
 export type Authenticate = (token: string | undefined) => boolean | Promise<boolean>;
-export declare const origin_allowed: (cors_origins: readonly string[] | undefined, origin: string | undefined) => boolean;
-export declare const cors: (cors_origins: readonly string[] | undefined) => RequestHandler;
+export declare const KNOWN_CLIENT_ORIGINS: readonly string[];
+export declare const origin_allowed: (cors_origins: readonly string[], origin: string | undefined) => boolean;
+export declare const cors: (cors_origins: readonly string[]) => RequestHandler;
 export declare const no_cache: RequestHandler;
 export declare const bearer_token: (header: string | undefined) => string | undefined;
 export declare const authenticate_requests: (authenticate: Authenticate | undefined) => RequestHandler;

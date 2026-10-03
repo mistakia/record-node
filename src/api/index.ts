@@ -11,7 +11,7 @@ import express, { Router } from 'express'
 import morgan from 'morgan'
 
 import type { ApiPeer, Resolver } from '#types/peer.ts'
-import { authenticate_requests, cors, handle_errors, no_cache, type Authenticate } from './middleware.ts'
+import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, type Authenticate } from './middleware.ts'
 import { create_docs_router, create_validator, load_api_spec, parse_uploads } from './openapi.ts'
 import { attach_event_bridge, type EventBridge } from './websocket.ts'
 import { audio_router } from './routes/audio.ts'
@@ -37,8 +37,8 @@ export interface ApiServerOptions {
   port: number
   // Loopback by default: the local-first node is not a network service.
   host?: string
-  // The origins a browser page may call the API from (all when unset), and a
-  // bearer-token verifier (hosted mode).
+  // The origins a browser page may call the API from (the known-client
+  // default when unset), and a bearer-token verifier (hosted mode).
   cors_origins?: readonly string[] | undefined
   authenticate?: Authenticate
   // Request logging (default on).
@@ -58,7 +58,7 @@ export const create_api_server = async ({
   resolve: resolver,
   port,
   host = '127.0.0.1',
-  cors_origins,
+  cors_origins = KNOWN_CLIENT_ORIGINS,
   authenticate,
   log = true,
   validate_responses = false

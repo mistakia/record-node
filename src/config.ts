@@ -14,7 +14,8 @@ export const default_data_dir = (): string => join(homedir(), '.record')
 export interface NodeConfig {
   readonly port: number
   readonly host: string
-  // The origins a browser page may call the API from; unset allows all.
+  // The origins a browser page may call the API from; unset means the
+  // known-client default, which admits none.
   readonly cors_origins?: readonly string[] | undefined
   readonly peer: PeerConfig
 }
@@ -38,6 +39,7 @@ const port_of = (value: unknown): number => {
 const cors_origins_of = (value: unknown): readonly string[] | undefined => {
   if (value === undefined) return undefined
   if (!Array.isArray(value) || !value.every((origin) => typeof origin === 'string')) throw new TypeError('cors_origins must be an array of origin strings')
+  if (value.includes('null')) throw new TypeError('cors_origins may not allow the origin null')
   return Object.freeze([...value as string[]])
 }
 

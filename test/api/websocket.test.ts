@@ -104,6 +104,17 @@ describe('api: websocket', () => {
     }
   })
 
+  test('with no allowlist configured, an upgrade from any browser origin is refused', async () => {
+    const own = await start_test_server()
+    try {
+      const refused = new WebSocket(`ws://127.0.0.1:${own.server.port}/api/ws`, { headers: { origin: 'http://localhost:8080' } })
+      const status = await new Promise((resolve) => { refused.once('unexpected-response', (_req, res) => { resolve(res.statusCode) }).once('error', () => { resolve('error') }) })
+      expect(status === 403 || status === 'error').toBe(true)
+    } finally {
+      await own.stop()
+    }
+  })
+
   test('stopping the server closes clients with 1001 and unsubscribes from the peer', async () => {
     const own = await start_test_server()
     const { socket } = await connect(`ws://127.0.0.1:${own.server.port}/api/ws`)

@@ -31,17 +31,22 @@ export class ApiError extends Error {
 // is the node's own operator.
 export type Authenticate = (token: string | undefined) => boolean | Promise<boolean>
 
-// Whether a request's Origin may use the API: any origin when cors_origins is
-// unset, otherwise only those listed. A request with no Origin is not from a
-// browser page and always passes.
-export const origin_allowed = (cors_origins: readonly string[] | undefined, origin: string | undefined): boolean =>
-  origin === undefined || cors_origins === undefined || cors_origins.includes(origin)
+// The known-client default allowlist, used when the operator configures none
+// (spec §8.7.5). It is empty at v1: the desktop application calls the node
+// from its main process, which sends no Origin.
+export const KNOWN_CLIENT_ORIGINS: readonly string[] = Object.freeze([])
+
+// Whether a request's Origin may use the API: only those listed, and never
+// the opaque origin `null`. A request with no Origin is not from a browser
+// page and always passes.
+export const origin_allowed = (cors_origins: readonly string[], origin: string | undefined): boolean =>
+  origin === undefined || (origin !== 'null' && cors_origins.includes(origin))
 
 // Echo an allowed Origin and allow credentials. A request from any other
 // origin is refused outright, not just left without CORS headers: the headers
 // only stop a page reading the response, and a simple request such as a
 // multipart upload takes effect without a preflight.
-export const cors = (cors_origins: readonly string[] | undefined): RequestHandler => (req, res, next) => {
+export const cors = (cors_origins: readonly string[]): RequestHandler => (req, res, next) => {
   const origin = req.headers.origin
   if (!origin_allowed(cors_origins, origin)) {
     next(new ApiError({ status: 403, code: 'FORBIDDEN', message: `origin not allowed: ${String(origin)}` }))

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express, { Router } from 'express';
 import morgan from 'morgan';
-import { authenticate_requests, cors, handle_errors, no_cache } from "./middleware.js";
+import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache } from "./middleware.js";
 import { create_docs_router, create_validator, load_api_spec, parse_uploads } from "./openapi.js";
 import { attach_event_bridge } from "./websocket.js";
 import { audio_router } from "./routes/audio.js";
@@ -24,7 +24,7 @@ const DRAIN_TIMEOUT_MS = 5000;
 // Uploads wait here for ingest, which removes each file when done with it, so
 // the directory outlives any one server.
 const UPLOAD_DIR = join(tmpdir(), 'record-node-uploads');
-export const create_api_server = async ({ peer, resolve: resolver, port, host = '127.0.0.1', cors_origins, authenticate, log = true, validate_responses = false }) => {
+export const create_api_server = async ({ peer, resolve: resolver, port, host = '127.0.0.1', cors_origins = KNOWN_CLIENT_ORIGINS, authenticate, log = true, validate_responses = false }) => {
     const spec = load_api_spec();
     await mkdir(UPLOAD_DIR, { recursive: true });
     const api = Router();

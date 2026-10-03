@@ -174,12 +174,6 @@ describe('api: server', () => {
     expect(await page.text()).toContain('swagger-ui')
   })
 
-  test('CORS echoes the origin and answers preflight', async () => {
-    const response = await fetch(api.url('/settings'), { method: 'OPTIONS', headers: { origin: 'http://localhost:8080' } })
-    expect(response.status).toBe(204)
-    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:8080')
-  })
-
   test('a peer response that breaks the contract fails response validation', async () => {
     const original = api.peer.get_settings
     api.peer.get_settings = async () => ({}) as never
@@ -192,6 +186,24 @@ describe('api: server', () => {
 })
 
 describe('api: origin allowlist', () => {
+  test('with no allowlist configured, the known-client default refuses every browser origin', async () => {
+    expect((await fetch(api.url('/settings'))).status).toBe(200)
+    await expect_error(await fetch(api.url('/settings'), { headers: { origin: 'http://localhost:8080' } }), 403, 'FORBIDDEN')
+    await expect_error(await fetch(api.url('/settings'), { method: 'OPTIONS', headers: { origin: 'null' } }), 403, 'FORBIDDEN')
+  })
+
+  test('a listed origin is echoed and answered on preflight, and null never is', async () => {
+    const open = await start_test_server({ cors_origins: ['http://localhost:8080', 'null'] })
+    try {
+      const response = await fetch(open.url('/settings'), { method: 'OPTIONS', headers: { origin: 'http://localhost:8080' } })
+      expect(response.status).toBe(204)
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:8080')
+      await expect_error(await fetch(open.url('/settings'), { headers: { origin: 'null' } }), 403, 'FORBIDDEN')
+    } finally {
+      await open.stop()
+    }
+  })
+
   test('an empty allowlist refuses every browser origin, preflight-free uploads included, and serves requests with no Origin', async () => {
     const locked = await start_test_server({ cors_origins: [] })
     try {

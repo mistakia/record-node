@@ -28,6 +28,8 @@ const cors_origins_of = (value) => {
         return undefined;
     if (!Array.isArray(value) || !value.every((origin) => typeof origin === 'string'))
         throw new TypeError('cors_origins must be an array of origin strings');
+    if (value.includes('null'))
+        throw new TypeError('cors_origins may not allow the origin null');
     return Object.freeze([...value]);
 };
 export const load_config = async ({ config_path, port, data_dir, env = process.env } = {}) => {
