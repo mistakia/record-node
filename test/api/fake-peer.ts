@@ -31,7 +31,7 @@ export const make_track = (overrides: Partial<Track> = {}): Track => ({
   artists: [],
   genre: [],
   artwork: [],
-  resolvers: [{ extractor: 'youtube', id: 'abc123', fulltitle: 'Sine Sweep', duration_seconds: 5 }],
+  resolvers: [{ extractor: 'youtube', id: 'abc123', fulltitle: 'Sine Sweep', duration: 5 }],
   tags: [{ library_address: OWN_ADDRESS, tag: 'test' }],
   listen_count: 0,
   have_track: true,

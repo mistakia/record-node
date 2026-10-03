@@ -997,7 +997,7 @@ components:
         alt_title: { type: string }
         upload_date: { type: string }
         webpage_url: { type: string }
-        duration_seconds: { type: number }
+        duration: { type: number }
 
 # ---------------------------------------------------------------------------
 # WebSocket event bridge

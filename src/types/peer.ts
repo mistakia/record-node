@@ -15,7 +15,7 @@ export interface ResolverEntry {
   alt_title?: string
   upload_date?: string
   webpage_url?: string
-  duration_seconds?: number
+  duration?: number
 }
 
 export interface TrackTag {

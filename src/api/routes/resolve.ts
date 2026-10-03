@@ -20,7 +20,7 @@ export const to_resolver_entry = (record: Record<string, unknown>): ResolverEntr
     const value = record[field]
     if (typeof value === 'string') entry[field] = value
   }
-  if (typeof duration === 'number') entry.duration_seconds = duration
+  if (typeof duration === 'number') entry.duration = duration
   return entry
 }
 

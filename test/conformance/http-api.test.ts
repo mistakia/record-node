@@ -66,8 +66,7 @@ describe('http-api', () => {
     const response = await resolve(WATCH_URL)
     const text = await response.text()
     expect(text).not.toContain(STREAM_URL)
-    // Only the enumerated ResolverEntry fields cross the boundary, with
-    // §2.4.2 duration as the API's duration_seconds.
-    expect(JSON.parse(text)).toEqual({ extractor: 'youtube', id: 'abc123', fulltitle: 'Sine Sweep', webpage_url: WATCH_URL, duration_seconds: 5 })
+    // Only the enumerated ResolverEntry fields cross the boundary.
+    expect(JSON.parse(text)).toEqual({ extractor: 'youtube', id: 'abc123', fulltitle: 'Sine Sweep', webpage_url: WATCH_URL, duration: 5 })
   })
 })
