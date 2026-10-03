@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Refuse lockfile changes that introduce a package@version published less than
-// --days days ago. Universal across yarn1/Berry/npm/bun: works on the textual
-// diff, no per-format parsing. See:
+// --days days ago. Works on the textual diff of any lockfile format; this repo's
+// lockfile is bun.lock, whose package entries read "name": ["name@version", ...].
+// A version whose publish time cannot be verified fails closed. See:
 //   user:guideline/npm-supply-chain-hygiene.md (Minimum Release Age)
 //   user:text/software-dev/supply-chain-defense-posture.md
 //
@@ -36,11 +37,11 @@ if (!lockfile || !existsSync(lockfile)) {
 const allowFile = '.youngpkg-allow'
 const allow = existsSync(allowFile)
   ? new Set(
-      readFileSync(allowFile, 'utf8')
-        .split('\n')
-        .map((l) => l.split('#')[0].trim())
-        .filter(Boolean)
-    )
+    readFileSync(allowFile, 'utf8')
+      .split('\n')
+      .map((l) => l.split('#')[0].trim())
+      .filter(Boolean)
+  )
   : new Set()
 
 let addedText
@@ -67,6 +68,7 @@ for (const m of addedText.matchAll(re)) candidates.add(`${m[1]}@${m[2]}`)
 
 const cutoff = Date.now() - days * 86_400_000
 const violations = []
+const unverified = []
 const registryCache = new Map()
 
 for (const spec of candidates) {
@@ -74,30 +76,33 @@ for (const spec of candidates) {
   const at = spec.lastIndexOf('@')
   const name = spec.slice(0, at)
   const version = spec.slice(at + 1)
+  // The full packument, not the abbreviated install-v1 document: only the
+  // full form carries `time`, and without it every lookup used to skip.
   let meta = registryCache.get(name)
-  if (!meta) {
+  if (meta === undefined) {
     try {
-      const r = await fetch(`https://registry.npmjs.org/${name}`, {
-        headers: { accept: 'application/vnd.npm.install-v1+json' }
+      const r = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2f')}`, {
+        headers: { accept: 'application/json' }
       })
-      if (!r.ok) {
-        registryCache.set(name, null)
-        continue
-      }
-      meta = await r.json()
-      registryCache.set(name, meta)
-    } catch {
-      registryCache.set(name, null)
-      continue
+      meta = r.status === 404 ? null : r.ok ? await r.json() : { error: `HTTP ${r.status}` }
+    } catch (err) {
+      meta = { error: err.message }
     }
+    registryCache.set(name, meta)
   }
-  if (!meta) continue
+  // Not on the public registry (a name fragment from a git or tarball URL).
+  if (meta === null) continue
   const t = meta.time?.[version]
-  if (!t) continue
+  if (!t) {
+    unverified.push({ spec, reason: meta.error ?? 'no publish time in registry metadata' })
+    continue
+  }
   if (new Date(t).getTime() > cutoff) {
     violations.push({ spec, published: t })
   }
 }
+
+for (const u of unverified) console.error(`Unverified: ${u.spec}  (${u.reason})`)
 
 if (violations.length) {
   console.error(
@@ -108,10 +113,16 @@ if (violations.length) {
   process.exit(1)
 }
 
+if (unverified.length) {
+  console.error(`Refusing ${lockfile}: ${unverified.length} package(s) with no verifiable publish time.`)
+  process.exit(1)
+}
+
+console.error(`Checked ${candidates.size} package(s).`)
 console.error(`OK: no package@version younger than ${days} days in ${lockfile} diff vs ${base}.`)
 
-function autoDetectLockfile() {
-  for (const f of ['yarn.lock', 'package-lock.json', 'bun.lock', 'pnpm-lock.yaml']) {
+function autoDetectLockfile () {
+  for (const f of ['bun.lock', 'yarn.lock', 'package-lock.json', 'pnpm-lock.yaml']) {
     if (existsSync(f)) return f
   }
   return null

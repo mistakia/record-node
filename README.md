@@ -1,99 +1,53 @@
-<a href="https://bafybeidk4zev2jlw2jijtdyufo3itspx45k4ynq634x4rjm6ycjfdvxfrq.ipfs.infura-ipfs.io/" title="Record">
-  <img src="https://github.com/mistakia/record-app/raw/master/resources/icon.png" alt="Record Logo" width="150" />
-</a>
+# record-node
 
-# Record Node
+Reference implementation of the Record Protocol v1: a peer that creates identities, keeps signed append-only libraries of audio entries, ingests audio, replicates with other peers, and exposes a derived query layer.
 
-[![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE) [![JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com) [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat)](https://github.com/RichardLitt/standard-readme)
-[![CircleCI Status](https://circleci.com/gh/mistakia/record-node.svg?style=shield)](https://circleci.com/gh/mistakia/record-node)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fmistakia%2Frecord-node.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fmistakia%2Frecord-node?ref=badge_shield)
+The spec in [record-docs](https://github.com/mistakia/record-docs) (`spec/`, chapters 1-7) is authoritative. Where this code and the spec disagree, the code is wrong; where the spec contradicts itself, the fix lands in record-docs as an erratum first.
 
-> Library, CLI and REST API for Record.
+## Status
 
-Record is a proof of concept immutable distributed system for audio files. Built entirely on [IPFS](https://github.com/ipfs/js-ipfs), user data is stored in a [scuttlebot](http://scuttlebot.io/)-esque immutable log via [IPFS-Log](https://github.com/orbitdb/ipfs-log) & [OrbitDB](https://github.com/orbitdb/orbit-db). Bootstraping/peer discovery is done via [bitboot](https://github.com/tintfoundation/bitboot).
+Scaffold and conformance suite only. Every normative requirement in spec chapters 1-7 has a pending test under `test/conformance/`, named by section; each implementation stage turns its stubs into passing tests. The fixture vectors (F0-F6) are ported in `test/conformance/vectors.ts` and self-checked against the libraries the fixture generators use.
 
-At it's core, the application intends to be a media library management & playback system akin to [beets](https://github.com/beetbox/beets) with the ability to join various sources of music like [tomahawk player](https://github.com/tomahawk-player/tomahawk). By building everything on top of IPFS, it can become a connected network of libraries, opening the door to many other possibilities (i.e. soundcloud & musicbrainz), while still being entirely distributed and thus being able to function permanently.
+The pre-v1 implementation (orbit-db / ipfs-log) is tagged `legacy-v0`. It is reference material, not a conformance target.
 
-*Note: View the [UI/UX repo](https://github.com/mistakia/record-app) for more information.*
+## Layout
 
-## Install Dependencies
 ```
-yarn install
-```
-
-### Install Chromaprint & FFmpeg
-
-Note: fpcalc ([chromaprint](https://github.com/acoustid/chromaprint)) must be installed to be able to import audio files.
-##### OSX using Homebrew
-```
-brew install chromaprint ffmpeg
-```
-
-##### Ubuntu
-```
-sudo apt-get install libchromaprint-tools
+src/
+  encoding/         dag-cbor canonical encoder, CID builder, size bounds
+  identity/         key pairs, signing, verification
+  access-control/   AC chain creation, resolution, membership
+  entry/            unsigned and signed entries, PUT/DEL operations
+  oplog/            append-only DAG, heads, Lamport clock, merge, current state
+  fabric/           ContentStore and PubSub interfaces
+  adapter/          libp2p (spec section 5.5.1) and in-memory backends
+  replication/      announcement, heads exchange, traversal, merge orchestration
+  ingest/           fingerprint, tag strip, metadata, artwork, pipelines
+  query-db/         derived SQLite index
+  peer/             assembly, library lifecycle, listens, config
+  api/              HTTP and WebSocket API
+  types/            shared and branded types
+test/
+  conformance/      spec vectors and one test per normative requirement
 ```
 
-## Usage
+Cross-directory imports use the `#` aliases in `package.json` (for example `#encoding/cid.ts`).
 
-### Running
-```
-yarn start
-```
+The shipped core is Node-compatible: record-app embeds it in-process under Electron and nodejs-mobile, so no Bun-only API appears outside the CLI entry point and tests.
 
-### CLI
-```
-wip
-```
+## Development
 
-### Daemon
-```
-wip
+Requires [bun](https://bun.com) 1.4, plus `fpcalc` (Chromaprint) and `ffmpeg` for the content-processing stage.
+
+```sh
+bun install
+bun run verify          # lint and typecheck
+bun test                # full suite
+bun run test:conformance
 ```
 
-### Module
-```js
-const RecordNode = require('record-node')
-const createIPFSDaemon = require('record-ipfsd')
-
-const ipfsd = await createIPFSDaemon({
-    repo: repoPath,
-    ipfsBin: ipfsBinPath
-})
-
-const node = new RecordNode()
-node.on('ready', async () => {
-    const log = await node.log.get() // or node.log.get(record.address)
-})
-await node.init(ipfsd)
-```
-
-## API
-### RecordNode Constructor
-```js
-const record = new RecordNode(options)
-```
-View default options at [`config.js`](https://github.com/mistakia/record-node/blob/master/config.js). Use the `options` argument to specify configuration. It is an object with any of these properties:
-
-##### `options.api`
-
-| Type | Default |
-|------|---------|
-| boolean | `false` |
-| object | `{ port: 3000 }` |
-
-Enable http api (Default: `undefined`)
-
-##### `options.bitboot`
-
-| Type | Default |
-|------|---------|
-| object | `{ enabled: true }` |
-
-Enable finding peers via [bitboot](https://github.com/tintfoundation/bitboot)
+Supply chain: no dependency lifecycle script runs (`trustedDependencies` is empty), and `bunfig.toml` refuses any package version published less than seven days ago. CI re-checks the lockfile with `cli/check-lockfile-age.mjs`.
 
 ## License
+
 MIT
-
-
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fmistakia%2Frecord-node.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fmistakia%2Frecord-node?ref=badge_large)
