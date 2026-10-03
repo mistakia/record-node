@@ -13,12 +13,13 @@ commit=${1:-$(git -C "$repo" rev-parse HEAD)}
 project=$(mktemp -d "${TMPDIR:-/tmp}/record-node-git-smoke.XXXXXX")
 trap 'rm -rf "$project"' EXIT
 
-# The same 7-day release-age floor and empty lifecycle allowlist as the repo.
-cp "$repo/bunfig.toml" "$project/bunfig.toml"
-printf '{ "name": "record-node-git-smoke", "private": true, "type": "module", "trustedDependencies": [] }\n' > "$project/package.json"
+printf '{ "name": "record-node-git-smoke", "private": true, "type": "module" }\n' > "$project/package.json"
 cp "$repo/test/smoke/git-dependency.mjs" "$project/smoke.mjs"
 
+# npm, since bun takes no git+file dependency. --before is the repo's 7-day
+# release-age floor (bunfig.toml) for every package the install resolves.
+before=$(node -e 'console.log(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())')
 cd "$project"
-bun add --ignore-scripts "record-node@git+file://$repo#$commit"
+npm install --ignore-scripts --no-audit --no-fund --before "$before" "git+file://$repo#$commit"
 test -f node_modules/record-node/dist/index.js
 node smoke.mjs "$repo/test/fixtures/audio/sine-sweep-5s.flac"

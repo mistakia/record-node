@@ -25,7 +25,7 @@
         "multer": "2.4.0",
         "multiformats": "13.4.0",
         "music-metadata": "11.16.1",
-        "record-resolver": "github:mistakia/record-resolver#fac2811ad1ddc53ad3e3447b9954152e1fe2dfcb",
+        "record-resolver": "git+https://github.com/mistakia/record-resolver.git#fac2811ad1ddc53ad3e3447b9954152e1fe2dfcb",
         "swagger-ui-express": "5.0.1",
         "ws": "8.21.3",
         "yaml": "2.9.1",
