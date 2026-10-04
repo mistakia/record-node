@@ -6,9 +6,9 @@ import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 // Dependents first, so a drop never trips over an index or a view.
 export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'meta'];
-// Not a projection, so a rebuild by replay leaves it empty and each library's
-// next open refills it.
-const ENTRY_BLOCKS_TABLE = 'entry_blocks';
+// Not projections, so a rebuild by replay leaves them empty and each library's
+// next open refills them.
+const ENTRY_BLOCK_TABLES = ['entry_blocks', 'entry_blocks_verified'];
 // Bump when the schema changes, so an index written by an older version is
 // dropped and rebuilt by replay at the next open instead of being misread. A
 // table added empty, whose absence nothing misreads, needs no bump: every
@@ -138,6 +138,16 @@ const SCHEMA = `
     PRIMARY KEY (library_address, entry_hash)
   ) WITHOUT ROWID;
 
+  -- Per library, the heads of the oplog its cached blocks were last written
+  -- from and the verification rules version that oplog was verified under, so
+  -- an open restores a matching cache without verifying each entry again
+  -- (entry-blocks.ts). A missing row means verify in full.
+  CREATE TABLE IF NOT EXISTS entry_blocks_verified (
+    library_address TEXT PRIMARY KEY,
+    heads TEXT NOT NULL,
+    rules_version INTEGER NOT NULL
+  ) WITHOUT ROWID;
+
   -- Schema version, for §4.7 rebuilds on schema change. Not protocol.
   CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -150,7 +160,7 @@ export const apply_schema = (db) => {
     db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION));
 };
 export const drop_schema = (db) => {
-    for (const table of [...QUERY_TABLES, ENTRY_BLOCKS_TABLE])
+    for (const table of [...QUERY_TABLES, ...ENTRY_BLOCK_TABLES])
         db.exec(`DROP TABLE IF EXISTS ${table}`);
 };
 // The written schema version, or undefined when the version cannot be read

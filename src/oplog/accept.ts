@@ -3,7 +3,8 @@
 // size, shape and fan-out, the operation for the library type, and the
 // signature. verify_entry adds what needs the entry's causal past, the clock
 // and the authorisation, so it runs once the entry's next are in the oplog.
-// Local appends and remote merges both pass through verify_entry.
+// Local appends and remote merges both pass through verify_entry; restore_entry
+// is the open's path for entries this version already verified.
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { authorise_entry } from '#access-control/capability.ts'
@@ -16,6 +17,12 @@ import { ProtocolError } from '#types/errors.ts'
 import type { Oplog } from './dag.ts'
 
 declare const verified_entry_brand: unique symbol
+
+// Bump whenever verify_entry, or anything it calls, changes what it accepts.
+// The entry block cache records the version its entries were verified under
+// (query-db/entry-blocks.ts), and an open restores them unverified only under
+// the same version, so a bump re-verifies every cached entry once.
+export const VERIFICATION_RULES_VERSION = 1
 
 // An entry that passed verify_entry against a library's oplog. The oplog
 // stores nothing else. state_key is the slot current-state resolution keys
@@ -63,15 +70,33 @@ const expected_clock_time = (oplog: Oplog, next: readonly string[]): number | un
   return max + 1
 }
 
-export const verify_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEntry }): VerifiedEntry => {
-  const { operation } = check_entry({ hashed, chain: oplog.chain })
+const assert_clock = (oplog: Oplog, hashed: HashedEntry) => {
   const { next, clock } = hashed.entry
   const expected = expected_clock_time(oplog, next)
   if (expected === undefined) throw new ProtocolError('invalid_clock', `entry ${hashed.hash} names a next entry the oplog does not hold`)
   if (clock.time !== expected) throw new ProtocolError('invalid_clock', `entry ${hashed.hash} has clock.time ${clock.time}, not ${expected}`)
+}
+
+const as_verified = (hashed: HashedEntry, operation: EntryPayload): VerifiedEntry =>
+  Object.freeze({ ...hashed, operation, state_key: state_key_of(operation) }) as VerifiedEntry
+
+export const verify_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEntry }): VerifiedEntry => {
+  const { operation } = check_entry({ hashed, chain: oplog.chain })
+  assert_clock(oplog, hashed)
   const authorisation = authorise_entry({ oplog, hashed, operation })
   if (!authorisation.ok) {
     throw new ProtocolError(authorisation.code, `entry ${hashed.hash} failed append verification: ${authorisation.reason}`)
   }
-  return Object.freeze({ ...hashed, operation, state_key: state_key_of(operation) }) as VerifiedEntry
+  return as_verified(hashed, operation)
+}
+
+// An entry verify_entry already accepted into this oplog under the current
+// VERIFICATION_RULES_VERSION, read back at open. The signature and the
+// authorisation are not checked again. The operation is parsed for its state
+// key, and the clock check still rejects an entry whose next are missing, so
+// a cache with a gap never restores. The hash was computed from the bytes.
+export const restore_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEntry }): VerifiedEntry => {
+  const operation = validate_operation({ payload: hashed.entry.payload, library_type: oplog.chain.type })
+  assert_clock(oplog, hashed)
+  return as_verified(hashed, operation)
 }
