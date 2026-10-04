@@ -109,7 +109,7 @@ describe.each(backends)('%s ContentStore', (_name, open) => {
     expect(await store.has(multi_block_vector.cid)).toBe(true)
   })
 
-  test('an eviction racing a pin never leaves a pinned block missing', async () => {
+  test('an eviction and a pin issued together never leave a pinned block missing', async () => {
     for (const evict_first of [true, false]) {
       const leaf = await raw_block(new TextEncoder().encode(`raced ${evict_first}`))
       const root = await dag_pb_node([leaf.cid])
