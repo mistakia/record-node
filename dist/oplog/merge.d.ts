@@ -13,3 +13,7 @@ export declare const merge_entries: ({ oplog, blocks }: {
     oplog: Oplog;
     blocks: readonly Uint8Array[];
 }) => MergeResult;
+export declare const restore_entries: ({ oplog, blocks }: {
+    oplog: Oplog;
+    blocks: readonly Uint8Array[];
+}) => MergeResult;

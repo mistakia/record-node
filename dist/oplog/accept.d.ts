@@ -3,6 +3,7 @@ import { type HashedEntry } from '#entry/signed.ts';
 import type { EntryPayload } from '#types/entry.ts';
 import type { Oplog } from './dag.ts';
 declare const verified_entry_brand: unique symbol;
+export declare const VERIFICATION_RULES_VERSION = 1;
 export type VerifiedEntry = HashedEntry & {
     readonly operation: EntryPayload;
     readonly state_key: string | undefined;
@@ -18,6 +19,10 @@ export declare const check_entry: ({ hashed, chain }: {
     chain: ResolvedAcChain;
 }) => CheckedEntry;
 export declare const verify_entry: ({ oplog, hashed }: {
+    oplog: Oplog;
+    hashed: HashedEntry;
+}) => VerifiedEntry;
+export declare const restore_entry: ({ oplog, hashed }: {
     oplog: Oplog;
     hashed: HashedEntry;
 }) => VerifiedEntry;

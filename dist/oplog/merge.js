@@ -3,7 +3,7 @@
 import { compute_cid_string } from '#encoding/cid.ts';
 import { decode_signed_entry } from '#entry/signed.ts';
 import { ProtocolError } from '#types/errors.ts';
-import { verify_entry } from "./accept.js";
+import { restore_entry, verify_entry } from "./accept.js";
 import { insert_entry, refresh_access_state, refresh_current_state } from "./dag.js";
 const caught = (run) => {
     try {
@@ -20,7 +20,11 @@ const caught = (run) => {
 // verified once its next are in the oplog (§5.4.2 item 5), so the batch is
 // taken in clock order: a valid entry's clock exceeds its parents' (§4.2),
 // and an entry whose parent is missing or was rejected is rejected too.
-export const merge_entries = ({ oplog, blocks }) => {
+export const merge_entries = ({ oplog, blocks }) => insert_blocks({ oplog, blocks, admit: verify_entry });
+// The open's path for cached blocks this rules version already verified
+// (accept.ts restore_entry): the same insertion without re-verifying.
+export const restore_entries = ({ oplog, blocks }) => insert_blocks({ oplog, blocks, admit: restore_entry });
+const insert_blocks = ({ oplog, blocks, admit }) => {
     const rejected = [];
     const decoded = [];
     for (const bytes of blocks) {
@@ -37,7 +41,7 @@ export const merge_entries = ({ oplog, blocks }) => {
     for (const hashed of decoded) {
         if (oplog.entries.has(hashed.hash))
             continue;
-        const result = caught(() => verify_entry({ oplog, hashed }));
+        const result = caught(() => admit({ oplog, hashed }));
         if (result instanceof ProtocolError) {
             rejected.push({ hash: hashed.hash, error: result });
             continue;

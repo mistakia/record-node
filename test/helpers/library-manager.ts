@@ -28,7 +28,7 @@ export const open_library_manager = () => {
     entry_blocks: create_entry_block_cache(db),
     state_store
   })
-  return { content_store, db, manager: reopen(), reopen }
+  return { content_store, db, state_store, manager: reopen(), reopen }
 }
 
 // The chain is written to the store but not opened, so nothing is pinned yet.

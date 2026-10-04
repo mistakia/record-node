@@ -9,7 +9,7 @@ import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { append_entry_with_access, create_oplog, type AccessChange, type Oplog } from '#oplog/dag.ts'
-import { merge_entries, type MergeResult } from '#oplog/merge.ts'
+import { merge_entries, restore_entries, type MergeResult } from '#oplog/merge.ts'
 import type { EntryBlockCache } from '#query-db/entry-blocks.ts'
 import type { Projector } from '#query-db/projector.ts'
 import type { LibraryType } from '#types/library.ts'
@@ -156,7 +156,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   }) => {
     const handle = require_library(library_address)
     for (const entry of entries) await content_store.put(entry.hash, entry.bytes)
-    entry_blocks.save({ library_address, entries })
+    entry_blocks.save({ library_address, entries, heads: handle.oplog.heads })
     await pin_entries(handle, entries)
     await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] })
     const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] })
@@ -166,16 +166,24 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   }
 
   // The oplog at the persisted heads, from the entry block cache when it
-  // reproduces them. Otherwise, as for a library cached before or whose cache
-  // fell behind a crash, it is walked from the blockstore and recached.
+  // reproduces them. A cache last written at those heads under the current
+  // verification rules is restored without verifying each entry again; any
+  // other cache is verified in full and, if it holds, marked verified.
+  // Otherwise, as for a library cached before or whose cache fell behind a
+  // crash, the oplog is walked from the blockstore, verified, and recached.
   const load_oplog = async (chain: ResolvedAcChain, heads: readonly string[]) => {
     const library_address = chain.address
+    const { blocks, verified_heads } = entry_blocks.load(library_address)
+    const trusted = verified_heads !== undefined && same_heads(verified_heads, heads)
     const cached = create_oplog({ chain })
-    const from_cache = merge_entries({ oplog: cached, blocks: entry_blocks.load(library_address) })
-    if (from_cache.rejected.length === 0 && same_heads(cached.heads, heads)) return { oplog: cached, loaded: from_cache }
+    const from_cache = (trusted ? restore_entries : merge_entries)({ oplog: cached, blocks })
+    if (from_cache.rejected.length === 0 && same_heads(cached.heads, heads)) {
+      if (!trusted) entry_blocks.mark_verified({ library_address, heads: cached.heads })
+      return { oplog: cached, loaded: from_cache }
+    }
     const oplog = create_oplog({ chain })
     const loaded = merge_entries({ oplog, blocks: await load_entry_blocks({ heads, content_store }) })
-    entry_blocks.replace({ library_address, entries: oplog.entries.values() })
+    entry_blocks.replace({ library_address, entries: oplog.entries.values(), heads: oplog.heads })
     return { oplog, loaded }
   }
 

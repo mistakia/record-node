@@ -5,7 +5,7 @@ import type { CanonicalBytes } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
 import { decode_signed_entry, type HashedEntry } from '#entry/signed.ts'
 import { ProtocolError } from '#types/errors.ts'
-import { verify_entry, type VerifiedEntry } from './accept.ts'
+import { restore_entry, verify_entry, type VerifiedEntry } from './accept.ts'
 import { insert_entry, refresh_access_state, refresh_current_state, type AccessChange, type Oplog } from './dag.ts'
 
 export interface MergeResult {
@@ -31,7 +31,19 @@ const caught = <T>(run: () => T): T | ProtocolError => {
 // verified once its next are in the oplog (§5.4.2 item 5), so the batch is
 // taken in clock order: a valid entry's clock exceeds its parents' (§4.2),
 // and an entry whose parent is missing or was rejected is rejected too.
-export const merge_entries = ({ oplog, blocks }: { oplog: Oplog, blocks: readonly Uint8Array[] }): MergeResult => {
+export const merge_entries = ({ oplog, blocks }: { oplog: Oplog, blocks: readonly Uint8Array[] }): MergeResult =>
+  insert_blocks({ oplog, blocks, admit: verify_entry })
+
+// The open's path for cached blocks this rules version already verified
+// (accept.ts restore_entry): the same insertion without re-verifying.
+export const restore_entries = ({ oplog, blocks }: { oplog: Oplog, blocks: readonly Uint8Array[] }): MergeResult =>
+  insert_blocks({ oplog, blocks, admit: restore_entry })
+
+const insert_blocks = ({ oplog, blocks, admit }: {
+  oplog: Oplog
+  blocks: readonly Uint8Array[]
+  admit: typeof verify_entry
+}): MergeResult => {
   const rejected: Array<{ hash: string, error: ProtocolError }> = []
   const decoded: HashedEntry[] = []
   for (const bytes of blocks) {
@@ -45,7 +57,7 @@ export const merge_entries = ({ oplog, blocks }: { oplog: Oplog, blocks: readonl
   const merged: VerifiedEntry[] = []
   for (const hashed of decoded) {
     if (oplog.entries.has(hashed.hash)) continue
-    const result = caught(() => verify_entry({ oplog, hashed }))
+    const result = caught(() => admit({ oplog, hashed }))
     if (result instanceof ProtocolError) {
       rejected.push({ hash: hashed.hash, error: result })
       continue
