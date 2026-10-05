@@ -2,7 +2,7 @@
 // entries plus the content payloads they point at, or a copy of the entries
 // themselves, so the whole database can be dropped and rebuilt by replay.
 // The schema is not protocol and is never exchanged with peers.
-import { closeSync, openSync, readSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 // Dependents first, so a drop never trips over an index or a view.
 export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'meta'];
@@ -181,58 +181,6 @@ const stored_version = (db) => {
         return undefined;
     }
 };
-// Reads the file once from start to end, so the page cache holds it before
-// a scan that would otherwise read it at random.
-const read_forward = (path) => {
-    const fd = openSync(path, 'r');
-    try {
-        const chunk = Buffer.alloc(8 << 20);
-        while (readSync(fd, chunk) > 0)
-            ;
-    }
-    finally {
-        closeSync(fd);
-    }
-};
-// An index written before entry_blocks was a rowid table keeps its blocks in
-// a WITHOUT ROWID table keyed by hash. Its rows are copied into the rowid table, the verified marks left as
-// they are, since the blocks are the same; dropping the cache instead would
-// make the next open walk the blockstore and verify every entry. The copy reads
-// the old table in hash order, so the file is first read forward. The VACUUM
-// returns the old table's pages, scattered across the file, so later appends
-// do not land in them. A failed copy drops only the cache, and a failed VACUUM
-// only costs the layout of later appends: neither may reach open_query_db's
-// catch, which removes the whole index. Remove this once every data directory
-// in use has opened under it.
-const migrate_entry_blocks = (db, path) => {
-    const table = db.prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'entry_blocks'").get();
-    if (table === undefined || !/WITHOUT ROWID/i.test(table.sql))
-        return;
-    process.emitWarning('index: copying entry_blocks into a rowid table, once; this reads and rewrites the index file');
-    try {
-        if (path !== ':memory:')
-            read_forward(path);
-        in_transaction(db, () => {
-            db.exec('ALTER TABLE entry_blocks RENAME TO entry_blocks_by_hash');
-            db.exec(ENTRY_BLOCKS_SCHEMA);
-            db.exec('INSERT INTO entry_blocks (library_address, entry_hash, bytes) SELECT library_address, entry_hash, bytes FROM entry_blocks_by_hash');
-            db.exec('DROP TABLE entry_blocks_by_hash');
-        });
-    }
-    catch (error) {
-        process.emitWarning(`index: copying entry_blocks failed, so the cache is dropped and each library's next open walks its oplog: ${error.message}`);
-        for (const table of ENTRY_BLOCK_TABLES)
-            db.exec(`DROP TABLE IF EXISTS ${table}`);
-        return;
-    }
-    try {
-        db.exec('VACUUM');
-        db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-    }
-    catch (error) {
-        process.emitWarning(`index: VACUUM after the entry_blocks copy failed: ${error.message}`);
-    }
-};
 const open = (path) => {
     const db = new DatabaseSync(path);
     db.exec('PRAGMA journal_mode = WAL');
@@ -245,7 +193,6 @@ const open = (path) => {
     // next library open finds no marker and rebuilds the index by replay.
     if (stored_version(db) !== String(SCHEMA_VERSION))
         drop_schema(db);
-    migrate_entry_blocks(db, path);
     apply_schema(db);
     return db;
 };
