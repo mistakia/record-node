@@ -3,7 +3,7 @@
 // themselves, so the whole database can be dropped and rebuilt by replay.
 // The schema is not protocol and is never exchanged with peers.
 
-import { rmSync } from 'node:fs'
+import { closeSync, openSync, readSync, rmSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 // Dependents first, so a drop never trips over an index or a view.
@@ -19,6 +19,22 @@ const ENTRY_BLOCK_TABLES = ['entry_blocks', 'entry_blocks_verified'] as const
 export const SCHEMA_VERSION = 1
 
 export type QueryTable = typeof QUERY_TABLES[number]
+
+// Each library's verified signed-entry blocks, so a restart reads its oplog
+// in one scan (entry-blocks.ts). Empty is valid: the open walks the blockstore
+// and fills it. Rows are appended in rowid order and read through
+// entry_blocks_by_library, which orders a library's rows by rowid, so the scan
+// reads the file forward. Keyed by hash instead, a library's rows would lie in
+// hash order across the file and a cold open would read them at random.
+const ENTRY_BLOCKS_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS entry_blocks (
+    library_address TEXT NOT NULL,
+    entry_hash TEXT NOT NULL,
+    bytes BLOB NOT NULL,
+    UNIQUE (library_address, entry_hash)
+  );
+  CREATE INDEX IF NOT EXISTS entry_blocks_by_library ON entry_blocks (library_address);
+`
 
 const SCHEMA = `
   -- The current entry per (library, key) under §4.4.2. A current DEL stays as
@@ -134,15 +150,7 @@ const SCHEMA = `
     pending TEXT NOT NULL
   ) WITHOUT ROWID;
 
-  -- Each library's verified signed-entry blocks, so a restart reads its
-  -- oplog in one scan (entry-blocks.ts). Empty is valid: the open walks the
-  -- blockstore and fills it.
-  CREATE TABLE IF NOT EXISTS entry_blocks (
-    library_address TEXT NOT NULL,
-    entry_hash TEXT NOT NULL,
-    bytes BLOB NOT NULL,
-    PRIMARY KEY (library_address, entry_hash)
-  ) WITHOUT ROWID;
+${ENTRY_BLOCKS_SCHEMA}
 
   -- Per library, the heads of the oplog its cached blocks were last written
   -- from and the verification rules version that oplog was verified under, so
@@ -183,6 +191,53 @@ const stored_version = (db: DatabaseSync): string | undefined => {
   }
 }
 
+// Reads the file once from start to end, so the page cache holds it before
+// a scan that would otherwise read it at random.
+const read_forward = (path: string): void => {
+  const fd = openSync(path, 'r')
+  try {
+    const chunk = Buffer.alloc(8 << 20)
+    while (readSync(fd, chunk) > 0);
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// An index written before entry_blocks was a rowid table keeps its blocks in
+// a WITHOUT ROWID table keyed by hash. Its rows are copied into the rowid table, the verified marks left as
+// they are, since the blocks are the same; dropping the cache instead would
+// make the next open walk the blockstore and verify every entry. The copy reads
+// the old table in hash order, so the file is first read forward. The VACUUM
+// returns the old table's pages, scattered across the file, so later appends
+// do not land in them. A failed copy drops only the cache, and a failed VACUUM
+// only costs the layout of later appends: neither may reach open_query_db's
+// catch, which removes the whole index. Remove this once every data directory
+// in use has opened under it.
+const migrate_entry_blocks = (db: DatabaseSync, path: string): void => {
+  const table = db.prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'entry_blocks'").get() as { sql: string } | undefined
+  if (table === undefined || !/WITHOUT ROWID/i.test(table.sql)) return
+  process.emitWarning('index: copying entry_blocks into a rowid table, once; this reads and rewrites the index file')
+  try {
+    if (path !== ':memory:') read_forward(path)
+    in_transaction(db, () => {
+      db.exec('ALTER TABLE entry_blocks RENAME TO entry_blocks_by_hash')
+      db.exec(ENTRY_BLOCKS_SCHEMA)
+      db.exec('INSERT INTO entry_blocks (library_address, entry_hash, bytes) SELECT library_address, entry_hash, bytes FROM entry_blocks_by_hash')
+      db.exec('DROP TABLE entry_blocks_by_hash')
+    })
+  } catch (error) {
+    process.emitWarning(`index: copying entry_blocks failed, so the cache is dropped and each library's next open walks its oplog: ${(error as Error).message}`)
+    for (const table of ENTRY_BLOCK_TABLES) db.exec(`DROP TABLE IF EXISTS ${table}`)
+    return
+  }
+  try {
+    db.exec('VACUUM')
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  } catch (error) {
+    process.emitWarning(`index: VACUUM after the entry_blocks copy failed: ${(error as Error).message}`)
+  }
+}
+
 const open = (path: string): DatabaseSync => {
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
@@ -194,6 +249,7 @@ const open = (path: string): DatabaseSync => {
   // An older or unreadable schema: drop every table and start over. The
   // next library open finds no marker and rebuilds the index by replay.
   if (stored_version(db) !== String(SCHEMA_VERSION)) drop_schema(db)
+  migrate_entry_blocks(db, path)
   apply_schema(db)
   return db
 }
