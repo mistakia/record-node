@@ -18,7 +18,9 @@
 import { VERIFICATION_RULES_VERSION } from '#oplog/accept.ts';
 import { in_transaction } from "./schema.js";
 export const create_entry_block_cache = (db) => {
-    const select = db.prepare('SELECT bytes FROM entry_blocks WHERE library_address = ?');
+    // Through the library index in rowid order, so the scan reads forward
+    // through the file (schema.ts).
+    const select = db.prepare('SELECT bytes FROM entry_blocks INDEXED BY entry_blocks_by_library WHERE library_address = ? ORDER BY rowid');
     const insert = db.prepare('INSERT OR IGNORE INTO entry_blocks (library_address, entry_hash, bytes) VALUES (?, ?, ?)');
     const remove = db.prepare('DELETE FROM entry_blocks WHERE library_address = ?');
     const select_verified = db.prepare('SELECT heads, rules_version FROM entry_blocks_verified WHERE library_address = ?');
