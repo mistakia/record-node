@@ -12,6 +12,7 @@ import { verify_toolchain } from '#ingest/toolchain.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { create_entry_block_cache } from '#query-db/entry-blocks.ts'
 import { create_projector } from '#query-db/projector.ts'
+import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
@@ -90,13 +91,16 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
   // it instead of re-projecting every library from blocks; without one the
   // index stays in memory and dies with the process.
   const db = paths === undefined ? open_query_db() : open_query_db({ path: paths.index })
+  // Commit batching so a disk-backed peer's per-filed index writes coalesce;
+  // the index is derived (§4.7), so a lost last batch is rebuilt at open.
+  const index_commit = paths === undefined ? undefined : create_commit_batcher(db, DEFAULT_COMMIT_POLICY)
   const events = create_event_bus()
   const content_store = store.content_store
   const network = join_network?.({ content_store }) ?? store.network
   const libraries = create_library_manager({
     content_store,
-    projector: create_projector({ db, read_content: content_store.get }),
-    entry_blocks: create_entry_block_cache(db),
+    projector: create_projector({ db, read_content: content_store.get, commit: index_commit }),
+    entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
     state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
     keeps_blobs: (chain) => keeps_blobs(context)(chain),
     retained: () => context.blobs.retained(),
@@ -119,6 +123,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     store,
     content_store,
     db,
+    index_commit,
     libraries,
     events,
     resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
@@ -230,6 +235,7 @@ const stop_context = async (context: PeerContext): Promise<void> => {
   await context.libraries.settled()
   await context.libraries.pins_settled()
   await context.store.stop()
+  context.index_commit?.close()
   context.db.close()
   context.lock?.release()
   context.identity = undefined

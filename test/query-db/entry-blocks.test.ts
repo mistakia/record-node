@@ -15,7 +15,7 @@ const block = (text: string) => new TextEncoder().encode(text)
 describe('entry block cache layout', () => {
   test('a library\'s blocks load in the order they were written, through the library index', () => {
     const db = open_query_db()
-    const cache = create_entry_block_cache(db)
+    const cache = create_entry_block_cache({ db })
     const written = ['zz', 'aa', 'mm', 'bb'].map((hash) => ({ hash, bytes: block(hash) }))
     cache.save({ library_address: 'one', entries: written.slice(0, 2), heads: ['aa'] })
     cache.save({ library_address: 'two', entries: [{ hash: 'cc', bytes: block('cc') }], heads: ['cc'] })

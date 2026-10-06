@@ -62,7 +62,7 @@ const plant = async ({ type = 'recordstore' }: { type?: 'recordstore' | 'listens
   const honest = (await manager.append({ library_address: chain.address, payload: payload_for(type, 'AQAA-honest'), key_pair: writer })).hash
   const planted = signed({ key_pair: generate_key_pair(), library_address: chain.address, type, name: 'AQAA-planted', oplog, next: honest })
   await content_store.put(planted.hash, planted.bytes)
-  create_entry_block_cache(db).save({ library_address: chain.address, entries: [planted], heads: [planted.hash] })
+  create_entry_block_cache({ db }).save({ library_address: chain.address, entries: [planted], heads: [planted.hash] })
   await state_store.save_heads({ library_address: chain.address, heads: [planted.hash] })
   return { ...opened, writer, oplog, library_address: chain.address, honest, planted: planted.hash }
 }
@@ -143,7 +143,7 @@ describe('open verification watermark', () => {
     // register cached a writer's entry and its heads, then the process died
     // before the heads were persisted.
     const ahead = signed({ key_pair: writer, library_address, type: 'recordstore', name: 'AQAA-ahead', oplog, next: head })
-    create_entry_block_cache(db).save({ library_address, entries: [ahead], heads: [ahead.hash] })
+    create_entry_block_cache({ db }).save({ library_address, entries: [ahead], heads: [ahead.hash] })
     const reopened = await reopen().open_library(library_address)
     expect([...reopened.oplog.entries.keys()]).toEqual([head])
     expect(warnings).not.toHaveBeenCalled()

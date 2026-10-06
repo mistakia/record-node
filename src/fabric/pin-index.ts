@@ -16,6 +16,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { CID } from 'multiformats/cid'
 
 import { walk_blocks } from './block.ts'
+import type { CommitBatcher } from './commit-batch.ts'
 
 const SCHEMA_VERSION = '1'
 
@@ -68,10 +69,13 @@ export interface PinIndex {
   evict: (cid: CID, remove: () => Promise<void>) => Promise<boolean>
 }
 
-export const create_pin_index = ({ db, read, has }: {
+export const create_pin_index = ({ db, read, has, commit }: {
   db: DatabaseSync
   read: (cid: CID) => Promise<Uint8Array | undefined>
   has: (cid: CID) => Promise<boolean>
+  // Batches the per-pin transactions instead of committing each one; the
+  // pin index is derived and refilled at open, so a lost batch is repaired.
+  commit?: CommitBatcher | undefined
 }): PinIndex => {
   const select_root = db.prepare('SELECT recursive FROM root_pins WHERE multihash = ?')
   const upsert_root = db.prepare('INSERT OR REPLACE INTO root_pins (multihash, recursive) VALUES (?, ?)')
@@ -87,6 +91,7 @@ export const create_pin_index = ({ db, read, has }: {
     return row === undefined ? undefined : row.recursive === 1
   }
   const transaction = (fn: () => void) => {
+    if (commit !== undefined) return commit.run(fn)
     db.exec('BEGIN')
     try {
       fn()

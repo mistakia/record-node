@@ -20,6 +20,7 @@ import { create_networked_helia } from '#adapter/libp2p/node.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { Network } from '#fabric/network.ts'
 import { open_pin_db } from '#fabric/pin-index.ts'
+import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts'
 import { data_paths } from './config.ts'
 
 export interface PeerStore {
@@ -74,6 +75,9 @@ export const open_peer_store = async ({ data_dir, network }: {
   const blockstore = paths === undefined ? new MemoryBlockstore() : new FsBlockstore(paths.blocks)
   const datastore = paths === undefined ? new MemoryDatastore() : new FsDatastore(paths.datastore)
   const pin_db = open_pin_db(paths?.pins)
+  // Commit batching so a disk-backed peer's per-pin writes coalesce; the pin
+  // index is derived and refilled at open, so a lost last batch is repaired.
+  const pin_commit = paths === undefined ? undefined : create_commit_batcher(pin_db, DEFAULT_COMMIT_POLICY)
   const retiring = new AbortController()
   const removal = paths === undefined
     ? Promise.resolve()
@@ -97,11 +101,12 @@ export const open_peer_store = async ({ data_dir, network }: {
   const { helia } = opened
   return {
     helia,
-    content_store: create_helia_content_store({ helia, blockstore, pin_db }),
+    content_store: create_helia_content_store({ helia, blockstore, pin_db, commit: pin_commit }),
     network: opened.network,
     stop: async () => {
       retiring.abort()
       await removal
+      pin_commit?.close()
       await helia.stop()
       pin_db.close()
     }

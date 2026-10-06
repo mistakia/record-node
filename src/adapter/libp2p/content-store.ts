@@ -15,6 +15,7 @@ import type { createHeliaLight, Helia } from 'helia'
 
 import { collect_bytes, import_unixfs_file, parse_content_cid as parse_cid, verify_block } from '#fabric/block.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
+import type { CommitBatcher } from '#fabric/commit-batch.ts'
 import { create_pin_index } from '#fabric/pin-index.ts'
 
 // Helia is on multiformats 14 and the core on 13. The CID classes are
@@ -30,12 +31,14 @@ const is_named_error = (error: unknown, name: string) => error instanceof Error 
 
 type RawBlockstore = NonNullable<NonNullable<Parameters<typeof createHeliaLight>[0]>['blockstore']>
 
-export const create_helia_content_store = ({ helia, blockstore, pin_db }: {
+export const create_helia_content_store = ({ helia, blockstore, pin_db, commit }: {
   helia: Helia
   // The blockstore Helia was created over.
   blockstore: RawBlockstore
   // From open_pin_db.
   pin_db: DatabaseSync
+  // Batches pin transactions; the pin index is derived and refilled at open.
+  commit?: CommitBatcher | undefined
 }): ContentStore => {
   const read_block = async (cid: HeliaCid): Promise<Uint8Array | undefined> => {
     try {
@@ -49,7 +52,8 @@ export const create_helia_content_store = ({ helia, blockstore, pin_db }: {
   const pins = create_pin_index({
     db: pin_db,
     read: async (cid) => await read_block(as_helia_cid(cid)),
-    has: async (cid) => await blockstore.has(cid as never)
+    has: async (cid) => await blockstore.has(cid as never),
+    commit
   })
 
   return {

@@ -18,6 +18,7 @@ import type { Oplog } from '#oplog/dag.ts'
 import type { Envelope, ListenPayload } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { is_record } from '#types/guards.ts'
+import type { CommitBatcher } from '#fabric/commit-batch.ts'
 import { in_transaction } from './schema.ts'
 
 // Reads a content payload block by CID: a ContentStore's get satisfies it.
@@ -239,11 +240,19 @@ const load_content = async ({ read_content, oplog, entry }: {
   }
 }
 
-export const create_projector = ({ db, read_content }: {
+export const create_projector = ({ db, read_content, commit }: {
   db: DatabaseSync
   read_content: ContentReader
+  // Batches the per-projection transactions instead of committing each one;
+  // the index is derived (§4.7) and rebuilt from the oplog at open, so a lost
+  // batch is repaired.
+  commit?: CommitBatcher | undefined
 }): Projector => {
   const statements = create_statements(db)
+  // Immediate when no batcher is supplied, so `:memory:` and test stores keep
+  // their current commit-per-write behavior.
+  const transact: (fn: () => void) => void =
+    commit === undefined ? (fn) => in_transaction(db, fn) : (fn) => commit.run(fn)
 
   // Jobs run one at a time in call order, so batches projected concurrently
   // never interleave their writes.
@@ -265,7 +274,7 @@ export const create_projector = ({ db, read_content }: {
         return { key, entry, content: await load_content({ read_content, oplog, entry }) }
       }))
       const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry)
-      in_transaction(db, () => {
+      transact(() => {
         for (const { key, entry, content } of stable) write_key({ statements, oplog, key, entry, content })
         touch_marker({ statements, oplog, stable })
       })
@@ -273,14 +282,14 @@ export const create_projector = ({ db, read_content }: {
     }
   }
 
-  const write_listens = (oplog: Oplog, entries: Iterable<VerifiedEntry>) => in_transaction(db, () => {
+  const write_listens = (oplog: Oplog, entries: Iterable<VerifiedEntry>) => transact(() => {
     for (const entry of entries) write_listen({ statements, library_address: oplog.chain.address, entry })
     statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]')
   })
 
   // An identity library projects no rows: its records are read from the
   // oplog (§4.8). Only its marker is kept, so a restart skips the replay.
-  const write_identity = (oplog: Oplog) => in_transaction(db, () => {
+  const write_identity = (oplog: Oplog) => transact(() => {
     statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]')
   })
 
@@ -310,7 +319,7 @@ export const create_projector = ({ db, read_content }: {
       else await write_keys({ oplog, keys: oplog.key_entries.keys() })
     }),
     remove_library: ({ library_address }) => enqueue(async () => {
-      in_transaction(db, () => {
+      transact(() => {
         for (const statement of statements.remove_library) statement.run(library_address)
         statements.delete_marker.run(library_address)
       })

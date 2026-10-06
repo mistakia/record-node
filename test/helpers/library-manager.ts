@@ -25,7 +25,7 @@ export const open_library_manager = () => {
   const reopen = (store: ContentStore = content_store) => create_library_manager({
     content_store: store,
     projector: create_projector({ db, read_content: store.get }),
-    entry_blocks: create_entry_block_cache(db),
+    entry_blocks: create_entry_block_cache({ db }),
     state_store
   })
   return { content_store, db, state_store, manager: reopen(), reopen }
