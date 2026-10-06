@@ -196,15 +196,22 @@ const open = (path) => {
     apply_schema(db);
     return db;
 };
+// A locked store is healthy and transient, not corrupt: never rebuild one it
+// could not open. While a peer's batch is open it holds the write lock, and a
+// reader that wants the committed state asks the peer to flush; this path only
+// decides whether a store is worth destroying, and a lock never is.
+const is_busy_error = (error) => typeof error === 'object' && error !== null && 'errcode' in error &&
+    ((error.errcode) & 0xff) === 5;
 // A file path, or ':memory:' for an index that lives as long as the process.
 // A missing, corrupt, or unreadable file is removed and rebuilt: the survivor
 // replays every library at its next open, so the index can never be misread.
+// A locked file is neither, so it is left alone.
 export const open_query_db = ({ path = ':memory:' } = {}) => {
     try {
         return open(path);
     }
     catch (error) {
-        if (path === ':memory:')
+        if (path === ':memory:' || is_busy_error(error))
             throw error;
         rmSync(`${path}-wal`, { force: true });
         rmSync(`${path}-shm`, { force: true });

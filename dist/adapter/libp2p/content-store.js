@@ -15,7 +15,7 @@ const as_helia_cid = (cid) => cid;
 const parse_content_cid = (cid_string) => as_helia_cid(parse_cid(cid_string));
 const OFFLINE = { offline: true };
 const is_named_error = (error, name) => error instanceof Error && error.name === name;
-export const create_helia_content_store = ({ helia, blockstore, pin_db }) => {
+export const create_helia_content_store = ({ helia, blockstore, pin_db, commit }) => {
     const read_block = async (cid) => {
         try {
             return await collect_bytes(helia.blockstore.get(cid, OFFLINE));
@@ -29,7 +29,8 @@ export const create_helia_content_store = ({ helia, blockstore, pin_db }) => {
     const pins = create_pin_index({
         db: pin_db,
         read: async (cid) => await read_block(as_helia_cid(cid)),
-        has: async (cid) => await blockstore.has(cid)
+        has: async (cid) => await blockstore.has(cid),
+        commit
     });
     return {
         get: async (cid) => await read_block(parse_content_cid(cid)),

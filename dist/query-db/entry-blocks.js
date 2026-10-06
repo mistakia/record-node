@@ -17,7 +17,10 @@
 // entries that never verified.
 import { VERIFICATION_RULES_VERSION } from '#oplog/accept.ts';
 import { in_transaction } from "./schema.js";
-export const create_entry_block_cache = (db) => {
+export const create_entry_block_cache = ({ db, commit }) => {
+    // Immediate when no batcher is supplied, so `:memory:` and test stores keep
+    // their current commit-per-write behavior.
+    const transact = commit === undefined ? (fn) => in_transaction(db, fn) : (fn) => commit.run(fn);
     // Through the library index in rowid order, so the scan reads forward
     // through the file (schema.ts).
     const select = db.prepare('SELECT bytes FROM entry_blocks INDEXED BY entry_blocks_by_library WHERE library_address = ? ORDER BY rowid');
@@ -42,13 +45,13 @@ export const create_entry_block_cache = (db) => {
             return { blocks, verified_heads: current ? JSON.parse(verified.heads) : undefined };
         },
         save: ({ library_address, entries, heads }) => {
-            in_transaction(db, () => {
+            transact(() => {
                 insert_all(library_address, entries);
                 record_verified(library_address, heads);
             });
         },
         replace: ({ library_address, entries, heads }) => {
-            in_transaction(db, () => {
+            transact(() => {
                 remove.run(library_address);
                 insert_all(library_address, entries);
                 record_verified(library_address, heads);
@@ -56,7 +59,7 @@ export const create_entry_block_cache = (db) => {
         },
         mark_verified: ({ library_address, heads }) => { record_verified(library_address, heads); },
         remove: (library_address) => {
-            in_transaction(db, () => {
+            transact(() => {
                 remove.run(library_address);
                 remove_verified.run(library_address);
             });

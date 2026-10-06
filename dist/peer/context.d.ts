@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { CommitBatcher } from '#fabric/commit-batch.ts';
 import type { ContentStore } from '#fabric/content-store.ts';
 import type { KeyPair } from '#identity/key-pair.ts';
 import type { Download } from '#ingest/download.ts';
@@ -25,6 +26,7 @@ export interface PeerContext {
     readonly store: PeerStore;
     readonly content_store: ContentStore;
     readonly db: DatabaseSync;
+    readonly index_commit: CommitBatcher | undefined;
     readonly libraries: LibraryManager;
     readonly events: EventBus;
     readonly resolve: ResolveUrl;

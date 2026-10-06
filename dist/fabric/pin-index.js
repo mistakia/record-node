@@ -40,20 +40,25 @@ const open = (path) => {
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
     return db;
 };
+// A locked store is healthy and transient, never corrupt: the peer holds the
+// write lock only while a batch is open, so deleting a file it could not open
+// out from under the writer is the one outcome that must not happen.
+const is_busy_error = (error) => typeof error === 'object' && error !== null && 'errcode' in error &&
+    ((error.errcode) & 0xff) === 5;
 // A file path, or ':memory:' for an index that lives as long as the process.
 export const open_pin_db = (path = ':memory:') => {
     try {
         return open(path);
     }
     catch (error) {
-        if (path === ':memory:')
+        if (path === ':memory:' || is_busy_error(error))
             throw error;
         for (const suffix of ['', '-wal', '-shm'])
             rmSync(`${path}${suffix}`, { force: true });
         return open(path);
     }
 };
-export const create_pin_index = ({ db, read, has }) => {
+export const create_pin_index = ({ db, read, has, commit }) => {
     const select_root = db.prepare('SELECT recursive FROM root_pins WHERE multihash = ?');
     const upsert_root = db.prepare('INSERT OR REPLACE INTO root_pins (multihash, recursive) VALUES (?, ?)');
     const delete_root = db.prepare('DELETE FROM root_pins WHERE multihash = ?');
@@ -67,6 +72,8 @@ export const create_pin_index = ({ db, read, has }) => {
         return row === undefined ? undefined : row.recursive === 1;
     };
     const transaction = (fn) => {
+        if (commit !== undefined)
+            return commit.run(fn);
         db.exec('BEGIN');
         try {
             fn();

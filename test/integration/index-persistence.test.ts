@@ -71,13 +71,20 @@ const index_snapshot = (data_dir: string) => {
   return snapshot
 }
 
+// The index writes are batched, so a second connection sees only committed
+// state: flush the peer's batch first, then read what a restart would see.
+const committed_index_snapshot = (peer: Peer, data_dir: string) => {
+  peer.context.index_commit?.flush()
+  return index_snapshot(data_dir)
+}
+
 describe('query index persistence', () => {
   test('a restart reopens the persisted index without replaying the library', async () => {
     const data_dir = mkdtempSync(join(tmpdir(), 'record-index-restart-'))
     const first = await reopen(data_dir)
     const track = await append_track(first, 'AQAA-restart')
     const own_address = first.identity().own_address
-    const snapshot = index_snapshot(data_dir)
+    const snapshot = committed_index_snapshot(first, data_dir)
     await drop_content(first, track.content_cid)
     await stop_peer(first)
     running.splice(0)
@@ -104,7 +111,7 @@ describe('query index persistence', () => {
     const second = await reopen(data_dir)
     expect(title_of(second, a.track_id)).toBe('Title AQAA-delta-a')
     const b = await append_track(second, 'AQAA-delta-b')
-    const snapshot = index_snapshot(data_dir)
+    const snapshot = committed_index_snapshot(second, data_dir)
     await stop_peer(second)
     running.splice(0)
 

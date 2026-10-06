@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { CommitBatcher } from '#fabric/commit-batch.ts';
 export interface CachedEntryBlocks {
     readonly blocks: Uint8Array[];
     readonly verified_heads: readonly string[] | undefined;
@@ -27,4 +28,7 @@ export interface EntryBlockCache {
     }) => void;
     remove: (library_address: string) => void;
 }
-export declare const create_entry_block_cache: (db: DatabaseSync) => EntryBlockCache;
+export declare const create_entry_block_cache: ({ db, commit }: {
+    db: DatabaseSync;
+    commit?: CommitBatcher | undefined;
+}) => EntryBlockCache;

@@ -157,8 +157,11 @@ const load_content = async ({ read_content, oplog, entry }) => {
         throw error;
     }
 };
-export const create_projector = ({ db, read_content }) => {
+export const create_projector = ({ db, read_content, commit }) => {
     const statements = create_statements(db);
+    // Immediate when no batcher is supplied, so `:memory:` and test stores keep
+    // their current commit-per-write behavior.
+    const transact = commit === undefined ? (fn) => in_transaction(db, fn) : (fn) => commit.run(fn);
     // Jobs run one at a time in call order, so batches projected concurrently
     // never interleave their writes.
     let tail = Promise.resolve();
@@ -178,7 +181,7 @@ export const create_projector = ({ db, read_content }) => {
                 return { key, entry, content: await load_content({ read_content, oplog, entry }) };
             }));
             const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry);
-            in_transaction(db, () => {
+            transact(() => {
                 for (const { key, entry, content } of stable)
                     write_key({ statements, oplog, key, entry, content });
                 touch_marker({ statements, oplog, stable });
@@ -186,14 +189,14 @@ export const create_projector = ({ db, read_content }) => {
             pending = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key));
         }
     };
-    const write_listens = (oplog, entries) => in_transaction(db, () => {
+    const write_listens = (oplog, entries) => transact(() => {
         for (const entry of entries)
             write_listen({ statements, library_address: oplog.chain.address, entry });
         statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]');
     });
     // An identity library projects no rows: its records are read from the
     // oplog (§4.8). Only its marker is kept, so a restart skips the replay.
-    const write_identity = (oplog) => in_transaction(db, () => {
+    const write_identity = (oplog) => transact(() => {
         statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), '[]');
     });
     const project_entries = ({ oplog, entries, keys = [] }) => enqueue(async () => {
@@ -226,7 +229,7 @@ export const create_projector = ({ db, read_content }) => {
                 await write_keys({ oplog, keys: oplog.key_entries.keys() });
         }),
         remove_library: ({ library_address }) => enqueue(async () => {
-            in_transaction(db, () => {
+            transact(() => {
                 for (const statement of statements.remove_library)
                     statement.run(library_address);
                 statements.delete_marker.run(library_address);

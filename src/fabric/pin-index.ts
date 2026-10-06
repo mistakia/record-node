@@ -46,12 +46,19 @@ const open = (path: string): DatabaseSync => {
   return db
 }
 
+// A locked store is healthy and transient, never corrupt: the peer holds the
+// write lock only while a batch is open, so deleting a file it could not open
+// out from under the writer is the one outcome that must not happen.
+const is_busy_error = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && 'errcode' in error &&
+  (((error as { errcode: number }).errcode) & 0xff) === 5
+
 // A file path, or ':memory:' for an index that lives as long as the process.
 export const open_pin_db = (path = ':memory:'): DatabaseSync => {
   try {
     return open(path)
   } catch (error) {
-    if (path === ':memory:') throw error
+    if (path === ':memory:' || is_busy_error(error)) throw error
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
     return open(path)
   }

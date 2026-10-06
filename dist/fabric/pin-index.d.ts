@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { CID } from 'multiformats/cid';
+import type { CommitBatcher } from './commit-batch.ts';
 export declare const open_pin_db: (path?: string) => DatabaseSync;
 export interface PinIndex {
     pin: (cid: CID, recursive: boolean) => Promise<void>;
@@ -7,8 +8,9 @@ export interface PinIndex {
     is_pinned: (cid: CID) => boolean;
     evict: (cid: CID, remove: () => Promise<void>) => Promise<boolean>;
 }
-export declare const create_pin_index: ({ db, read, has }: {
+export declare const create_pin_index: ({ db, read, has, commit }: {
     db: DatabaseSync;
     read: (cid: CID) => Promise<Uint8Array | undefined>;
     has: (cid: CID) => Promise<boolean>;
+    commit?: CommitBatcher | undefined;
 }) => PinIndex;

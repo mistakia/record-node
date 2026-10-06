@@ -45,12 +45,19 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
     timer = undefined
   }
   const commit = () => {
-    if (open) {
-      db.exec('COMMIT')
-      open = false
-      count = 0
+    try {
+      if (open) {
+        // Closed before the COMMIT, so a throw here cannot make a later
+        // close() try to COMMIT the same transaction again.
+        open = false
+        count = 0
+        db.exec('COMMIT')
+      }
+    } finally {
+      // Always disarm the timer: a throw from the COMMIT must not leave it
+      // armed to fire against a connection that has since closed.
+      stop_timer()
     }
-    stop_timer()
   }
   const schedule = () => {
     if (timer === undefined) {
@@ -60,7 +67,7 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
   }
 
   return {
-    run(fn) {
+    run (fn) {
       if (!open) db.exec('BEGIN')
       open = true
       try {
