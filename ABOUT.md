@@ -9,11 +9,17 @@ description: >-
 base_uri: user:repository/active/record-node/ABOUT.md
 created_at: '2026-10-03T04:29:32.144Z'
 entity_id: ae37dcd7-a1d5-4982-b594-09cd6609d37e
+observations:
+  - >-
+    [declassification] Released to public (required = ∅) via base entity visibility set: Operator
+    approved 2026-10-06: clean context-file tranche (classifier clean + recheck confirm), public
+    tier.
 owner_identity_uri: user:identity/trashman.md
-public_read: false
+public_read: true
 tags:
   - user:tag/record-project.md
 updated_at: '2026-10-03T17:12:15.320Z'
+visibility_analyzed_at: '2026-10-07T01:23:26.263Z'
 ---
 
 ## Purpose
