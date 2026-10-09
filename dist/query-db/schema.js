@@ -70,6 +70,15 @@ const SCHEMA = `
     PRIMARY KEY (library_address, track_id)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS tracks_by_track_id ON tracks (track_id);
+  -- One per GET /tracks sort but listen_count, in the order list_tracks
+  -- pages it (queries.ts), so a page walks the index instead of sorting.
+  CREATE INDEX IF NOT EXISTS tracks_by_title ON tracks (title COLLATE NOCASE, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_artist ON tracks (artist COLLATE NOCASE, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_album ON tracks (album COLLATE NOCASE, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_bpm ON tracks (bpm, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_duration ON tracks (duration_seconds, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_bitrate ON tracks (bitrate, track_id);
+  CREATE INDEX IF NOT EXISTS tracks_by_added_at ON tracks (added_at_ms, track_id);
 
   -- Envelope labels of live tracks (§2.4.3).
   CREATE TABLE IF NOT EXISTS tags (
