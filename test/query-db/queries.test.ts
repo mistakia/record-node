@@ -120,6 +120,14 @@ describe('query-db list_tracks', () => {
     expect(list_tracks({ db }).total).toBe(4)
   })
 
+  test('a total read inside a transaction does not outlive its rollback', () => {
+    db.exec('BEGIN')
+    db.prepare("INSERT INTO tracks (library_address, track_id, entry_hash, content_cid, added_at_ms) VALUES (?, 'epsilon', 'entry', 'content', 6)").run(own)
+    expect(list_tracks({ db }).total).toBe(5)
+    db.exec('ROLLBACK')
+    expect(list_tracks({ db }).total).toBe(4)
+  })
+
   test('rejects out-of-range paging and unlisted sorts', () => {
     expect(() => list_tracks({ db, limit: 0 })).toThrow(RangeError)
     expect(() => list_tracks({ db, limit: 501 })).toThrow(RangeError)

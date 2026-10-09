@@ -209,11 +209,13 @@ const rows_by_key = (db: DatabaseSync, keys: readonly Row[]): Row[] => {
 // Match counts by query, kept while the index is unchanged: a count reads
 // every matched row, and a client paging one list asks for it on every page.
 // The connection's change count moves on its own writes, data_version on any
-// other connection's.
+// other connection's. Neither moves on a rollback, so a count read inside an
+// open transaction, as during a commit batch, is never kept.
 const MAX_CACHED_COUNTS = 256
 const count_cache = new WeakMap<DatabaseSync, { generation: string, counts: Map<string, number> }>()
 
 const cached_count = (db: DatabaseSync, key: string, count: () => number): number => {
+  if (db.isTransaction) return count()
   const row = db.prepare('SELECT total_changes() AS changes, data_version FROM pragma_data_version').get() as Row
   const generation = `${String(row.changes)}:${String(row.data_version)}`
   let cache = count_cache.get(db)
