@@ -4,6 +4,7 @@
 // and the §5.6.4 agent string.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createServer } from 'node:net'
 
 import type { Connection, Stream } from '@libp2p/interface'
 import { peerIdFromString } from '@libp2p/peer-id'
@@ -13,6 +14,7 @@ import type { NetworkConfig } from '#adapter/libp2p/config.ts'
 import { agent_string, type RecordLibp2p } from '#adapter/libp2p/node.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { create_libp2p_peers, dial_address, libp2p_of, LOOPBACK, seeded_data_dir } from '#test/helpers/libp2p.ts'
+import { stop_peer } from '#peer/peer.ts'
 import { append_track, wait_for_event, wait_until } from '#test/helpers/network.ts'
 import type { Peer } from '#peer/peer.ts'
 
@@ -114,4 +116,29 @@ describe('network modes', () => {
     await libp2p_of(dialer).dial(multiaddr(circuit))
     await wait_until(() => exchanged, 15_000)
   }, 30_000)
+
+  test('a relayed node starts while its relay is down, and reserves whenever the relay comes back', async () => {
+    const free_port = await new Promise<number>((resolve) => {
+      const server = createServer().listen(0, '127.0.0.1', () => {
+        const { port } = server.address() as { port: number }
+        server.close(() => { resolve(port) })
+      })
+    })
+    const relay_key = await seeded_data_dir()
+    const relayed_key = await seeded_data_dir()
+    const relay_address = `/ip4/127.0.0.1/tcp/${free_port}/p2p/${relay_key.peer_id}`
+    const start_relay = async () => await peers.start({ listen: [`/ip4/127.0.0.1/tcp/${free_port}`], relay_server: { allowed_peer_ids: [relayed_key.peer_id] } }, { data_dir: relay_key.data_dir })
+    const has_circuit = async () => (await addresses_of(relayed)).some((address) => address.includes(CIRCUIT))
+
+    const relayed = await peers.start(relayed_network(relay_address), { data_dir: relayed_key.data_dir })
+    expect(await has_circuit()).toBe(false)
+
+    const relay = await start_relay()
+    await wait_until(has_circuit, 25_000)
+
+    await stop_peer(relay)
+    await wait_until(async () => !(await has_circuit()), 10_000)
+    await start_relay()
+    await wait_until(has_circuit, 25_000)
+  }, 90_000)
 })
