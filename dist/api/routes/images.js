@@ -20,11 +20,26 @@ const read_image = async (peer, cid, local_only) => {
     }
     if (bytes === undefined)
         return undefined;
+    const mime = await sniff_image(bytes);
+    return mime === undefined ? undefined : { bytes, mime };
+};
+// The sniffed image/* type of the first bytes, or undefined.
+const sniff_image = async (bytes) => {
     const type = await fileTypeFromBuffer(bytes.subarray(0, MIME_SNIFF_BYTES));
-    return type?.mime.startsWith('image/') === true ? { bytes, mime: type.mime } : undefined;
+    return type?.mime.startsWith('image/') === true ? type.mime : undefined;
 };
 export const images_router = (peer) => {
     const router = Router();
+    // parse_image_upload has already buffered the file and refused one over
+    // the size cap; a refused upload is never stored.
+    router.post('/', async (req, res) => {
+        const bytes = new Uint8Array(req.file.buffer);
+        const mime = await sniff_image(bytes);
+        if (mime === undefined) {
+            throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'file is not an image', details: [{ field: 'file', message: 'does not sniff as image/*' }] });
+        }
+        res.status(201).json({ cid: await peer.put_image(bytes), mime });
+    });
     router.head('/:cid', async (req, res) => {
         res.status(await read_image(peer, req.params.cid, true) === undefined ? 404 : 200).end();
     });

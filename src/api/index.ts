@@ -10,9 +10,10 @@ import { join } from 'node:path'
 import express, { Router } from 'express'
 import morgan from 'morgan'
 
+import { IMAGE_MAX_BYTES } from '#peer/images.ts'
 import type { ApiPeer, Resolver } from '#types/peer.ts'
 import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads, type Authenticate } from './middleware.ts'
-import { create_docs_router, create_validator, load_api_spec, parse_uploads } from './openapi.ts'
+import { create_docs_router, create_validator, load_api_spec, parse_image_upload, parse_uploads } from './openapi.ts'
 import { attach_event_bridge, type EventBridge } from './websocket.ts'
 import { audio_router } from './routes/audio.ts'
 import { identity_router } from './routes/identity.ts'
@@ -73,6 +74,7 @@ export const create_api_server = async ({
   api.use(authenticate_requests(authenticate))
   api.use(express.json())
   api.post('/import/file', parse_uploads(UPLOAD_DIR))
+  api.post('/images', parse_image_upload(IMAGE_MAX_BYTES))
   // Off-spec, so ahead of the validator.
   api.use('/network-census', network_census_router(peer))
   api.use(create_validator({ spec, validate_responses }))

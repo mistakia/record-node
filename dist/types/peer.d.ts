@@ -338,6 +338,7 @@ export interface ApiPeer {
     get_image: (cid: string, options?: {
         local_only?: boolean;
     }) => Promise<Uint8Array | undefined>;
+    put_image: (bytes: Uint8Array) => Promise<string>;
     import_files: (input: {
         paths: string[];
     } & WriteTargetInput) => Promise<ImportAck>;

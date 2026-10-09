@@ -5,6 +5,7 @@
 // Viewing never stores: the blocks a read fetched are evicted after it unless
 // a pin covers them, so images never enter the audio cache. Clients cache by
 // CID instead.
+import { upload_artwork } from '#ingest/artwork.ts';
 import { read_unixfs_file } from '#fabric/unixfs.ts';
 import { ProtocolError } from '#types/errors.ts';
 export const IMAGE_MAX_BYTES = 16 * 1024 * 1024;
@@ -23,6 +24,11 @@ export const create_image_source = ({ content_store, network, timeout_ms }) => {
     const read_local = async (cid) => await read_file(cid, content_store.get);
     return {
         read_local,
+        store: async (bytes) => {
+            const [cid] = await upload_artwork({ pictures: [{ data: bytes }], content_store });
+            await content_store.pin(cid, { recursive: true });
+            return cid;
+        },
         read: async (cid) => {
             if (network === undefined)
                 return await read_local(cid);

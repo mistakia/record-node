@@ -185,6 +185,10 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     },
     ...create_track_methods(context),
     ...create_library_methods(context),
+    put_image: async (bytes) => {
+      refuse_when_stopping(context)
+      return await context.images.store(bytes)
+    },
 
     list_peers: async () => context.replication?.list_peers() ?? [],
     // The libp2p peer id when networked; a networkless peer reports the one
