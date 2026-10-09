@@ -100,6 +100,34 @@ describe('query-db list_tracks', () => {
     expect(list_tracks({ db, shuffle: true }).items).toHaveLength(4)
   })
 
+  test('pages one at a time across the null keys, in both directions', () => {
+    for (const order of ['asc', 'desc'] as const) {
+      const all = ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order }).items)
+      const paged = [0, 1, 2, 3].flatMap((offset) => ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order, offset, limit: 1 }).items))
+      expect(paged).toEqual(all)
+    }
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'asc', offset: 2, limit: 2 }).items)).toEqual(['delta', 'gamma'].map(id_of))
+  })
+
+  test('the total follows index writes', () => {
+    expect(list_tracks({ db }).total).toBe(4)
+    db.prepare("INSERT INTO tracks (library_address, track_id, entry_hash, content_cid, added_at_ms) VALUES (?, 'epsilon', 'entry', 'content', 6)").run(own)
+    try {
+      expect(list_tracks({ db }).total).toBe(5)
+    } finally {
+      db.prepare("DELETE FROM tracks WHERE track_id = 'epsilon'").run()
+    }
+    expect(list_tracks({ db }).total).toBe(4)
+  })
+
+  test('a total read inside a transaction does not outlive its rollback', () => {
+    db.exec('BEGIN')
+    db.prepare("INSERT INTO tracks (library_address, track_id, entry_hash, content_cid, added_at_ms) VALUES (?, 'epsilon', 'entry', 'content', 6)").run(own)
+    expect(list_tracks({ db }).total).toBe(5)
+    db.exec('ROLLBACK')
+    expect(list_tracks({ db }).total).toBe(4)
+  })
+
   test('rejects out-of-range paging and unlisted sorts', () => {
     expect(() => list_tracks({ db, limit: 0 })).toThrow(RangeError)
     expect(() => list_tracks({ db, limit: 501 })).toThrow(RangeError)

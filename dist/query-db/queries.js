@@ -3,16 +3,16 @@
 // and profiles. Field names follow the API Track schema.
 import { compute_about_id } from '#entry/id.ts';
 export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'bitrate', 'listen_count', 'added_at'];
-const SORT_COLUMNS = {
-    title: 'title COLLATE NOCASE',
-    artist: 'artist COLLATE NOCASE',
-    album: 'album COLLATE NOCASE',
-    bpm: 'bpm',
-    duration: 'duration_seconds',
-    bitrate: 'bitrate',
+const SORT_KEYS = {
+    title: { key: 't.title COLLATE NOCASE', nullable_column: 't.title' },
+    artist: { key: 't.artist COLLATE NOCASE', nullable_column: 't.artist' },
+    album: { key: 't.album COLLATE NOCASE', nullable_column: 't.album' },
+    bpm: { key: 't.bpm', nullable_column: 't.bpm' },
+    duration: { key: 't.duration_seconds', nullable_column: 't.duration_seconds' },
+    bitrate: { key: 't.bitrate', nullable_column: 't.bitrate' },
     // Every listen of the track, as Track.listen_count counts them.
-    listen_count: '(SELECT count(*) FROM listens WHERE listens.track_id = matched.track_id)',
-    added_at: 'added_at_ms'
+    listen_count: { key: '(SELECT count(*) FROM listens WHERE listens.track_id = t.track_id)' },
+    added_at: { key: 't.added_at_ms' }
 };
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 500;
@@ -41,17 +41,54 @@ const to_resolver = (row) => {
         .map((field) => [field, row[field]]);
     return { extractor: String(row.extractor), id: String(row.id), ...Object.fromEntries(optional) };
 };
-// One representative row per track id across the scoped libraries: the
-// requestor's own library first, then the lowest address.
-const scoped_tracks_sql = ({ scoped }) => `
-  SELECT * FROM (
-    SELECT tracks.*, row_number() OVER (
-      PARTITION BY track_id
-      ORDER BY library_address IN (SELECT value FROM json_each(:own_library_addresses)) DESC, library_address ASC
-    ) AS representative
-    FROM tracks
-    ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
-  ) WHERE representative = 1`;
+// Whether `t` is the representative row of its track id across the scoped
+// libraries: the requestor's own library first, then the lowest address. The
+// probe is one index lookup per row, which in a deep page costs more than
+// the walk itself, so a scope where no track id has two rows skips it. The
+// unary + keeps the planner off the primary key, so a page walks its sort's
+// index.
+const representative_sql = ({ scoped, duplicates = true }) => {
+    const in_scope = (alias) => `${alias}.library_address IN (SELECT value FROM json_each(:library_addresses))`;
+    const rank = (alias) => `(NOT ${alias}.library_address IN (SELECT value FROM json_each(:own_library_addresses)), ${alias}.library_address)`;
+    const probe = `NOT EXISTS (
+    SELECT 1 FROM tracks AS o WHERE o.track_id = t.track_id ${scoped ? `AND ${in_scope('o')}` : ''} AND ${rank('o')} < ${rank('t')}
+  )`;
+    return [scoped ? `+${in_scope('t')}` : '', duplicates ? probe : ''].filter((term) => term.length > 0).join(' AND ') || 'TRUE';
+};
+// Full rows for (library_address, track_id) keys, in the keys' order.
+const rows_by_key = (db, keys) => {
+    const rows = db.prepare(`
+    SELECT * FROM tracks
+    WHERE (library_address, track_id) IN (SELECT value ->> 0, value ->> 1 FROM json_each(:keys))`).all({ keys: JSON.stringify(keys.map((key) => [key.library_address, key.track_id])) });
+    const by_key = new Map(rows.map((row) => [`${String(row.library_address)} ${String(row.track_id)}`, row]));
+    return keys
+        .map((key) => by_key.get(`${String(key.library_address)} ${String(key.track_id)}`))
+        .filter((row) => row !== undefined);
+};
+// Match counts by query, kept while the index is unchanged: a count reads
+// every matched row, and a client paging one list asks for it on every page.
+// The connection's change count moves on its own writes, data_version on any
+// other connection's. Neither moves on a rollback, so a count read inside an
+// open transaction, as during a commit batch, is never kept.
+const MAX_CACHED_COUNTS = 256;
+const count_cache = new WeakMap();
+const cached_count = (db, key, count) => {
+    if (db.isTransaction)
+        return count();
+    const row = db.prepare('SELECT total_changes() AS changes, data_version FROM pragma_data_version').get();
+    const generation = `${String(row.changes)}:${String(row.data_version)}`;
+    let cache = count_cache.get(db);
+    if (cache === undefined || cache.generation !== generation || cache.counts.size >= MAX_CACHED_COUNTS) {
+        cache = { generation, counts: new Map() };
+        count_cache.set(db, cache);
+    }
+    const cached = cache.counts.get(key);
+    if (cached !== undefined)
+        return cached;
+    const value = count();
+    cache.counts.set(key, value);
+    return value;
+};
 // Tags, resolvers, listen counts, and ownership for a page of track rows.
 const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, with_timestamps = false }) => {
     const track_ids = JSON.stringify(rows.map((row) => row.track_id));
@@ -125,39 +162,64 @@ export const list_tracks = ({ db, ...input }) => {
     const scoped = library_addresses !== undefined;
     const searching = query !== undefined && query.length > 0;
     const unique_tags = [...new Set(tags)];
+    // Whether two scoped libraries hold one track id, from the track id index.
+    const duplicates = cached_count(db, JSON.stringify(['duplicates', library_addresses ?? null]), () => Number(db.prepare(`
+    SELECT EXISTS (
+      SELECT 1 FROM tracks ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
+      GROUP BY track_id HAVING count(*) > 1
+    ) AS duplicates`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).duplicates)) === 1;
     const filters = [
+        representative_sql({ scoped, duplicates }),
         searching
-            ? "(title LIKE :pattern ESCAPE '\\' OR artist LIKE :pattern ESCAPE '\\' OR album LIKE :pattern ESCAPE '\\' OR remixer LIKE :pattern ESCAPE '\\')"
+            ? "(t.title LIKE :pattern ESCAPE '\\' OR t.artist LIKE :pattern ESCAPE '\\' OR t.album LIKE :pattern ESCAPE '\\' OR t.remixer LIKE :pattern ESCAPE '\\')"
             : '',
         unique_tags.length > 0
-            ? `(SELECT count(DISTINCT tags.tag) FROM tags
-          WHERE tags.track_id = matched.track_id
-          AND tags.tag IN (SELECT value FROM json_each(:tags))
-          ${scoped ? 'AND tags.library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
-        ) = :tag_count`
+            ? `t.track_id IN (
+          SELECT track_id FROM tags
+          WHERE tag IN (SELECT value FROM json_each(:tags))
+          ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
+          GROUP BY track_id HAVING count(DISTINCT tag) = :tag_count
+        )`
             : ''
     ].filter((filter) => filter.length > 0);
-    const from = `FROM (${scoped_tracks_sql({ scoped })}) AS matched ${filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : ''}`;
+    const where = filters.join(' AND ');
     const parameters = {
-        own_library_addresses: JSON.stringify(own_library_addresses),
+        ...(duplicates ? { own_library_addresses: JSON.stringify(own_library_addresses) } : {}),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
         ...(searching ? { pattern: like_pattern(query) } : {}),
         ...(unique_tags.length > 0 ? { tags: JSON.stringify(unique_tags), tag_count: unique_tags.length } : {})
     };
-    const column = SORT_COLUMNS[sort];
-    const order_by = shuffle
-        ? 'random()'
-        : `(${column}) IS NULL, ${column} ${order.toUpperCase()}, track_id ASC`;
-    const total = Number(db.prepare(`SELECT count(*) AS total ${from}`).get(parameters).total);
-    const rows = db.prepare(`SELECT * ${from} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
-        .all({ ...parameters, limit, offset });
-    return { items: hydrate_tracks({ db, rows, own_library_addresses, library_addresses }), total };
+    const count = (condition) => cached_count(db, JSON.stringify([condition, parameters]), () => Number(db.prepare(`SELECT count(*) AS total FROM tracks AS t WHERE ${where} ${condition}`).get(parameters).total));
+    const keys = (condition, order_by, page) => db.prepare(`SELECT t.library_address, t.track_id FROM tracks AS t WHERE ${where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
+        .all({ ...parameters, ...page });
+    const total = count('');
+    const direction = order.toUpperCase();
+    const { key, nullable_column } = SORT_KEYS[sort];
+    let page_keys;
+    if (shuffle) {
+        page_keys = keys('', 'random()', { offset, limit });
+    }
+    else if (nullable_column === undefined) {
+        page_keys = keys('', `${key} ${direction}, t.track_id ${direction}`, { offset, limit });
+    }
+    else {
+        // Non-null keys first, then the null-key rows by track id.
+        const present = keys(`AND ${nullable_column} IS NOT NULL`, `${key} ${direction}, t.track_id ${direction}`, { offset, limit });
+        const absent = present.length === limit
+            ? []
+            : keys(`AND ${nullable_column} IS NULL`, `t.track_id ${direction}`, {
+                offset: present.length > 0 ? 0 : offset - count(`AND ${nullable_column} IS NOT NULL`),
+                limit: limit - present.length
+            });
+        page_keys = [...present, ...absent];
+    }
+    return { items: hydrate_tracks({ db, rows: rows_by_key(db, page_keys), own_library_addresses, library_addresses }), total };
 };
 // One track by id, with its listen timestamps; the response for POST and
 // DELETE /tags. Undefined when no scoped library holds it.
 export const get_track = ({ db, track_id, own_library_addresses = [], library_addresses }) => {
     const scoped = library_addresses !== undefined;
-    const row = db.prepare(`SELECT * FROM (${scoped_tracks_sql({ scoped })}) WHERE track_id = :track_id`).get({
+    const row = db.prepare(`SELECT t.* FROM tracks AS t WHERE t.track_id = :track_id AND ${representative_sql({ scoped })}`).get({
         track_id,
         own_library_addresses: JSON.stringify(own_library_addresses),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {})
@@ -200,8 +262,8 @@ export const list_listens = ({ db, own_library_addresses = [], listens_addresses
     GROUP BY track_id
     ORDER BY last_listened_at_ms DESC, track_id ASC
     LIMIT :limit OFFSET :offset`).all({ ...parameters, limit, offset });
-    const track_rows = db.prepare(`SELECT * FROM (${scoped_tracks_sql({ scoped: false })})
-    WHERE track_id IN (SELECT value FROM json_each(:track_ids))`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids: JSON.stringify(groups.map((row) => row.track_id)) });
+    const track_rows = db.prepare(`SELECT t.* FROM tracks AS t
+    WHERE t.track_id IN (SELECT value FROM json_each(:track_ids)) AND ${representative_sql({ scoped: false })}`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids: JSON.stringify(groups.map((row) => row.track_id)) });
     const tracks = new Map(hydrate_tracks({ db, rows: track_rows, own_library_addresses, library_addresses: undefined })
         .map((track) => [track.id, track]));
     const items = groups.map((row) => {

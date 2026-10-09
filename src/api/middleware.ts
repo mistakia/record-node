@@ -151,3 +151,20 @@ export const handle_errors = (log_error: (error: unknown) => void): ErrorRequest
     send_error(res, { status: 500, code: 'INTERNAL_ERROR', message: 'internal error' })
   }
 }
+
+// A read whose client has hung up is not run. Requests that arrive while the
+// node is busy queue unread, and a client that times out closes its socket
+// behind its request; the close is read one poll phase after the request, so
+// the read waits out that phase, then runs only on a live socket. Writes run
+// regardless: their client asked for them, whether or not it waits to hear.
+export const skip_abandoned_reads: RequestHandler = (req, _res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    next()
+    return
+  }
+  setImmediate(() => {
+    setImmediate(() => {
+      if (!req.destroyed && !req.socket.destroyed) next()
+    })
+  })
+}

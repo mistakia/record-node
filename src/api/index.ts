@@ -11,7 +11,7 @@ import express, { Router } from 'express'
 import morgan from 'morgan'
 
 import type { ApiPeer, Resolver } from '#types/peer.ts'
-import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, type Authenticate } from './middleware.ts'
+import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads, type Authenticate } from './middleware.ts'
 import { create_docs_router, create_validator, load_api_spec, parse_uploads } from './openapi.ts'
 import { attach_event_bridge, type EventBridge } from './websocket.ts'
 import { audio_router } from './routes/audio.ts'
@@ -92,7 +92,7 @@ export const create_api_server = async ({
   app.disable('x-powered-by')
   if (log) app.use(morgan('dev'))
   app.use(cors(cors_origins))
-  app.use('/api', no_cache, api)
+  app.use('/api', no_cache, skip_abandoned_reads, api)
   app.use(handle_errors((error) => { console.error(error) }))
 
   const http_server = createServer(app)

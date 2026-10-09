@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { connect } from 'node:net'
 import WebSocket from 'ws'
 
 import { audio_pipeline_vector } from '#test/conformance/vectors.ts'
@@ -38,6 +39,24 @@ try {
   api.peer.emit(event)
   assert.deepEqual(await received, event)
   socket.close()
+
+  // A read whose client hung up while the node was busy is not run: the
+  // request and the close both wait in the kernel while the loop is blocked.
+  const list_calls = () => api.peer.calls.filter(({ method }) => method === 'list_tracks').length
+  const before = list_calls()
+  const clients = await Promise.all([0, 1, 2].map(async () => {
+    const client = connect(api.server.port, '127.0.0.1')
+    client.on('error', () => {})
+    await new Promise((resolve) => client.once('connect', resolve))
+    return client
+  }))
+  for (const client of clients) client.end('GET /api/tracks HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n')
+  const blocked_until = Date.now() + 100
+  while (Date.now() < blocked_until);
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(list_calls(), before)
+  assert.equal((await fetch(api.url('/tracks'))).status, 200)
+  assert.equal(list_calls(), before + 1)
 
   console.log(`node ${process.version}: API smoke passed`)
 } finally {

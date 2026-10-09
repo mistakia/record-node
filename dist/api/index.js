@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express, { Router } from 'express';
 import morgan from 'morgan';
-import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache } from "./middleware.js";
+import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads } from "./middleware.js";
 import { create_docs_router, create_validator, load_api_spec, parse_uploads } from "./openapi.js";
 import { attach_event_bridge } from "./websocket.js";
 import { audio_router } from "./routes/audio.js";
@@ -53,7 +53,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
     if (log)
         app.use(morgan('dev'));
     app.use(cors(cors_origins));
-    app.use('/api', no_cache, api);
+    app.use('/api', no_cache, skip_abandoned_reads, api);
     app.use(handle_errors((error) => { console.error(error); }));
     const http_server = createServer(app);
     const bridge = attach_event_bridge({ http_server, peer, authenticate, cors_origins });
