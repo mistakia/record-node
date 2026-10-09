@@ -1,14 +1,13 @@
-// Content replication (§4.6.1, §4.6.2, §5.4.6): the audio and artwork a
-// library's replication policy keeps, and the blobs the identity library
+// Content replication (§4.6.1, §4.6.2, §5.4.6): the audio, artwork, and
+// avatar a library's replication policy keeps, and the blobs the identity library
 // pins, fetched from peers over the content channel and pinned recursively.
 // Fetches are bounded: a fixed number in flight, a timeout per blob, and a
 // retry under backoff for one that fails, so a blob no peer serves never
 // stalls log replication or another blob. Its track stays listed.
 import { canonical_cid } from '#entry/identity-record.ts';
-import { is_put } from '#entry/operations.ts';
 import { read_unixfs_file } from '#fabric/unixfs.ts';
 import { ProtocolError } from '#types/errors.ts';
-import { stored_track_content, track_blobs } from "./pins.js";
+import { has_item_6, stored_item_6 } from "./pins.js";
 import { keeps_blobs } from "./policy.js";
 const RETRY_FIRST_MS = 30_000;
 const RETRY_MAX_MS = 30 * 60_000;
@@ -163,16 +162,14 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
         const asked = generation(library_address);
         const keeps = keeps_blobs(context)(handle.chain);
         for (const entry of entries) {
-            if (!is_put(entry.operation) || entry.operation.value.type !== 'track')
+            if (!has_item_6(entry) || handle.oplog.current.get(entry.state_key) !== entry)
                 continue;
-            if (handle.oplog.current.get(entry.operation.key) !== entry)
-                continue;
-            const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content });
-            if (content === undefined || !keeps({ entry, content }))
+            const item = await stored_item_6({ content_store, library_address, entry });
+            if (item === undefined || !keeps({ entry, content: item.content }))
                 continue;
             if (generation(library_address) !== asked)
                 return;
-            const cids = track_blobs(content);
+            const cids = item.blobs;
             await libraries.hold_blobs({ library_address, cids });
             for (const cid of cids)
                 if (handle.pins.get(cid) !== true)
@@ -180,7 +177,7 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
         }
         pump();
     };
-    const live_tracks = (library_address) => [...libraries.get(library_address)?.oplog.current.values() ?? []].filter((entry) => is_put(entry.operation) && entry.operation.value.type === 'track');
+    const live_item_6_entries = (library_address) => [...libraries.get(library_address)?.oplog.current.values() ?? []].filter(has_item_6);
     return {
         // Tracked with the fetches, so settled waits for its holds; none starts once stopped.
         entries: async (library_address, entries) => {
@@ -203,13 +200,13 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
             generations.set(library_address, generation(library_address) + 1);
             const keeps = keeps_blobs(context)(handle.chain);
             const released = [];
-            for (const entry of live_tracks(library_address)) {
-                const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content });
-                if (content !== undefined && !keeps({ entry, content }))
-                    released.push(...track_blobs(content));
+            for (const entry of live_item_6_entries(library_address)) {
+                const item = await stored_item_6({ content_store, library_address, entry });
+                if (item !== undefined && !keeps({ entry, content: item.content }))
+                    released.push(...item.blobs);
             }
             await libraries.release_blobs({ library_address, cids: released });
-            await keep_library_blobs(library_address, live_tracks(library_address));
+            await keep_library_blobs(library_address, live_item_6_entries(library_address));
         },
         sync_pins: async (pins) => {
             const previous = retained;

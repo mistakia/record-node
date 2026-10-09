@@ -2,7 +2,7 @@
 // removal, and identity import.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ResolverError } from 'record-resolver'
@@ -69,6 +69,22 @@ describe('peer', () => {
     expect(await peer.content_store.is_pinned(f7.audio_cid)).toBe(true)
     expect(existsSync(pins)).toBe(true)
     await wait_until(async () => ['pin', 'pinned-block'].every((name) => !existsSync(join(datastore, name))))
+  })
+
+  test('§4.6 an own library\'s avatar is re-pinned when the pin index is rebuilt; an uploaded image no entry names is not', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-peer-test-'))
+    const first = await start(data_dir)
+    const { own_address } = first.identity()
+    const avatar = await first.put_image(new TextEncoder().encode('avatar image'))
+    const unused = await first.put_image(new TextEncoder().encode('unused image'))
+    await first.set_about({ address: own_address, fields: { avatar } })
+    await stop(first)
+    for (const suffix of ['', '-wal', '-shm']) rmSync(data_paths(data_dir).pins + suffix, { force: true })
+
+    const second = await start(data_dir)
+    await second.context.libraries.pins_settled()
+    expect(await second.content_store.is_pinned(avatar)).toBe(true)
+    expect(await second.content_store.is_pinned(unused)).toBe(false)
   })
 
   test('§2.4.3 a metadata update supersedes the content with corrected tags, keeping the audio and labels', async () => {

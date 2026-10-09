@@ -1,5 +1,6 @@
 // Replication policy (§4.6.1): node-local configuration deciding item 6, the
-// audio and artwork of each live Track entry, for a linked library. An own
+// audio and artwork of each live Track entry and the avatar of the current
+// About entry, for a linked library. An own
 // library is always full. A link recorded in the identity library defaults to
 // full, and one carried over from a v1.0 Log entry to index_only.
 
@@ -30,6 +31,8 @@ export const effective_policy = (context: PeerContext, address: string, scope?: 
   if (stored !== undefined) return { mode: stored.mode, filter: stored.mode === 'selective' ? (stored.filter ?? null) as SpecNode | null : null }
   return { mode: link.source === 'identity' ? 'full' : 'index_only', filter: null }
 }
+
+const is_track = (entry: VerifiedEntry): boolean => is_put(entry.operation) && entry.operation.value.type === 'track'
 
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
 
@@ -62,7 +65,8 @@ export const track_view = ({ library_address, entry, content }: {
 // library whose write list holds the identity key is an own library, always
 // full; that is read from the chain, since the predicate runs while the
 // library opens, before it is listed. Before the identity opens, everything
-// keeps.
+// keeps. A selective filter reads a track view, so it decides tracks only and
+// a selective library keeps its avatar.
 export const keeps_blobs = (context: PeerContext) => (chain: ResolvedAcChain): KeepsBlobs => {
   if (context.identity === undefined) return () => true
   if ((chain.write_list as readonly string[]).includes(context.identity.key_pair.public_key)) return () => true
@@ -70,7 +74,7 @@ export const keeps_blobs = (context: PeerContext) => (chain: ResolvedAcChain): K
   const policy = effective_policy(context, library_address)
   if (policy === undefined || policy.mode === 'index_only') return () => false
   if (policy.mode === 'full') return () => true
-  return ({ entry, content }) => filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content }))
+  return ({ entry, content }) => !is_track(entry) || filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content }))
 }
 
 const connected = (context: PeerContext, address: string): boolean =>
