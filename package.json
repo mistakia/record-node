@@ -1,6 +1,6 @@
 {
   "name": "record-node",
-  "version": "1.1.0-alpha.0",
+  "version": "1.1.0-alpha.1",
   "description": "Reference implementation of Record Protocol v1: a spec-conformant peer for distributed audio libraries",
   "license": "MIT",
   "type": "module",
@@ -122,7 +122,7 @@
     "@noble/curves": "2.0.1",
     "@noble/hashes": "2.0.1",
     "ajv": "8.20.0",
-    "bitboot": "git+https://github.com/tintfoundation/bitboot.git#64ec96380f4f3c0f2668cda731d57d6a29849c7c",
+    "bitboot": "git+https://github.com/tintfoundation/bitboot.git#ee81e28235c188b08dc16f5bf70aa2612bb13cbe",
     "blockstore-core": "7.0.1",
     "blockstore-fs": "4.0.1",
     "datastore-core": "12.0.1",
