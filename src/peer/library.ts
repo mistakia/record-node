@@ -17,8 +17,7 @@ import { PeerError } from '#types/peer.ts'
 import { run_bounded } from './bounded.ts'
 import { load_entry_blocks } from './load.ts'
 import { canonical_cid } from '#entry/identity-record.ts'
-import { is_put } from '#entry/operations.ts'
-import { chain_pins, entry_pins, pin_into, stored_track_content, track_blobs, type KeepsBlobs, type PinSet } from './pins.ts'
+import { chain_pins, entry_pins, pin_into, stored_item_6, type KeepsBlobs, type PinSet } from './pins.ts'
 import type { LibraryStateStore, StoredPolicy } from './state.ts'
 
 export interface LibraryHandle {
@@ -92,7 +91,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   projector: Projector
   entry_blocks: EntryBlockCache
   state_store: LibraryStateStore
-  // Whether a library's policy keeps a track's item 6 (§4.6.1), judged from
+  // Whether a library's policy keeps an entry's item 6 (§4.6.1), judged from
   // its resolved chain, since it runs before the library is listed; every
   // library keeps them by default.
   keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs
@@ -126,7 +125,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     const keeps = keeps_blobs(handle.chain)
     await run_bounded(entries, PIN_CONCURRENCY, async (entry) => {
       if (pass && pin_passes_stopped) return
-      await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) })
+      await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, library_address: handle.chain.address, entry, keeps_blobs: keeps }) })
     })
   }
 
@@ -245,13 +244,13 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     unlink_library: async (library_address) => {
       const handle = libraries.get(library_address)
       libraries.delete(library_address)
-      // Every blob its tracks reference, kept by the policy now or before,
-      // since a pin outlives a policy change made while the peer was down.
+      // Every item 6 blob its entries reference, kept by the policy now or
+      // before, since a pin outlives a policy change made while the peer was
+      // down.
       const blobs: string[] = []
       for (const entry of handle?.oplog.entries.values() ?? []) {
-        if (!is_put(entry.operation) || entry.operation.value.type !== 'track') continue
-        const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content })
-        if (content !== undefined) blobs.push(...track_blobs(content))
+        const item = await stored_item_6({ content_store, library_address, entry })
+        if (item !== undefined) blobs.push(...item.blobs)
       }
       await exclusive_pins(async () => { await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs])) })
       await state_store.save_heads({ library_address, heads: undefined })

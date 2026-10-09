@@ -10,8 +10,7 @@ import { PeerError } from '#types/peer.ts';
 import { run_bounded } from "./bounded.js";
 import { load_entry_blocks } from "./load.js";
 import { canonical_cid } from '#entry/identity-record.ts';
-import { is_put } from '#entry/operations.ts';
-import { chain_pins, entry_pins, pin_into, stored_track_content, track_blobs } from "./pins.js";
+import { chain_pins, entry_pins, pin_into, stored_item_6 } from "./pins.js";
 // Pins compare by CID, whatever the encoding: an entry's base58btc
 // content.hash and a pin record's base32 CIDv1 name one blob.
 const canonical_or_self = (cid) => {
@@ -50,7 +49,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
         await run_bounded(entries, PIN_CONCURRENCY, async (entry) => {
             if (pass && pin_passes_stopped)
                 return;
-            await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, entry, keeps_blobs: keeps }) });
+            await pin_into({ content_store, pins: handle.pins, items: await entry_pins({ content_store, library_address: handle.chain.address, entry, keeps_blobs: keeps }) });
         });
     };
     // The canonical CIDs some other library or a pin record still holds.
@@ -168,15 +167,14 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
         unlink_library: async (library_address) => {
             const handle = libraries.get(library_address);
             libraries.delete(library_address);
-            // Every blob its tracks reference, kept by the policy now or before,
-            // since a pin outlives a policy change made while the peer was down.
+            // Every item 6 blob its entries reference, kept by the policy now or
+            // before, since a pin outlives a policy change made while the peer was
+            // down.
             const blobs = [];
             for (const entry of handle?.oplog.entries.values() ?? []) {
-                if (!is_put(entry.operation) || entry.operation.value.type !== 'track')
-                    continue;
-                const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content });
-                if (content !== undefined)
-                    blobs.push(...track_blobs(content));
+                const item = await stored_item_6({ content_store, library_address, entry });
+                if (item !== undefined)
+                    blobs.push(...item.blobs);
             }
             await exclusive_pins(async () => { await release(handle, library_address, new Set([...handle?.pins.keys() ?? [], ...blobs])); });
             await state_store.save_heads({ library_address, heads: undefined });

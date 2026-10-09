@@ -102,6 +102,43 @@ describe('audio playback', () => {
     expect(await b.content_store.is_pinned(track.audio_cid)).toBe(false)
   })
 
+  test('§4.6.1 [MUST] a full library keeps its current avatar pinned as it keeps artwork, and index_only releases it', async () => {
+    const a = await peers.start()
+    const address = a.identity().own_address
+    const first = await a.put_image(randomBytes(4096))
+    await a.set_about({ address, fields: { avatar: first } })
+    const b = await peers.start({ bootstrap: [await dial_address(a)] })
+    await b.link_library({ address, alias: null })
+    await wait_until(async () => await b.content_store.is_pinned(first))
+
+    // A superseding About entry's avatar is fetched and pinned in turn.
+    const second = await a.put_image(randomBytes(4096))
+    await a.set_about({ address, fields: { avatar: second } })
+    await wait_until(async () => await b.content_store.is_pinned(second))
+
+    await b.set_replication_policy({ address, mode: 'index_only' })
+    expect(await b.content_store.is_pinned(second)).toBe(false)
+  })
+
+  test('§4.6.1 [MUST] an index_only library does not fetch its avatar, and a selective one keeps it whatever its filter selects', async () => {
+    const a = await peers.start()
+    const address = a.identity().own_address
+    const avatar = await a.put_image(randomBytes(4096))
+    await a.set_about({ address, fields: { avatar } })
+    const track = await append_track({ peer: a, fingerprint: 'AQADavatarindexonly', audio: audio_of(1024) })
+    const b = await peers.start({ bootstrap: [await dial_address(a)] })
+    await b.link_library({ address, alias: null })
+    await b.set_replication_policy({ address, mode: 'index_only' })
+    await wait_until(() => b.context.libraries.get(address)?.oplog.entries.size === 2)
+    await b.context.replication?.settled(address)
+    await b.context.blobs.settled()
+    expect(await b.content_store.is_pinned(avatar)).toBe(false)
+
+    await b.set_replication_policy({ address, mode: 'selective', filter: { type: 'match', fields: { tags: 'none' } } })
+    await wait_until(async () => await b.content_store.is_pinned(avatar))
+    expect(await b.content_store.is_pinned(track.audio_cid)).toBe(false)
+  })
+
   test('GET for audio no peer serves returns 404 once the fetch times out', async () => {
     const { audio_url } = await replicated_pair({ sizes: [1024], config: { audio_fetch_timeout_ms: 300 } })
     const unknown = await create_unserved_cid()

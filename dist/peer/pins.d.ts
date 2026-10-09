@@ -12,8 +12,18 @@ export declare const stored_track_content: ({ content_store, content_cid }: {
     content_cid: string;
 }) => Promise<Record<string, unknown> | undefined>;
 export declare const track_blobs: (content: Record<string, unknown>) => string[];
-export declare const entry_pins: ({ content_store, entry, keeps_blobs }: {
+export declare const has_item_6: (entry: VerifiedEntry) => boolean;
+export declare const stored_item_6: ({ content_store, library_address, entry }: {
     content_store: ContentStore;
+    library_address: string;
+    entry: VerifiedEntry;
+}) => Promise<{
+    content: Record<string, unknown>;
+    blobs: string[];
+} | undefined>;
+export declare const entry_pins: ({ content_store, library_address, entry, keeps_blobs }: {
+    content_store: ContentStore;
+    library_address: string;
     entry: VerifiedEntry;
     keeps_blobs: KeepsBlobs;
 }) => Promise<Array<[string, boolean]>>;
