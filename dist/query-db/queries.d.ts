@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-export declare const TRACK_SORTS: readonly ["title", "artist", "album", "bpm", "duration", "added_at"];
+export declare const TRACK_SORTS: readonly ["title", "artist", "album", "bpm", "duration", "bitrate", "listen_count", "added_at"];
 export type TrackSort = typeof TRACK_SORTS[number];
 export type SortOrder = 'asc' | 'desc';
 export declare const DEFAULT_LIMIT = 100;

@@ -26,6 +26,7 @@ import { data_paths, resolve_peer_config, type PeerConfig } from './config.ts'
 import { drain_queues, ingest_into, refuse_when_stopping, require_identity, serialise_write, type PeerContext } from './context.ts'
 import { describe_library } from './describe.ts'
 import { create_event_bus } from './events.ts'
+import { create_image_source } from './images.ts'
 import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key, peer_id_of, save_key_pair, unmarshal_private_key } from './identity.ts'
 import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_sync } from './identity-library.ts'
 import { import_files, import_url, local_file_phases } from './imports.ts'
@@ -130,6 +131,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
     download,
     audio: create_audio_source({ content_store, network, timeout_ms: config.audio_fetch_timeout_ms, max_bytes: config.audio_cache_max_bytes }),
+    images: create_image_source({ content_store, network, timeout_ms: config.audio_fetch_timeout_ms }),
     replication: undefined,
     census: undefined,
     identity: undefined,

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.5.0
+  version: 1.6.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -77,6 +77,7 @@ tags:
   - name: identity
   - name: import
   - name: audio
+  - name: images
   - name: resolve
   - name: capabilities
   - name: replication
@@ -119,7 +120,7 @@ paths:
           description: Sort field. Whitelisted to prevent injection.
           schema:
             type: string
-            enum: [title, artist, album, bpm, duration, added_at]
+            enum: [title, artist, album, bpm, duration, bitrate, listen_count, added_at]
             default: added_at
         - name: order
           in: query
@@ -726,7 +727,7 @@ paths:
                 location: { type: [string, 'null'], maxLength: 128 }
                 avatar:
                   type: [string, 'null']
-                  description: CID of an image blob.
+                  description: CID of an image blob, served by `/images/{cid}`.
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
@@ -1166,6 +1167,57 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /images/{cid}:
+    parameters:
+      - name: cid
+        in: path
+        required: true
+        description: |
+          CID of an image blob: a `Track.artwork` element or a library's
+          `avatar`. Accepts any valid CID string, as `/audio/{cid}` does.
+        schema: { type: string }
+    head:
+      tags: [images]
+      summary: Check local availability of an image blob.
+      description: |
+        Returns 200 when GET would serve the blob from the local content
+        store alone, 404 otherwise. Side-effect-free.
+      responses:
+        '200':
+          description: Locally available as an image.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Not in the local content store, or not an image.
+    get:
+      tags: [images]
+      summary: Fetch an image blob by CID.
+      description: |
+        Reads the local content store and, on a networked node, fetches
+        missing blocks from peers, as `/audio/{cid}` does. Serves only a
+        blob of at most 16 MiB (16777216 bytes) whose first 4100 bytes
+        sniff, via file-type, as an `image/*` MIME type, which becomes
+        its `Content-Type`; any other blob is 404, so the route is not a
+        generic blob fetch. A node SHOULD check the size from the blob's
+        root block before fetching the rest. No Range support. CIDs are
+        immutable, so the response is cacheable indefinitely. No
+        side-effects: the blocks a GET fetched are not pinned or kept.
+      responses:
+        '200':
+          description: The whole image.
+          headers:
+            Content-Type:
+              schema: { type: string, example: image/png }
+            Content-Length:
+              schema: { type: integer }
+            Cache-Control:
+              schema: { type: string, example: 'private, max-age=31536000, immutable' }
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /resolve:
     get:
       tags: [resolve]
@@ -1382,7 +1434,7 @@ components:
         lossless: { type: [boolean, 'null'] }
         artwork:
           type: array
-          description: CIDs of album-art blobs.
+          description: CIDs of album-art blobs, served by `/images/{cid}`.
           items: { type: string }
         resolvers:
           type: array
@@ -1466,7 +1518,9 @@ components:
         location: { type: [string, 'null'] }
         avatar:
           type: [string, 'null']
-          description: CID of the library's avatar image (protocol spec §2.6).
+          description: |
+            CID of the library's avatar image (protocol spec §2.6), served
+            by `/images/{cid}`.
         alias:
           type: [string, 'null']
           description: |

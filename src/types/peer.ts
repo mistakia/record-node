@@ -348,6 +348,9 @@ export interface ApiPeer {
   // The audio blob's file bytes (not its root block), local store only.
   get_audio: (cid: string) => Promise<Uint8Array | undefined>
   has_audio: (cid: string) => Promise<boolean>
+  // An image blob's file bytes, at most IMAGE_MAX_BYTES; undefined when absent,
+  // over the cap, or (local_only) not wholly in the local store.
+  get_image: (cid: string, options?: { local_only?: boolean }) => Promise<Uint8Array | undefined>
 
   // Ingest takes ownership of the files and removes them when done (§6.4.1).
   import_files: (input: { paths: string[] } & WriteTargetInput) => Promise<ImportAck>

@@ -1,4 +1,4 @@
-// ApiPeer track, tag, pin, and audio methods. Writes go to a write target:
+// ApiPeer track, tag, pin, audio, and image methods. Writes go to a write target:
 // an own library, or one written under a capability (chapter 7).
 import { encode_canonical } from '#encoding/canonical-bytes.ts';
 import { compute_cid_string } from '#encoding/cid.ts';
@@ -213,5 +213,6 @@ export const create_track_methods = (context) => ({
         tags: (current) => current.includes(tag) ? current.filter((label) => label !== tag) : undefined
     }),
     get_audio: async (cid) => await context.audio.read(cid),
-    has_audio: async (cid) => await context.audio.read_local(cid) !== undefined
+    has_audio: async (cid) => await context.audio.read_local(cid) !== undefined,
+    get_image: async (cid, { local_only = false } = {}) => local_only ? await context.images.read_local(cid) : await context.images.read(cid)
 });

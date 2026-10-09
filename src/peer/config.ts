@@ -32,8 +32,8 @@ export interface PeerConfig {
   readonly traversal_concurrency: number
   readonly traversal_timeout_ms: number
   // Playback of audio not held locally (chapter 8, §8.6.5a): how long one
-  // GET may wait on peers, and the byte cap on fetched blocks no pin holds,
-  // evicted least recently used first.
+  // GET may wait on peers (an /images GET too), and the byte cap on fetched
+  // blocks no pin holds, evicted least recently used first.
   readonly audio_fetch_timeout_ms: number
   readonly audio_cache_max_bytes: number
   // §5.4.6: how long one audio or artwork blob a policy or pin keeps may take

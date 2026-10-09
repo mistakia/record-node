@@ -13,6 +13,7 @@ import type { AudioSource } from './audio.ts'
 import type { BlobKeeper } from './blobs.ts'
 import type { PeerConfig } from './config.ts'
 import type { EventBus } from './events.ts'
+import type { ImageSource } from './images.ts'
 import type { DataDirectoryLock } from './lock.ts'
 import type { LibraryManager } from './library.ts'
 import type { Census } from './census.ts'
@@ -41,6 +42,7 @@ export interface PeerContext {
   readonly resolve: ResolveUrl
   readonly download: Download
   readonly audio: AudioSource
+  readonly images: ImageSource
   // Set when the peer has a network; a networkless peer only opens libraries.
   replication: PeerReplication | undefined
   // Set when config.census is on.
