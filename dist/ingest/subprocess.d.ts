@@ -18,6 +18,7 @@ export type ToolResponse = {
 } | ToolResult & {
     readonly id: number;
 };
+export declare const TOOLS_IN_PROCESS: boolean;
 export declare const run_tool: ({ command, args }: {
     command: string;
     args: readonly string[];

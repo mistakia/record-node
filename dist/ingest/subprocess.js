@@ -1,8 +1,13 @@
 // Runs the protocol-bound external tools (fpcalc, ffmpeg) without a shell,
 // through the tool host (tool-host.ts), so a spawn never forks the node.
+// Under Electron the node runs as a utility process, which cannot fork a Node
+// child once the app turns its RunAsNode fuse off, so there the node runs the
+// tools itself; the app's node is small, and macOS spawns without copying
+// page tables.
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { IngestError } from '#types/ingest.ts';
+import { run_tool_request } from "./tool-runner.js";
 // The source under Bun, the build under Node.
 const HOST_PATH = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? './tool-host.ts' : './tool-host.js', import.meta.url));
 let host;
@@ -43,15 +48,20 @@ const start_host = () => {
     child.on('exit', (code, signal) => { fail_all(`the tool host exited (${signal ?? code})`); });
     return started;
 };
-const request = async ({ command, args, count_stdout }) => {
+const via_host = async (tool_request) => {
     host ??= start_host();
     const { child, pending } = host;
-    const id = next_id++;
-    const response = await new Promise((resolve, reject) => {
-        pending.set(id, { command, resolve, reject });
+    return await new Promise((resolve, reject) => {
+        pending.set(tool_request.id, { command: tool_request.command, resolve, reject });
         hold(child, true);
-        child.send({ id, command, args: [...args], count_stdout });
+        child.send(tool_request);
     });
+};
+const in_process = async (tool_request) => await new Promise((resolve) => { run_tool_request(tool_request, resolve); });
+export const TOOLS_IN_PROCESS = process.versions.electron !== undefined;
+const request = async ({ command, args, count_stdout }) => {
+    const tool_request = { id: next_id++, command, args: [...args], count_stdout };
+    const response = await (TOOLS_IN_PROCESS ? in_process : via_host)(tool_request);
     if ('start_error' in response)
         throw new IngestError('toolchain_unavailable', `cannot run ${command}: ${response.start_error}`);
     return response;
