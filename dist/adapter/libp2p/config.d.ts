@@ -4,6 +4,7 @@ export interface MainlineRendezvousConfig {
     readonly dht_bootstrap?: readonly string[] | undefined;
     readonly port: number;
     readonly lookup_interval_ms: number;
+    readonly dial_private: boolean;
 }
 export interface RelayServerConfig {
     readonly allowed_peer_ids: readonly string[];

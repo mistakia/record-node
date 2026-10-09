@@ -42,12 +42,18 @@ export const mainline_rendezvous = (config) => (components) => {
         }
         return own;
     };
+    // Anyone can announce under the info hash, so an entry is a hint: a private
+    // address would only make this node probe its own network.
     const dial = (peer) => {
         if (!running || own_addresses().has(address_key(peer)))
             return;
         const target = multiaddr(`/ip4/${peer.host}/tcp/${peer.port}`);
-        const connected = components.connectionManager.getConnections()
-            .some(({ remoteAddr }) => remoteAddr.toString().startsWith(target.toString()));
+        if (!config.dial_private && isPrivate(target) !== false)
+            return;
+        const connected = components.connectionManager.getConnections().some(({ remoteAddr }) => {
+            const [ip, tcp] = remoteAddr.getComponents();
+            return ip?.value === peer.host && tcp?.name === 'tcp' && Number(tcp.value) === peer.port;
+        });
         if (connected)
             return;
         components.connectionManager.openConnection(target, { signal: AbortSignal.timeout(DIAL_TIMEOUT_MS) })
@@ -62,7 +68,12 @@ export const mainline_rendezvous = (config) => (components) => {
         announced = port;
         log('announcing %s', port ?? 'nothing');
         const current = rendezvous;
-        ready.then(async () => { await current.announce(port); })
+        ready.then(async () => {
+            // A stop since then leaves nothing to announce on.
+            if (rendezvous !== current || !running)
+                return;
+            await current.announce(port);
+        })
             .catch((error) => { log.error('announce failed - %e', error); });
     };
     const lookup = async () => {

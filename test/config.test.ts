@@ -66,7 +66,7 @@ describe('config', () => {
       mdns: false,
       dht: true,
       upnp: true,
-      mainline_rendezvous: { port: 0, lookup_interval_ms: 900_000 },
+      mainline_rendezvous: { port: 0, lookup_interval_ms: 900_000, dial_private: false },
       relay_server: { allowed_peer_ids: [] }
     })
     expect((await load_config({ config_path: config_file({ network: false }) })).peer.network).toBe(false)
@@ -103,6 +103,7 @@ describe('network modes (spec §5.6)', () => {
     await refuses({ mainline_rendezvous: { dht_bootstrap: ['router.example'] } }, 'dht_bootstrap')
     await refuses({ mainline_rendezvous: { lookup_interval_ms: 1000 } }, 'lookup_interval_ms')
     await refuses({ mainline_rendezvous: { bitboot: true } }, 'mainline_rendezvous has unknown keys: bitboot')
+    await refuses({ mainline_rendezvous: { dial_private: 'yes' } }, 'dial_private')
     await refuses({ relay_server: { allowed_peer_ids: 'x' } }, 'allowed_peer_ids')
     await refuses({ upnp: 'on' }, 'network.upnp')
   })
@@ -143,7 +144,9 @@ describe('network modes (spec §5.6)', () => {
       mode: 'relayed', relay_address: RELAY, listen: [], mdns: false, dht: true, upnp: false, mainline_rendezvous: false, relay_server: false
     })
     await refuses({ mode: 'relayed' }, 'network.relay_address is required in relayed mode')
-    await refuses({ mode: 'relayed', relay_address: '/ip4/178.18.253.104/tcp/4100' }, 'relay_address must be a multiaddr ending in /p2p/')
+    await refuses({ mode: 'relayed', relay_address: '/ip4/178.18.253.104/tcp/4100' }, 'network.relay_address must be')
+    await refuses({ mode: 'relayed', relay_address: '/dnsaddr/relay.example/p2p/12D3KooWQLvRR8WUAsgQWaduVRtSwKTheBtGCnNtm9QF1ZNvFvy5' }, 'network.relay_address must be')
+    expect(await network_of({ mode: 'relayed', relay_address: '/dns4/relay.example/tcp/4100/p2p/12D3KooWQLvRR8WUAsgQWaduVRtSwKTheBtGCnNtm9QF1ZNvFvy5' })).toMatchObject({ mode: 'relayed' })
     await refuses({ mode: 'relayed', relay_address: RELAY, mdns: true }, 'network.mdns cannot be set in relayed mode')
     await refuses({ mode: 'relayed', relay_address: RELAY, listen: ['/ip4/10.27.0.22/tcp/4100'] }, 'network.listen cannot be set')
     await refuses({ mode: 'relayed', relay_address: RELAY, mainline_rendezvous: true }, 'mainline_rendezvous cannot be set')

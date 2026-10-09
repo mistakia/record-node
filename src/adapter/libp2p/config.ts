@@ -15,6 +15,10 @@ export interface MainlineRendezvousConfig {
   readonly port: number
   // How often the rendezvous is looked up after the lookup at start.
   readonly lookup_interval_ms: number
+  // Dial private and loopback addresses the rendezvous returns. Off, since
+  // anyone can announce one to make the node probe its own network; on only
+  // for a network that lives on one LAN or host, as tests do.
+  readonly dial_private: boolean
 }
 
 export interface RelayServerConfig {
@@ -59,7 +63,8 @@ export const RENDEZVOUS_NAME = 'record-network-v1'
 
 export const DEFAULT_MAINLINE_RENDEZVOUS: MainlineRendezvousConfig = Object.freeze({
   port: 0,
-  lookup_interval_ms: 15 * 60_000
+  lookup_interval_ms: 15 * 60_000,
+  dial_private: false
 })
 
 // The public node on the nano-community VPS: a masked node cannot use the
@@ -144,11 +149,12 @@ const resolve_mainline_rendezvous = (value: unknown): MainlineRendezvousConfig |
   if (value === true) return DEFAULT_MAINLINE_RENDEZVOUS
   if (!is_object(value)) throw new TypeError('network.mainline_rendezvous must be true, false, or an object')
   const resolved = { ...DEFAULT_MAINLINE_RENDEZVOUS, ...value } as Record<string, unknown>
-  const unknown = Object.keys(resolved).filter((key) => !['dht_bootstrap', 'port', 'lookup_interval_ms'].includes(key))
+  const unknown = Object.keys(resolved).filter((key) => !['dht_bootstrap', 'port', 'lookup_interval_ms', 'dial_private'].includes(key))
   if (unknown.length > 0) throw new TypeError(`network.mainline_rendezvous has unknown keys: ${unknown.join(', ')}`)
   if (resolved.dht_bootstrap !== undefined && !(is_string_list(resolved.dht_bootstrap) && resolved.dht_bootstrap.every((entry) => parse_host_port(entry) !== undefined))) {
     throw new TypeError('network.mainline_rendezvous.dht_bootstrap must be an array of host:port strings')
   }
+  if (typeof resolved.dial_private !== 'boolean') throw new TypeError('network.mainline_rendezvous.dial_private must be true or false')
   if (!is_port(resolved.port, { allow_zero: true })) throw new RangeError('network.mainline_rendezvous.port must be 0-65535')
   if (!Number.isSafeInteger(resolved.lookup_interval_ms) || (resolved.lookup_interval_ms as number) < 60_000) {
     throw new RangeError('network.mainline_rendezvous.lookup_interval_ms must be an integer of at least 60000')
@@ -178,6 +184,10 @@ const resolve_tor = (value: unknown): TorConfig | undefined => {
   return Object.freeze({ socks_address: value.socks_address })
 }
 
+// A direct TCP address to the relay; not /dnsaddr, which libp2p would resolve
+// to an address the relayed dial gate does not recognise.
+const RELAY_ADDRESS = /^\/(?:ip4|ip6|dns|dns4|dns6)\/[^/]+\/tcp\/\d{1,5}\/p2p\/[^/]+$/
+
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right)
 
 // A partial network object fills in from its mode's defaults; a key the mode
@@ -200,8 +210,8 @@ export const resolve_network_config = (network: unknown): NetworkConfig | false 
   resolved.mainline_rendezvous = resolve_mainline_rendezvous(resolved.mainline_rendezvous)
   resolved.relay_server = resolve_relay_server(resolved.relay_server)
   resolved.tor = resolve_tor(resolved.tor)
-  if (resolved.relay_address !== undefined && (typeof resolved.relay_address !== 'string' || !/\/p2p\/[^/]+$/.test(resolved.relay_address))) {
-    throw new TypeError('network.relay_address must be a multiaddr ending in /p2p/<relay peer id>')
+  if (resolved.relay_address !== undefined && (typeof resolved.relay_address !== 'string' || !RELAY_ADDRESS.test(resolved.relay_address))) {
+    throw new TypeError('network.relay_address must be /ip4, /ip6 or /dns* with /tcp/<port>/p2p/<relay peer id>')
   }
   for (const field of FIXED_BY_MODE[mode as NetworkMode]) {
     if (field in network && !same(resolved[field], defaults[field])) throw new TypeError(`network.${field} cannot be set in ${String(mode)} mode`)

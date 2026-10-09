@@ -4,6 +4,7 @@
 // only its connect step. Outbound only: listening as an onion service is not
 // defined. A hostname goes to the proxy unresolved, so Tor resolves it and
 // the local resolver never sees it.
+import { connect } from 'node:net';
 import { tcp } from '@libp2p/tcp';
 import { SocksClient } from 'socks';
 import { parse_host_port } from "./config.js";
@@ -21,21 +22,35 @@ export const socks_destination = (ma) => {
     return { host: host.value, port: Number(port.value) };
 };
 const SOCKS_TIMEOUT_MS = 60_000;
+// The socket to the proxy is ours, so libp2p's abort signal ends the SOCKS
+// handshake where it stands. Tor isolates streams by SOCKS credentials, so
+// each destination gets its own circuit and exit, and peers cannot link the
+// node's connections by exit address.
 const socks_connect = async ({ proxy, destination, signal }) => {
     signal.throwIfAborted();
-    const { socket } = await SocksClient.createConnection({
-        proxy: { host: proxy.host, port: proxy.port, type: 5 },
-        command: 'connect',
-        destination,
-        timeout: SOCKS_TIMEOUT_MS,
-        set_tcp_nodelay: true
-    });
-    if (signal.aborted) {
-        socket.destroy();
+    const proxy_socket = connect(proxy.port, proxy.host);
+    const abort = () => { proxy_socket.destroy(signal.reason); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+        const { socket } = await SocksClient.createConnection({
+            proxy: { host: proxy.host, port: proxy.port, type: 5, userId: `${destination.host}:${destination.port}`, password: 'record' },
+            command: 'connect',
+            destination,
+            timeout: SOCKS_TIMEOUT_MS,
+            set_tcp_nodelay: true,
+            existing_socket: proxy_socket
+        });
         signal.throwIfAborted();
+        socket.setKeepAlive(true);
+        return socket;
     }
-    socket.setKeepAlive(true);
-    return socket;
+    catch (error) {
+        proxy_socket.destroy();
+        throw signal.aborted ? signal.reason : error;
+    }
+    finally {
+        signal.removeEventListener('abort', abort);
+    }
 };
 export const tor_transport = ({ socks_address }) => (components) => {
     const proxy = parse_host_port(socks_address);

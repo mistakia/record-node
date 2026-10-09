@@ -45,7 +45,7 @@ describe('mainline rendezvous service', () => {
     cleanups.push(dht.stop)
     const addresses = [address('/ip4/127.0.0.1/tcp/4100', true), address('/ip4/178.18.253.104/tcp/4100', false)]
     const events = new EventTarget()
-    const service = mainline_rendezvous({ dht_bootstrap: [dht.address], port: 0, lookup_interval_ms: 60_000 })({
+    const service = mainline_rendezvous({ dht_bootstrap: [dht.address], port: 0, lookup_interval_ms: 60_000, dial_private: false })({
       addressManager: { getAddressesWithMetadata: () => addresses },
       connectionManager: { openConnection: async () => undefined, getConnections: () => [] },
       events,
@@ -75,7 +75,7 @@ describe('mainline rendezvous service', () => {
     const announcer = await start_observer(dht.address)
     await announcer.announce(Number(multiaddr(await dial_address(a)).getComponents()[1]?.value))
 
-    const b = await peers.start({ mainline_rendezvous: { dht_bootstrap: [dht.address], port: 0, lookup_interval_ms: 60_000 } })
+    const b = await peers.start({ mainline_rendezvous: { dht_bootstrap: [dht.address], port: 0, lookup_interval_ms: 60_000, dial_private: true } })
     const a_address = a.identity().own_address
     await wait_until(async () => (await b.list_peers()).some(({ peer_id }) => peer_id === a.context.store.network?.peer_id), 15_000)
     const b_has_a = wait_for_event(b, (event) => event.type === 'track:added' && event.payload.library_address === a_address)
@@ -83,5 +83,24 @@ describe('mainline rendezvous service', () => {
     await b_has_a
     const items = (await b.list_tracks({ offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc', library_addresses: [a_address] })).items
     expect(items.map(({ id }) => id)).toEqual([compute_track_id('AQADtEmSaImS')])
+  })
+
+  test('a private address found on the rendezvous is never dialed unless the network is private', async () => {
+    const dht = await start_local_dht()
+    cleanups.push(dht.stop)
+    const dialed: string[] = []
+    const service = mainline_rendezvous({ dht_bootstrap: [dht.address], port: 0, lookup_interval_ms: 60_000, dial_private: false })({
+      addressManager: { getAddressesWithMetadata: () => [] },
+      connectionManager: { openConnection: async (target) => { dialed.push(target.toString()) }, getConnections: () => [] },
+      events: new EventTarget(),
+      logger: defaultLogger()
+    })
+    service.start()
+    cleanups.push(async () => { await service.stop() })
+    const announcer = await start_observer(dht.address)
+    await announcer.announce(4100)
+    // The DHT stored the announce from loopback.
+    expect(await service.count_addresses()).toBe(1)
+    expect(dialed).toEqual([])
   })
 })

@@ -68,6 +68,7 @@ describe('census helpers', () => {
     expect(parse_agent('record-node/1.2 (masked) /ip4/1.2.3.4')).toEqual({ version: 'other', mode: undefined })
     expect(parse_agent('js-libp2p/3.3.11 node/22')).toEqual({ version: 'other', mode: undefined })
     expect(parse_agent(undefined)).toEqual({ version: 'other', mode: undefined })
+    expect(parse_agent(`record-node/1.${'9'.repeat(40)} (public)`)).toEqual({ version: 'other', mode: undefined })
   })
 })
 
@@ -125,6 +126,19 @@ describe('census', () => {
     await first.census.stop()
     const text = readFileSync(join(first.dir, '2026-10-10.jsonl'), 'utf8')
     expect(JSON.parse(text.trim())).toMatchObject({ complete: false, distinct_peer_count: 1 })
+  })
+
+  test('names at most the 16 most-held versions', async () => {
+    const { census, connect } = fake_census()
+    await census.start()
+    for (let minor = 0; minor < 20; minor++) {
+      for (let copy = 0; copy < 3 + (minor === 19 ? 5 : 0); copy++) connect(`12D3KooWpeer${minor}x${copy}`, `record-node/1.${minor} (public)`)
+    }
+    const counts = (await census.read_row())?.node_version_counts ?? {}
+    expect(Object.keys(counts).filter((key) => key !== 'other')).toHaveLength(16)
+    expect(counts['record-node/1.19']).toBe(8)
+    expect(counts.other).toBe(12)
+    await census.stop()
   })
 
   test('deletes rows older than 90 days', async () => {

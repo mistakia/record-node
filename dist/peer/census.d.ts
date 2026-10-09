@@ -21,6 +21,7 @@ export interface Census {
 export declare const SAMPLE_INTERVAL_MS: number;
 export declare const RETENTION_DAYS = 90;
 export declare const VERSION_BUCKET_FLOOR = 3;
+export declare const VERSION_BUCKET_LIMIT = 16;
 export declare const utc_date: (ms: number) => string;
 export declare const week_start: (ms: number) => string;
 export declare const parse_agent: (agent: string | undefined) => {

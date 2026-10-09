@@ -141,10 +141,29 @@ const addresses_for = ({ mode, listen, announce_addresses, relay_address }: Netw
   return { listen: [...listen, CIRCUIT] }
 }
 
+// A DNS client that refuses every query. libp2p resolves /dnsaddr addresses
+// with it before the connection gater sees them, so in masked and relayed
+// modes a peer could otherwise make the node query the local resolver for a
+// name of the peer's choosing.
+const NO_DNS = { query: async () => { throw new Error('this network mode does no DNS lookups') } }
+
+// A Tor circuit often takes longer to open than libp2p's 6 s per address.
+const MASKED_DIAL_TIMEOUT_MS = 60_000
+
+const connection_manager_for = (mode: NetworkMode): NonNullable<Libp2pOptions['connectionManager']> => {
+  if (mode === 'public') return {}
+  return {
+    resolvers: {},
+    ...(mode === 'masked' ? { dialTimeout: MASKED_DIAL_TIMEOUT_MS, addressDialTimeout: MASKED_DIAL_TIMEOUT_MS } : {})
+  }
+}
+
 export const create_libp2p_options = (config: NetworkConfig): Libp2pOptions<RecordServices> => {
   const { mode, bootstrap: bootstrap_list, mdns: use_mdns, dht, upnp, mainline_rendezvous: rendezvous, relay_server } = config
   const is_public = mode === 'public'
   return {
+    connectionManager: connection_manager_for(mode),
+    ...(is_public ? {} : { dns: NO_DNS as unknown as NonNullable<Libp2pOptions['dns']> }),
     addresses: addresses_for(config),
     transports: transports_for(config),
     connectionEncrypters: [noise(NOISE_INIT)],

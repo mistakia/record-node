@@ -28,7 +28,10 @@ export const RETENTION_DAYS = 90;
 export const VERSION_BUCKET_FLOOR = 3;
 const DAY_MS = 24 * 60 * 60_000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const AGENT_PATTERN = /^record-node\/(\d+\.\d+) \((public|masked|relayed)\)$/;
+const AGENT_PATTERN = /^record-node\/(\d{1,3}\.\d{1,3}) \((public|masked|relayed)\)$/;
+// At most this many named version buckets; the rest count under `other`.
+export const VERSION_BUCKET_LIMIT = 16;
+const RENDEZVOUS_LOOKUP_TIMEOUT_MS = 120_000;
 export const utc_date = (ms) => new Date(ms).toISOString().slice(0, 10);
 // The Monday that starts ms's week.
 export const week_start = (ms) => {
@@ -52,9 +55,15 @@ const bucket_versions = (versions) => {
     const counts = new Map();
     for (const version of versions)
         counts.set(version, (counts.get(version) ?? 0) + 1);
+    // The most-held versions keep their names.
+    const named = new Set([...counts]
+        .filter(([version, count]) => version !== 'other' && count >= VERSION_BUCKET_FLOOR)
+        .sort(([left_version, left], [right_version, right]) => right - left || left_version.localeCompare(right_version))
+        .slice(0, VERSION_BUCKET_LIMIT)
+        .map(([version]) => version));
     const buckets = {};
     for (const [version, count] of [...counts].sort(([left], [right]) => left.localeCompare(right))) {
-        const bucket = count < VERSION_BUCKET_FLOOR ? 'other' : version;
+        const bucket = named.has(version) ? version : 'other';
         buckets[bucket] = (buckets[bucket] ?? 0) + count;
     }
     return buckets;
@@ -112,7 +121,9 @@ export const create_census = ({ dir, observations, timers = SYSTEM_CENSUS_TIMERS
             week = new_week(week_start(now));
         const base = row_of(ended, true);
         queue_write(async () => {
-            const rendezvous_address_count = await observations.count_rendezvous_addresses().catch(() => null);
+            // A lookup that never answers must not hold every later write.
+            const timeout = new Promise((resolve) => { setTimeout(() => { resolve(null); }, RENDEZVOUS_LOOKUP_TIMEOUT_MS).unref(); });
+            const rendezvous_address_count = await Promise.race([observations.count_rendezvous_addresses().catch(() => null), timeout]);
             await append_row({ ...base, rendezvous_address_count, ...(weekly === undefined ? {} : { weekly_distinct_peer_count: weekly }) });
             await prune();
         });
