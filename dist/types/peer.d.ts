@@ -249,6 +249,9 @@ export interface ApiPeer {
         track_id: string;
         tags: Readonly<Record<string, unknown>>;
     } & WriteTargetInput) => Promise<Track>;
+    rederive_track: (input: {
+        track_id: string;
+    } & WriteTargetInput) => Promise<Track>;
     remove_track: (input: {
         track_id: string;
         library_address?: string | undefined;

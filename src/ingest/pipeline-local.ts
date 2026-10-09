@@ -15,7 +15,7 @@ import { extname, join } from 'node:path'
 import { compute_track_id } from '#entry/id.ts'
 import { IngestError, type IngestedTrack } from '#types/ingest.ts'
 import { upload_artwork } from './artwork.ts'
-import { decoded_duration } from './duration.ts'
+import { decode_audio, decoded_fields, decoded_seconds, type DecodedAudio } from './duration.ts'
 import { compute_fingerprint, is_degenerate_fingerprint } from './fingerprint.ts'
 import { extract_metadata } from './metadata.ts'
 import { find_existing_track, put_track, stored_track_duration, type TrackTarget } from './put-track.ts'
@@ -78,16 +78,18 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
     throw new IngestError('degenerate_fingerprint', `${file_path} fingerprints to a degenerate value, as a silent or steady-tone opening does`)
   }
   const track_id = compute_track_id(fingerprint)
-  let decoded: Promise<number> | undefined
-  const duration = async () => await (decoded ??= decoded_duration({ file_path, toolchain }))
+  let decoding: Promise<DecodedAudio> | undefined
+  const decoded = async () => await (decoding ??= decode_audio({ file_path, toolchain }))
+  const duration = async () => decoded_seconds(await decoded())
   // 3, early: a repeat skips the rest of the work. The commit decides again.
   const existing = await existing_entry({ target, track_id, file_path, duration })
   if (existing !== undefined) return { kind: 'existing', track: existing }
-  // 4-5: metadata, with artwork split out, and the decoded duration stored
-  // in place of the container's.
+  // 4-5: metadata, with artwork split out, and the decode, before anything is
+  // imported. The decoded fields replace the container's once the blob is
+  // measured (§6.3.2).
   const metadata = await extract_metadata({ file_path, fingerprint })
   const { tags: content_tags, pictures } = metadata
-  const audio = { ...metadata.audio, duration: await duration() }
+  const audio_decoded = await decoded()
   // The stripped copy keeps the source extension, which selects the container.
   const extension = extname(file_path)
   if (extension === '') throw new IngestError('tool_failed', `${file_path} has no file extension to select the output container`)
@@ -101,6 +103,7 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
     const artwork = await upload_artwork({ pictures, content_store })
     // 9-10: measure the blob and assemble track.content.
     const { size } = await stat(stripped_path)
+    const audio = { ...metadata.audio, ...decoded_fields(audio_decoded, size) }
     const content = { hash: audio_cid, size, tags: content_tags, audio, artwork, resolver: [...resolver] }
     // 11: the audio blob and artwork are UnixFS DAGs, so pinned recursively.
     const blobs = [audio_cid, ...artwork]

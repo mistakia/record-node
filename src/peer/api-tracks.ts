@@ -9,13 +9,15 @@ import { build_identity_del, build_identity_put, canonical_cid, identity_record_
 import { build_del_operation, build_put_operation, is_put } from '#entry/operations.ts'
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
+import { blob_decoded_fields, with_decoded_fields } from '#ingest/rederive.ts'
 import { resolve_current_state } from '#oplog/current-state.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import { get_track, list_tags, list_tracks } from '#query-db/queries.ts'
 import type { Envelope } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
+import { IngestError } from '#types/ingest.ts'
 import { PeerError, type ApiPeer, type Track } from '#types/peer.ts'
-import { ingest_into, serialise_write, type PeerContext } from './context.ts'
+import { ingest_into, require_toolchain, serialise_write, type PeerContext } from './context.ts'
 import { append_identity_record } from './identity-library.ts'
 import { identity_state, own_recordstore_addresses, visible_addresses } from './ownership.ts'
 import { to_api_track, to_api_tracks } from './views.ts'
@@ -64,6 +66,33 @@ const relabel = async (context: PeerContext, { track_id, library_address, capabi
     return library_track(context, { address: target.address, track_id })
   })
 
+// The live entry's content payload, which a correction rewrites.
+const stored_content = async (context: PeerContext, { envelope, track_id }: { envelope: Envelope, track_id: string }): Promise<Record<string, unknown>> => {
+  const stored = await context.content_store.get(envelope.content)
+  if (stored === undefined) throw new PeerError('conflict', `the content payload of ${track_id} is not stored on this node`)
+  return validate_track_content(decode_payload(stored))
+}
+
+// A correction (§2.4.3, §6.4.4): a new content object for the same audio, PUT
+// under the same id with the envelope's labels kept. The same content appends
+// nothing.
+const supersede_content = async (context: PeerContext, { target, envelope, content }: {
+  target: WriteTarget
+  envelope: Envelope
+  content: Record<string, unknown>
+}): Promise<void> => {
+  const bytes = encode_canonical(validate_track_content(content))
+  assert_payload_size(bytes)
+  const content_cid = compute_cid_string(bytes)
+  if (content_cid === envelope.content) return
+  await context.content_store.put(content_cid, bytes)
+  const payload = build_put_operation({
+    envelope: build_track_envelope({ id: envelope.id, content_cid, ...(envelope.tags === undefined ? {} : { tags: envelope.tags }) }),
+    capability_id: target.capability_id
+  })
+  await append_write(context, target, payload)
+}
+
 // content.tags with each given field set, or removed by null. The
 // fingerprint derives the track id, so it never changes.
 const corrected_tags = (current: Record<string, unknown>, changes: Readonly<Record<string, unknown>>): Record<string, unknown> => {
@@ -90,7 +119,7 @@ const pin_key_of = (cid: string): string => {
 }
 
 export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
-  'list_tracks' | 'add_track' | 'update_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' | 'get_audio' | 'has_audio'> => ({
+  'list_tracks' | 'add_track' | 'update_track' | 'rederive_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' | 'get_audio' | 'has_audio'> => ({
   list_tracks: async ({ library_addresses, ...query }) => {
     const { items, total } = list_tracks({
       db: context.db,
@@ -125,22 +154,35 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
     await serialise_write(context, async () => {
       const target = resolve_write_target(context, { library_address, capability_id })
       const envelope = live_envelope(target, track_id)
-      const stored = await context.content_store.get(envelope.content)
-      if (stored === undefined) throw new PeerError('conflict', `the content payload of ${track_id} is not stored on this node`)
-      const content = validate_track_content(decode_payload(stored))
-      const bytes = encode_canonical(validate_track_content({ ...content, tags: corrected_tags(content.tags as Record<string, unknown>, tags) }))
-      assert_payload_size(bytes)
-      const content_cid = compute_cid_string(bytes)
-      if (content_cid !== envelope.content) {
-        await context.content_store.put(content_cid, bytes)
-        const payload = build_put_operation({
-          envelope: build_track_envelope({ id: envelope.id, content_cid, ...(envelope.tags === undefined ? {} : { tags: envelope.tags }) }),
-          capability_id: target.capability_id
-        })
-        await append_write(context, target, payload)
-      }
+      const content = await stored_content(context, { envelope, track_id })
+      await supersede_content(context, { target, envelope, content: { ...content, tags: corrected_tags(content.tags as Record<string, unknown>, tags) } })
       return library_track(context, { address: target.address, track_id })
     }),
+
+  // Audio re-derivation (§6.4.4). The blob decodes outside the write lock,
+  // and the fields apply to whatever content is live once it is held, so a
+  // concurrent tag correction is kept.
+  rederive_track: async ({ track_id, library_address, capability_id }) => {
+    const target = resolve_write_target(context, { library_address, capability_id })
+    const { hash, size } = await stored_content(context, { envelope: live_envelope(target, track_id), track_id })
+    const blob = await context.audio.read_local(hash as string)
+    if (blob === undefined) throw new PeerError('conflict', `the audio blob of ${track_id} is not stored on this node`)
+    let fields
+    try {
+      fields = await blob_decoded_fields({ blob, size: size as number, toolchain: await require_toolchain(context) })
+    } catch (error) {
+      if (error instanceof IngestError) throw new PeerError('conflict', `the audio blob of ${track_id} cannot be decoded: ${error.message}`)
+      throw error
+    }
+    return await serialise_write(context, async () => {
+      const envelope = live_envelope(target, track_id)
+      const content = await stored_content(context, { envelope, track_id })
+      if (content.hash !== hash) throw new PeerError('conflict', `the audio of ${track_id} changed while it was decoded`)
+      const rederived = with_decoded_fields(content, fields)
+      if (rederived !== undefined) await supersede_content(context, { target, envelope, content: rederived })
+      return library_track(context, { address: target.address, track_id })
+    })
+  },
 
   // No capability action authorises a DEL (§3.5.6), so only an owner removes.
   remove_track: async ({ track_id, library_address }) => {

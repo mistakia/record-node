@@ -160,6 +160,17 @@ describe('api: track metadata', () => {
   })
 })
 
+describe('api: audio re-derivation', () => {
+  test('POST /tracks/{id}/rederive hands the track and write target to the peer and returns the track', async () => {
+    const response = await fetch(api.url(`/tracks/${TRACK_ID}/rederive`), { method: 'POST' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ id: TRACK_ID })
+    expect(last_call('rederive_track')).toEqual([{ track_id: TRACK_ID }])
+    const refused = await fetch(api.url(`/tracks/${TRACK_ID}/rederive`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ library_address: 7 }) })
+    await expect_error(refused, 400, 'VALIDATION_ERROR')
+  })
+})
+
 describe('api: import', () => {
   test('POST /import/url hands the URL to the ingest pipeline and acks 202', async () => {
     const response = await post_json(api.url('/import/url'), { url: 'https://www.youtube.com/watch?v=abc123' })

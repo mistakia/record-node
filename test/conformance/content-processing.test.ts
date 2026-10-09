@@ -15,7 +15,7 @@ import { compute_cid_string, is_cid_string } from '#encoding/cid.ts'
 import { build_del_operation } from '#entry/operations.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
-import { decoded_duration } from '#ingest/duration.ts'
+import { decode_audio } from '#ingest/duration.ts'
 import { compute_fingerprint, FPCALC_ARGS, is_degenerate_fingerprint } from '#ingest/fingerprint.ts'
 import { extract_metadata } from '#ingest/metadata.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
@@ -265,7 +265,7 @@ describe('content-processing', () => {
   test('§6.4.1 [MUST] ingest is rejected when the decoded sample count is zero', async () => {
     const empty = join(dir, 'empty.wav')
     await run_tool({ command: toolchain.ffmpeg_path, args: ['-nostdin', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-t', '0', empty] })
-    expect((await rejection(() => decoded_duration({ file_path: empty, toolchain }))).code).toBe('invalid_duration')
+    expect((await rejection(() => decode_audio({ file_path: empty, toolchain }))).code).toBe('invalid_duration')
   })
 
   test('§6.4.1 [MUST] ingest is rejected when the fingerprint is degenerate (§6.1.6)', async () => {

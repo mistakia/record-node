@@ -7,6 +7,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ResolverError } from 'record-resolver'
 
+import { encode_canonical } from '#encoding/canonical-bytes.ts'
+import { compute_cid_string } from '#encoding/cid.ts'
+import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import { data_paths } from '#peer/config.ts'
 import { DataDirectoryLocked } from '#peer/lock.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
@@ -89,6 +92,37 @@ describe('peer', () => {
     expect(entry_count()).toBe(appended + 1)
     await expect(peer.update_track({ track_id: f7.track_id, tags: { acoustid_fingerprint: 'AQADother' } })).rejects.toMatchObject({ code: 'invalid' })
     await expect(peer.update_track({ track_id: '0'.repeat(64), tags: { title: 'x' } })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  test('§6.4.4 audio re-derivation replaces stored container figures with the decoded fields, once', async () => {
+    const peer = await start()
+    await peer.ingest_file(f7.fixture_path)
+    const [ingested] = (await peer.list_tracks(QUERY)).items
+    const content = validate_track_content(decode_payload(await peer.content_store.get(ingested?.content_cid as string) as Uint8Array))
+    const decoded = content.audio as Record<string, unknown>
+    expect(decoded).toMatchObject({ duration: f7.duration_seconds, bitrate: Math.round(content.size as number * 8 / f7.duration_seconds) })
+    // A v1.0 writer's entry: the same audio with a container's estimates.
+    const stale_bytes = encode_canonical({ ...content, audio: { ...decoded, duration: 600, bitrate: 32000, numberOfSamples: 1 } })
+    const stale_cid = compute_cid_string(stale_bytes)
+    await peer.content_store.put(stale_cid, stale_bytes)
+    const stale = await peer.create_own_library({ discriminator: 'stale' })
+    await peer.add_track({ content_cid: stale_cid, library_address: stale.address })
+    await peer.add_tag({ track_id: f7.track_id, tag: 'kept', library_address: stale.address })
+    const entry_count = (address: string) => peer.context.libraries.get(address)?.oplog.entries.size ?? 0
+    const appended = entry_count(stale.address)
+
+    const rederived = await peer.rederive_track({ track_id: f7.track_id, library_address: stale.address })
+    expect(rederived).toMatchObject({ duration_seconds: f7.duration_seconds, bitrate: decoded.bitrate, audio_cid: ingested?.audio_cid, content_cid: ingested?.content_cid, tags: [{ library_address: stale.address, tag: 'kept' }] })
+    expect(entry_count(stale.address)).toBe(appended + 1)
+
+    // Re-deriving again, or an entry written with the decoded fields, appends nothing.
+    await peer.rederive_track({ track_id: f7.track_id, library_address: stale.address })
+    expect(entry_count(stale.address)).toBe(appended + 1)
+    const own = peer.identity().own_address
+    const own_entries = entry_count(own)
+    await peer.rederive_track({ track_id: f7.track_id, library_address: own })
+    expect(entry_count(own)).toBe(own_entries)
+    await expect(peer.rederive_track({ track_id: '0'.repeat(64), library_address: own })).rejects.toMatchObject({ code: 'not_found' })
   })
 
   test('a track lists the scoped libraries that hold it, and a library totals its audio', async () => {

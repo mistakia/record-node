@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.4.0
+  version: 1.5.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -242,6 +242,59 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /tracks/{id}/rederive:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Track id (sha256 of the AcoustID fingerprint, lowercase hex).
+        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    post:
+      tags: [tracks]
+      summary: Recompute a track's decoded audio fields.
+      description: |
+        Audio re-derivation (spec §6.4.4). The node decodes the audio blob
+        it holds for the track and recomputes `duration`,
+        `numberOfSamples`, and `bitrate` (spec §6.3.2). When any differs
+        from the stored value, it writes a new content object with only
+        those fields changed and appends a PUT of it under the same track
+        id, which supersedes the current one (spec §4.4.2). Everything
+        else, including the envelope's labels, is kept. A track whose
+        stored fields already match appends nothing, so the request is
+        safe to repeat.
+
+        The values are computed by the node and never taken from the
+        client. Under a capability the write needs `library.append_track`
+        (spec §3.5.6).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
+      responses:
+        '200':
+          description: The track as the target library now holds it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            The target is retired, or the node does not hold the track's
+            current content payload or its audio blob, or the blob decodes
+            to no samples.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /tracks/{cid}/pin:

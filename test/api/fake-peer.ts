@@ -147,6 +147,10 @@ export const create_fake_peer = (): FakePeer => {
       track = { ...current, ...(typeof title === 'string' ? { title } : {}) }
       return track
     },
+    rederive_track: async (input) => {
+      record('rederive_track', input)
+      return known_track(input.track_id)
+    },
     remove_track: async (input) => {
       record('remove_track', input)
       known_track(input.track_id)
