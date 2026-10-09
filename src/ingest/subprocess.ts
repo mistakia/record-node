@@ -1,10 +1,15 @@
 // Runs the protocol-bound external tools (fpcalc, ffmpeg) without a shell,
 // through the tool host (tool-host.ts), so a spawn never forks the node.
+// Under Electron the node runs as a utility process, which cannot fork a Node
+// child once the app turns its RunAsNode fuse off, so there the node runs the
+// tools itself; the app's node is small, and macOS spawns without copying
+// page tables.
 
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { IngestError } from '#types/ingest.ts'
+import { run_tool_request } from './tool-runner.ts'
 
 export interface ToolOutput {
   readonly exit_code: number
@@ -71,15 +76,24 @@ const start_host = () => {
   return started
 }
 
-const request = async ({ command, args, count_stdout }: { command: string, args: readonly string[], count_stdout: boolean }): Promise<ToolResult> => {
+const via_host = async (tool_request: ToolRequest): Promise<ToolResponse> => {
   host ??= start_host()
   const { child, pending } = host
-  const id = next_id++
-  const response = await new Promise<ToolResponse>((resolve, reject) => {
-    pending.set(id, { command, resolve, reject })
+  return await new Promise<ToolResponse>((resolve, reject) => {
+    pending.set(tool_request.id, { command: tool_request.command, resolve, reject })
     hold(child, true)
-    child.send({ id, command, args: [...args], count_stdout } satisfies ToolRequest)
+    child.send(tool_request)
   })
+}
+
+const in_process = async (tool_request: ToolRequest): Promise<ToolResponse> =>
+  await new Promise<ToolResponse>((resolve) => { run_tool_request(tool_request, resolve) })
+
+export const TOOLS_IN_PROCESS = process.versions.electron !== undefined
+
+const request = async ({ command, args, count_stdout }: { command: string, args: readonly string[], count_stdout: boolean }): Promise<ToolResult> => {
+  const tool_request: ToolRequest = { id: next_id++, command, args: [...args], count_stdout }
+  const response = await (TOOLS_IN_PROCESS ? in_process : via_host)(tool_request)
   if ('start_error' in response) throw new IngestError('toolchain_unavailable', `cannot run ${command}: ${response.start_error}`)
   return response
 }
