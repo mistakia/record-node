@@ -45,6 +45,12 @@ export const create_validator = ({ spec, validate_responses }: {
   fileUploader: false
 })
 
+// A multer failure as the request's error: 413 for a part over its size
+// limit, 400 for any other.
+const upload_error = (error: unknown, field: string): unknown => error instanceof multer.MulterError
+  ? new ApiError({ status: error.code === 'LIMIT_FILE_SIZE' ? 413 : 400, code: 'VALIDATION_ERROR', message: error.message, details: [{ field: error.field ?? field, message: error.code }] })
+  : error
+
 // Buffer the multipart `files` parts to upload_dir under fresh names that
 // keep the original extension, so the ingest tools can tell the container,
 // and present them to the validator as the array the spec declares.
@@ -58,13 +64,27 @@ export const parse_uploads = (upload_dir: string): RequestHandler => {
   return (req, res, next) => {
     upload(req, res, (error: unknown) => {
       if (error !== undefined) {
-        next(error instanceof multer.MulterError
-          ? new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: error.message, details: [{ field: error.field ?? 'files', message: error.code }] })
-          : error)
+        next(upload_error(error, 'files'))
         return
       }
       const files = (req.files ?? []) as Express.Multer.File[]
       req.body = { ...req.body, ...(files.length > 0 ? { files: files.map(() => '') } : {}) }
+      next()
+    })
+  }
+}
+
+// Buffer the multipart `file` part in memory, refusing one over max_bytes
+// before it is read further, so an image upload leaves no temp file behind.
+export const parse_image_upload = (max_bytes: number): RequestHandler => {
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: max_bytes, files: 1 } }).single('file')
+  return (req, res, next) => {
+    upload(req, res, (error: unknown) => {
+      if (error !== undefined) {
+        next(upload_error(error, 'file'))
+        return
+      }
+      req.body = { ...req.body, ...(req.file !== undefined ? { file: '' } : {}) }
       next()
     })
   }

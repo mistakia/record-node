@@ -7,8 +7,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express, { Router } from 'express';
 import morgan from 'morgan';
+import { IMAGE_MAX_BYTES } from '#peer/images.ts';
 import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads } from "./middleware.js";
-import { create_docs_router, create_validator, load_api_spec, parse_uploads } from "./openapi.js";
+import { create_docs_router, create_validator, load_api_spec, parse_image_upload, parse_uploads } from "./openapi.js";
 import { attach_event_bridge } from "./websocket.js";
 import { audio_router } from "./routes/audio.js";
 import { identity_router } from "./routes/identity.js";
@@ -34,6 +35,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
     api.use(authenticate_requests(authenticate));
     api.use(express.json());
     api.post('/import/file', parse_uploads(UPLOAD_DIR));
+    api.post('/images', parse_image_upload(IMAGE_MAX_BYTES));
     // Off-spec, so ahead of the validator.
     api.use('/network-census', network_census_router(peer));
     api.use(create_validator({ spec, validate_responses }));

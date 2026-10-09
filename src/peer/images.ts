@@ -8,6 +8,7 @@
 
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { Network } from '#fabric/network.ts'
+import { upload_artwork } from '#ingest/artwork.ts'
 import { read_unixfs_file } from '#fabric/unixfs.ts'
 import { ProtocolError } from '#types/errors.ts'
 
@@ -19,6 +20,9 @@ export interface ImageSource {
   // The file bytes, fetching missing blocks from peers; undefined when no
   // peer serves them before the deadline, or over the cap.
   read: (cid: string) => Promise<Uint8Array | undefined>
+  // Imports the bytes as artwork is imported (§6.4.1 step 8), pins them
+  // recursively (step 11), and returns the CID. Nothing releases the pin.
+  store: (bytes: Uint8Array) => Promise<string>
 }
 
 // A missing, non-file, or oversized blob reads as absent; an invalid CID still throws.
@@ -40,6 +44,11 @@ export const create_image_source = ({ content_store, network, timeout_ms }: {
 
   return {
     read_local,
+    store: async (bytes) => {
+      const [cid] = await upload_artwork({ pictures: [{ data: bytes }], content_store }) as [string]
+      await content_store.pin(cid, { recursive: true })
+      return cid
+    },
     read: async (cid) => {
       if (network === undefined) return await read_local(cid)
       const signal = AbortSignal.timeout(timeout_ms)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.6.0
+  version: 1.7.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -1167,6 +1167,54 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /images:
+    post:
+      tags: [images]
+      summary: Store an image blob, such as a library avatar.
+      description: |
+        Stores the uploaded `file` part in the content store as ingest
+        stores artwork: imported as one UnixFS file under the §5.5.1
+        profile (spec §6.4.1 step 8) and pinned recursively (step 11).
+        `GET /images/{cid}` then serves it, and peers fetch it by CID like
+        artwork. The returned `cid` is the base58btc string a library's
+        `avatar` takes (`POST /libraries/{address}/about`). Uploading bytes
+        the node already holds returns the same CID.
+
+        The node refuses a `file` over 16 MiB (16777216 bytes) with 413
+        and one whose first 4100 bytes do not sniff, via file-type, as an
+        `image/*` MIME type with 400, both `VALIDATION_ERROR`: the limits
+        `GET /images/{cid}` serves under. It stores nothing for a refused
+        request.
+
+        No library is written, so the request takes no write target.
+        Nothing releases the pin: an image no entry references stays
+        stored.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Stored and pinned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StoredImage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413':
+          description: The `file` part is over 16 MiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /images/{cid}:
     parameters:
       - name: cid
@@ -1868,6 +1916,17 @@ components:
         file_count:
           type: integer
           description: Number of files accepted (multipart only).
+
+    StoredImage:
+      type: object
+      required: [cid, mime]
+      properties:
+        cid:
+          type: string
+          description: Base58btc CID of the stored blob.
+        mime:
+          type: string
+          description: The sniffed `image/*` MIME type, e.g. `image/png`.
 
     ResolverEntry:
       type: object

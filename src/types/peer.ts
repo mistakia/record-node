@@ -351,6 +351,8 @@ export interface ApiPeer {
   // An image blob's file bytes, at most IMAGE_MAX_BYTES; undefined when absent,
   // over the cap, or (local_only) not wholly in the local store.
   get_image: (cid: string, options?: { local_only?: boolean }) => Promise<Uint8Array | undefined>
+  // Imports and pins an image blob as ingest does artwork; returns its CID.
+  put_image: (bytes: Uint8Array) => Promise<string>
 
   // Ingest takes ownership of the files and removes them when done (§6.4.1).
   import_files: (input: { paths: string[] } & WriteTargetInput) => Promise<ImportAck>

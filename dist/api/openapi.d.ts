@@ -6,3 +6,4 @@ export declare const create_validator: ({ spec, validate_responses }: {
     validate_responses: boolean;
 }) => import("express-openapi-validator/dist/framework/types.js").OpenApiRequestHandler[];
 export declare const parse_uploads: (upload_dir: string) => RequestHandler;
+export declare const parse_image_upload: (max_bytes: number) => RequestHandler;

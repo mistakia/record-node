@@ -2,6 +2,7 @@
 // call recorded, and events emitted on demand.
 
 import { randomUUID } from 'node:crypto'
+import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 
 import { ac_chain_vector, audio_pipeline_vector } from '#test/conformance/vectors.ts'
 import {
@@ -113,6 +114,8 @@ export const create_fake_peer = (): FakePeer => {
   const handlers = new Set<(event: PeerEvent) => void>()
   const audio = new Map<string, Uint8Array>()
   const images = new Map<string, Uint8Array>()
+  // Computes an upload's real CID, so GET serves what POST stored.
+  const image_store = create_memory_content_store()
   const libraries = new Map<string, Library>([
     [OWN_ADDRESS, make_library(OWN_ADDRESS, { is_own: true, name: 'mine', replication_mode: 'full' })],
     [LINKED_ADDRESS, make_library(LINKED_ADDRESS, { is_linked: true, alias: 'friend', replication_mode: 'full' })]
@@ -285,6 +288,12 @@ export const create_fake_peer = (): FakePeer => {
     get_image: async (cid, options) => {
       record('get_image', cid, options)
       return images.get(cid)
+    },
+    put_image: async (bytes) => {
+      record('put_image', bytes.length)
+      const cid = await image_store.import_blob(bytes)
+      images.set(cid, bytes)
+      return cid
     },
 
     import_files: async (input) => {
