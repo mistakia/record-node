@@ -19,6 +19,7 @@ import { identity_router } from './routes/identity.ts'
 import { import_router } from './routes/import.ts'
 import { libraries_router } from './routes/libraries.ts'
 import { listens_router } from './routes/listens.ts'
+import { network_census_router } from './routes/network-census.ts'
 import { peers_router } from './routes/peers.ts'
 import { resolve_router } from './routes/resolve.ts'
 import { settings_router } from './routes/settings.ts'
@@ -71,6 +72,8 @@ export const create_api_server = async ({
   api.use(authenticate_requests(authenticate))
   api.use(express.json())
   api.post('/import/file', parse_uploads(UPLOAD_DIR))
+  // Off-spec, so ahead of the validator.
+  api.use('/network-census', network_census_router(peer))
   api.use(create_validator({ spec, validate_responses }))
   api.use('/tracks', tracks_router(peer))
   api.use('/tags', tags_router(peer))

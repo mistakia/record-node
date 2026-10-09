@@ -26,6 +26,18 @@ export const PUBLIC_KEY = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f
 export const META_LOG_ADDRESS = '/record/zBwWX5yfKGoxN42dyykh9tRxq4CjbydSPBpNkVzLe5bmjCRib33F7AiUsRGchrTCgvjDvRVJsC89Rv7Wfk17n8sqMkEFx/identity'
 export const CAPABILITY_ID = 'zBwWX61Hk9TaWwav3Kd5fTzdx4TEyJTU4NzSjhqDqDjyz9UoQPm7poFUmfJMQxUQU6VCbbF53C9MJbQW8HZGdwiNSb1Y1'
 
+export const CENSUS_ROW = {
+  date: '2026-10-10',
+  complete: true,
+  distinct_peer_count: 4,
+  peak_connection_count: 4,
+  median_connection_count: 3,
+  masked_peer_count: 1,
+  announced_library_count: 1,
+  node_version_counts: { 'record-node/1.2': 3, other: 1 },
+  rendezvous_address_count: 7
+} as const
+
 export const make_track = (overrides: Partial<Track> = {}): Track => ({
   id: TRACK_ID,
   library_addresses: [OWN_ADDRESS],
@@ -219,6 +231,7 @@ export const create_fake_peer = (): FakePeer => {
 
     list_peers: async () => [{ peer_id: '12D3KooWfake', multiaddrs: ['/ip4/127.0.0.1/tcp/4001'] }],
     get_settings: async () => ({ peer_id: '12D3KooWfake', version: '1.0.0-alpha.0', bandwidth: { total_in_bytes: '0' } }),
+    get_network_census: async (date) => date === CENSUS_ROW.date ? CENSUS_ROW : undefined,
     get_identity: async () => ({ public_key: PUBLIC_KEY, meta_log_address: META_LOG_ADDRESS, own_library_address: OWN_ADDRESS }),
     export_identity: async () => ({ public_key: '08021221', private_key: '08021220' }),
     import_identity: async (key) => {

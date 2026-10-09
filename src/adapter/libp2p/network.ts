@@ -1,7 +1,7 @@
 // The Network over a networked Helia (§5.5.1): gossipsub for pubsub, and
 // bitswap behind the blockstore for fetch, which stores what it receives.
 
-import type { Connection } from '@libp2p/interface'
+import type { Connection, IdentifyResult } from '@libp2p/interface'
 
 import { collect_bytes, parse_content_cid } from '#fabric/block.ts'
 import type { Network, NetworkPeer } from '#fabric/network.ts'
@@ -39,6 +39,20 @@ export const create_libp2p_network = ({ helia }: { helia: NetworkedHelia }): Net
       return [...by_peer.values()].map(peer_of)
     },
     addresses: () => libp2p.getMultiaddrs().map(String),
+    observations: {
+      on_connection_open: (listener) => {
+        const handler = ({ detail }: CustomEvent<Connection>) => { listener(detail.remotePeer.toString()) }
+        libp2p.addEventListener('connection:open', handler)
+        return () => { libp2p.removeEventListener('connection:open', handler) }
+      },
+      on_peer_identify: (listener) => {
+        const handler = ({ detail }: CustomEvent<IdentifyResult>) => { listener(detail.peerId.toString(), detail.agentVersion) }
+        libp2p.addEventListener('peer:identify', handler)
+        return () => { libp2p.removeEventListener('peer:identify', handler) }
+      },
+      connected_peer_count: () => new Set(libp2p.getConnections().map(({ remotePeer }) => remotePeer.toString())).size,
+      count_rendezvous_addresses: async () => await libp2p.services.mainline_rendezvous?.count_addresses() ?? null
+    },
     // Stopping libp2p aborts every dial still queued, and an aborted TCP dial
     // can surface as an uncaught AbortError, so the queue drains first, for
     // at most DIAL_DRAIN_MS.

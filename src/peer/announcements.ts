@@ -40,7 +40,7 @@ const loaded_about = async (context: PeerContext, library_address: string): Prom
   return is_record(content) ? build_loaded_about_entry({ hash: entry.hash, entry: entry.entry, about_content: content }) : undefined
 }
 
-export const create_peer_announcements = ({ context, network, timers, get_block, on_peer_join, on_peer_leave }: {
+export const create_peer_announcements = ({ context, network, timers, get_block, on_peer_join, on_peer_leave, on_library_verified }: {
   context: PeerContext
   network: Network
   timers: Timers
@@ -48,6 +48,8 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
   get_block: (cid: string) => Promise<Uint8Array | undefined>
   on_peer_join: (peer_id: string) => void
   on_peer_leave: (peer_id: string) => void
+  // Each announced library whose About entry authenticated (§5.3.4).
+  on_library_verified?: ((library_address: string) => void) | undefined
 }): PeerAnnouncements => {
   const { pubsub } = network
   const announced = new Map<string, { hints: AnnouncedLibrary[], verified: Set<string> }>()
@@ -74,7 +76,10 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
   // §5.3.4: one at a time, so a hostile announcement costs fetches serially.
   const authenticate = async (record: { hints: AnnouncedLibrary[], verified: Set<string> }) => {
     for (const hint of record.hints) {
-      if (await authenticate_announced({ announced: hint, get_block }) !== undefined) record.verified.add(hint.address)
+      if (await authenticate_announced({ announced: hint, get_block }) !== undefined) {
+        record.verified.add(hint.address)
+        on_library_verified?.(hint.address)
+      }
     }
   }
 

@@ -12,6 +12,7 @@ import type { PeerConfig } from './config.ts';
 import type { EventBus } from './events.ts';
 import type { DataDirectoryLock } from './lock.ts';
 import type { LibraryManager } from './library.ts';
+import type { Census } from './census.ts';
 import type { PeerReplication } from './replication.ts';
 import type { ResolveUrl } from './resolver.ts';
 import { type WriteTarget } from './write-target.ts';
@@ -33,6 +34,7 @@ export interface PeerContext {
     readonly download: Download;
     readonly audio: AudioSource;
     replication: PeerReplication | undefined;
+    census: Census | undefined;
     identity: PeerIdentity | undefined;
     toolchain: Promise<Toolchain> | undefined;
     readonly lock: DataDirectoryLock | undefined;

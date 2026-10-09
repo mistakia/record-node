@@ -19,6 +19,7 @@ export interface PeerConfig {
     readonly heads_interval_ms: number;
     readonly announce_interval_ms: number;
     readonly network: NetworkConfig | false;
+    readonly census: boolean;
 }
 export declare const HEADS_INTERVAL_FLOOR_MS = 1000;
 export declare const ANNOUNCE_INTERVAL_FLOOR_MS = 5000;
@@ -31,4 +32,5 @@ export declare const data_paths: (data_dir: string) => {
     identity: string;
     libraries: string;
     index: string;
+    census: string;
 };

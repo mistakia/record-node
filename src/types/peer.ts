@@ -169,10 +169,27 @@ export interface PeerInfo {
   connected_at_ms?: number
 }
 
+// A network census row (#peer/census.ts): counts only.
+export interface NetworkCensusRow {
+  readonly date: string
+  // False for the row written at stop, or read for the day in progress.
+  readonly complete: boolean
+  readonly distinct_peer_count: number
+  readonly peak_connection_count: number
+  readonly median_connection_count: number
+  readonly masked_peer_count: number
+  readonly announced_library_count: number
+  readonly node_version_counts: Readonly<Record<string, number>>
+  readonly rendezvous_address_count: number | null
+  // On the row of a week's last day, Sunday.
+  readonly weekly_distinct_peer_count?: number
+}
+
 export interface Settings {
   peer_id: string
   addresses?: string[]
   version?: string
+  network_mode?: 'public' | 'masked' | 'relayed'
   bandwidth?: {
     total_in_bytes?: string
     total_out_bytes?: string
@@ -313,6 +330,9 @@ export interface ApiPeer {
 
   list_peers: () => Promise<PeerInfo[]>
   get_settings: () => Promise<Settings>
+  // The network census row for a UTC day, today's in progress by default;
+  // undefined without a census or a row. Implementation-only, not in chapter 7.
+  get_network_census: (date?: string) => Promise<NetworkCensusRow | undefined>
   get_identity: () => Promise<Identity>
   export_identity: () => Promise<IdentityExport>
   // Generates a new key pair when private_key is absent.

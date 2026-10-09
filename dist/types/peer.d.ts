@@ -139,10 +139,23 @@ export interface PeerInfo {
     library_addresses?: string[];
     connected_at_ms?: number;
 }
+export interface NetworkCensusRow {
+    readonly date: string;
+    readonly complete: boolean;
+    readonly distinct_peer_count: number;
+    readonly peak_connection_count: number;
+    readonly median_connection_count: number;
+    readonly masked_peer_count: number;
+    readonly announced_library_count: number;
+    readonly node_version_counts: Readonly<Record<string, number>>;
+    readonly rendezvous_address_count: number | null;
+    readonly weekly_distinct_peer_count?: number;
+}
 export interface Settings {
     peer_id: string;
     addresses?: string[];
     version?: string;
+    network_mode?: 'public' | 'masked' | 'relayed';
     bandwidth?: {
         total_in_bytes?: string;
         total_out_bytes?: string;
@@ -298,6 +311,7 @@ export interface ApiPeer {
     }) => Promise<ListenCount>;
     list_peers: () => Promise<PeerInfo[]>;
     get_settings: () => Promise<Settings>;
+    get_network_census: (date?: string) => Promise<NetworkCensusRow | undefined>;
     get_identity: () => Promise<Identity>;
     export_identity: () => Promise<IdentityExport>;
     import_identity: (key: {

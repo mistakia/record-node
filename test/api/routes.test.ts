@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { ResolverError } from 'record-resolver'
 
-import { CONTENT_CID, LINKED_ADDRESS, OWN_ADDRESS, TRACK_ID, UNKNOWN_ADDRESS } from './fake-peer.ts'
+import { CENSUS_ROW, CONTENT_CID, LINKED_ADDRESS, OWN_ADDRESS, TRACK_ID, UNKNOWN_ADDRESS } from './fake-peer.ts'
 import { library_path, post_json, start_test_server, type TestServer } from './server.ts'
 
 let api: TestServer
@@ -265,5 +265,16 @@ describe('api: hosted mode', () => {
     } finally {
       await hosted.stop()
     }
+  })
+})
+
+describe('api: network census (implementation-only)', () => {
+  test('GET /network-census returns the day\'s row, 404 without one, 400 on a bad date', async () => {
+    const response = await fetch(api.url(`/network-census?date=${CENSUS_ROW.date}`))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(CENSUS_ROW)
+    await expect_error(await fetch(api.url('/network-census?date=2026-10-11')), 404, 'NOT_FOUND')
+    await expect_error(await fetch(api.url('/network-census')), 404, 'NOT_FOUND')
+    await expect_error(await fetch(api.url('/network-census?date=yesterday')), 400, 'VALIDATION_ERROR')
   })
 })

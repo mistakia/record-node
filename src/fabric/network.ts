@@ -4,6 +4,16 @@
 
 import type { PubSub } from './pubsub.ts'
 
+// What the network census (#peer/census.ts) observes; the libp2p network
+// provides it, the in-memory test network need not.
+export interface NetworkObservations {
+  // Each returns its unsubscribe.
+  on_connection_open: (listener: (peer_id: string) => void) => () => void
+  on_peer_identify: (listener: (peer_id: string, agent: string | undefined) => void) => () => void
+  connected_peer_count: () => number
+  count_rendezvous_addresses: () => Promise<number | null>
+}
+
 export interface NetworkPeer {
   readonly peer_id: string
   readonly multiaddrs: string[]
@@ -19,5 +29,6 @@ export interface Network {
   list_peers: () => NetworkPeer[]
   // The addresses this peer listens on.
   addresses: () => string[]
+  readonly observations?: NetworkObservations
   close: () => Promise<void>
 }

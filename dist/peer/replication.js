@@ -13,7 +13,7 @@ import { create_peer_announcements } from "./announcements.js";
 import { create_content_fetcher } from "./content-fetch.js";
 import { require_identity, serialise_write } from "./context.js";
 import { identity_state, linked_addresses } from "./ownership.js";
-export const create_peer_replication = ({ context, network, describe_library, timers = SYSTEM_TIMERS }) => {
+export const create_peer_replication = ({ context, network, describe_library, on_library_verified, timers = SYSTEM_TIMERS }) => {
     const { config, events, libraries, content_store, db } = context;
     const replicators = new Map();
     const loading = new Set();
@@ -125,7 +125,8 @@ export const create_peer_replication = ({ context, network, describe_library, ti
                     load(address);
             }
         },
-        on_peer_leave: (peer_id) => { events.emit({ type: 'peer:left', payload: { peer_id, peer_count: peer_count() } }); }
+        on_peer_leave: (peer_id) => { events.emit({ type: 'peer:left', payload: { peer_id, peer_count: peer_count() } }); },
+        on_library_verified
     });
     const settled = async (library_address) => {
         await replicators.get(library_address)?.idle();
