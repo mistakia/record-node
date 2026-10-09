@@ -40,10 +40,11 @@ export interface PeerReplication {
   stop: () => Promise<void>
 }
 
-export const create_peer_replication = ({ context, network, describe_library, timers = SYSTEM_TIMERS }: {
+export const create_peer_replication = ({ context, network, describe_library, on_library_verified, timers = SYSTEM_TIMERS }: {
   context: PeerContext
   network: Network
   describe_library: (library_address: string) => Library | undefined
+  on_library_verified?: ((library_address: string) => void) | undefined
   timers?: Timers
 }): PeerReplication => {
   const { config, events, libraries, content_store, db } = context
@@ -156,7 +157,8 @@ export const create_peer_replication = ({ context, network, describe_library, ti
         if (libraries.get(address) === undefined) load(address)
       }
     },
-    on_peer_leave: (peer_id) => { events.emit({ type: 'peer:left', payload: { peer_id, peer_count: peer_count() } }) }
+    on_peer_leave: (peer_id) => { events.emit({ type: 'peer:left', payload: { peer_id, peer_count: peer_count() } }) },
+    on_library_verified
   })
 
   const settled = async (library_address: string) => {

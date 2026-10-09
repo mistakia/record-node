@@ -1,0 +1,85 @@
+// The §5.6.2 masked transport: TCP whose every socket is opened by a Tor
+// SOCKS5 proxy. It reuses @libp2p/tcp for everything after the socket is
+// open (connection wrapping, the pre-shared key, the upgrade) and replaces
+// only its connect step. Outbound only: listening as an onion service is not
+// defined. A hostname goes to the proxy unresolved, so Tor resolves it and
+// the local resolver never sees it.
+
+import { connect, type Socket } from 'node:net'
+
+import type { Transport } from '@libp2p/interface'
+import { tcp } from '@libp2p/tcp'
+import type { Multiaddr } from '@multiformats/multiaddr'
+import { SocksClient } from 'socks'
+
+import { parse_host_port } from './config.ts'
+
+type TcpComponents = Parameters<ReturnType<typeof tcp>>[0]
+
+// The dial target of a direct TCP multiaddr: /ip4, /ip6, /dns, /dns4 or
+// /dns6, then /tcp, then at most a /p2p peer id.
+export const socks_destination = (ma: Multiaddr): { host: string, port: number } | undefined => {
+  const components = ma.getComponents()
+  const [host, port, peer, ...rest] = components
+  if (host === undefined || port === undefined || port.name !== 'tcp' || rest.length > 0) return undefined
+  if (peer !== undefined && peer.name !== 'p2p') return undefined
+  if (!['ip4', 'ip6', 'dns', 'dns4', 'dns6'].includes(host.name) || host.value === undefined) return undefined
+  return { host: host.value, port: Number(port.value) }
+}
+
+const SOCKS_TIMEOUT_MS = 60_000
+
+// The socket to the proxy is ours, so libp2p's abort signal ends the SOCKS
+// handshake where it stands. Tor isolates streams by SOCKS credentials, so
+// each destination gets its own circuit and exit, and peers cannot link the
+// node's connections by exit address.
+const socks_connect = async ({ proxy, destination, signal }: {
+  proxy: { host: string, port: number }
+  destination: { host: string, port: number }
+  signal: AbortSignal
+}): Promise<Socket> => {
+  signal.throwIfAborted()
+  const proxy_socket = connect(proxy.port, proxy.host)
+  const abort = () => { proxy_socket.destroy(signal.reason as Error) }
+  signal.addEventListener('abort', abort, { once: true })
+  try {
+    const { socket } = await SocksClient.createConnection({
+      proxy: { host: proxy.host, port: proxy.port, type: 5, userId: `${destination.host}:${destination.port}`, password: 'record' },
+      command: 'connect',
+      destination,
+      timeout: SOCKS_TIMEOUT_MS,
+      set_tcp_nodelay: true,
+      existing_socket: proxy_socket
+    })
+    signal.throwIfAborted()
+    socket.setKeepAlive(true)
+    return socket
+  } catch (error) {
+    proxy_socket.destroy()
+    throw signal.aborted ? signal.reason : error
+  } finally {
+    signal.removeEventListener('abort', abort)
+  }
+}
+
+export const tor_transport = ({ socks_address }: { socks_address: string }) => (components: TcpComponents): Transport => {
+  const proxy = parse_host_port(socks_address)
+  if (proxy === undefined) throw new TypeError(`socks_address must be host:port, not ${socks_address}`)
+  const transport = tcp()(components) as Transport & {
+    _connect?: (ma: Multiaddr, options: { signal: AbortSignal }) => Promise<Socket>
+  }
+  // @libp2p/tcp is pinned; a version that renames its connect step must fail
+  // here, never fall back to a direct dial.
+  if (typeof transport._connect !== 'function') throw new Error('@libp2p/tcp no longer has _connect; the Tor transport needs updating')
+  transport._connect = async (ma, { signal }) => {
+    const destination = socks_destination(ma)
+    if (destination === undefined) throw new Error(`the Tor transport cannot dial ${ma.toString()}`)
+    return await socks_connect({ proxy, destination, signal })
+  }
+  return Object.assign(transport, {
+    [Symbol.toStringTag]: '@record/tor',
+    createListener: () => { throw new Error('the Tor transport does not listen') },
+    listenFilter: () => [],
+    dialFilter: (multiaddrs: Multiaddr[]) => multiaddrs.filter((ma) => socks_destination(ma) !== undefined)
+  })
+}

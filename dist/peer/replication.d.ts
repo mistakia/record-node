@@ -18,9 +18,10 @@ export interface PeerReplication {
     list_peers: () => PeerInfo[];
     stop: () => Promise<void>;
 }
-export declare const create_peer_replication: ({ context, network, describe_library, timers }: {
+export declare const create_peer_replication: ({ context, network, describe_library, on_library_verified, timers }: {
     context: PeerContext;
     network: Network;
     describe_library: (library_address: string) => Library | undefined;
+    on_library_verified?: ((library_address: string) => void) | undefined;
     timers?: Timers;
 }) => PeerReplication;

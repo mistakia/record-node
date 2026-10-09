@@ -3,7 +3,7 @@
 
 import { join } from 'node:path'
 
-import { DEFAULT_NETWORK_CONFIG, type NetworkConfig } from '#adapter/libp2p/config.ts'
+import { DEFAULT_NETWORK_CONFIG, resolve_network_config, type NetworkConfig } from '#adapter/libp2p/config.ts'
 import { PINNED_FFMPEG_VERSION, PINNED_FPCALC_VERSION } from '#ingest/toolchain.ts'
 
 // The protocol-bound tool pins (§6.1.5, §6.2.4). The ffmpeg flags and the
@@ -45,6 +45,9 @@ export interface PeerConfig {
   readonly announce_interval_ms: number
   // The §5.5.1 libp2p network, or false for a peer that never connects.
   readonly network: NetworkConfig | false
+  // The aggregate network census (#peer/census.ts), written under
+  // <data_dir>/census; needs a data directory and a network.
+  readonly census: boolean
 }
 
 export const HEADS_INTERVAL_FLOOR_MS = 1000
@@ -62,30 +65,12 @@ export const DEFAULT_PEER_CONFIG: PeerConfig = Object.freeze({
   blob_fetch_timeout_ms: 10 * 60_000,
   heads_interval_ms: HEADS_INTERVAL_FLOOR_MS,
   announce_interval_ms: ANNOUNCE_INTERVAL_FLOOR_MS,
-  network: DEFAULT_NETWORK_CONFIG
+  network: DEFAULT_NETWORK_CONFIG,
+  census: false
 })
 
 const STRING_FIELDS = ['ffmpeg_path', 'fpcalc_path'] as const
 const OPTIONAL_STRING_FIELDS = ['data_dir', 'ytdlp_path'] as const
-
-const is_string_list = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === 'string')
-
-// A partial network object fills in from the defaults.
-const resolve_network_config = (network: unknown): NetworkConfig | false => {
-  if (network === false) return false
-  if (network === null || typeof network !== 'object' || Array.isArray(network)) throw new TypeError('network must be false or an object')
-  const resolved = { ...DEFAULT_NETWORK_CONFIG, ...network } as Record<string, unknown>
-  const unknown = Object.keys(resolved).filter((key) => !(key in DEFAULT_NETWORK_CONFIG))
-  if (unknown.length > 0) throw new TypeError(`network has unknown keys: ${unknown.join(', ')}`)
-  for (const field of ['listen', 'bootstrap'] as const) {
-    if (!is_string_list(resolved[field])) throw new TypeError(`network.${field} must be an array of multiaddr strings`)
-  }
-  for (const field of ['mdns', 'dht'] as const) {
-    if (typeof resolved[field] !== 'boolean') throw new TypeError(`network.${field} must be true or false`)
-  }
-  return Object.freeze(resolved) as unknown as NetworkConfig
-}
 
 // Checks every value's type, since a config file is untyped JSON: a string
 // "false" must never enable allow_toolchain_mismatch.
@@ -97,7 +82,9 @@ export const resolve_peer_config = (config: Partial<PeerConfig> = {}): PeerConfi
   for (const field of OPTIONAL_STRING_FIELDS) {
     if (resolved[field] !== undefined && typeof resolved[field] !== 'string') throw new TypeError(`${field} must be a string`)
   }
-  if (typeof resolved.allow_toolchain_mismatch !== 'boolean') throw new TypeError('allow_toolchain_mismatch must be true or false')
+  for (const field of ['allow_toolchain_mismatch', 'census'] as const) {
+    if (typeof resolved[field] !== 'boolean') throw new TypeError(`${field} must be true or false`)
+  }
   for (const field of ['ingest_prepare_concurrency', 'traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'blob_fetch_timeout_ms', 'heads_interval_ms', 'announce_interval_ms'] as const) {
     if (!Number.isSafeInteger(resolved[field]) || resolved[field] <= 0) {
       throw new RangeError(`${field} must be a positive integer, not ${String(resolved[field])}`)
@@ -105,7 +92,9 @@ export const resolve_peer_config = (config: Partial<PeerConfig> = {}): PeerConfi
   }
   if (resolved.heads_interval_ms < HEADS_INTERVAL_FLOOR_MS) throw new RangeError(`heads_interval_ms must be at least ${HEADS_INTERVAL_FLOOR_MS}`)
   if (resolved.announce_interval_ms < ANNOUNCE_INTERVAL_FLOOR_MS) throw new RangeError(`announce_interval_ms must be at least ${ANNOUNCE_INTERVAL_FLOOR_MS}`)
-  return Object.freeze({ ...resolved, network: resolve_network_config(resolved.network) })
+  const network = resolve_network_config(resolved.network)
+  if (resolved.census && (network === false || resolved.data_dir === undefined)) throw new TypeError('census needs a network and a data_dir')
+  return Object.freeze({ ...resolved, network })
 }
 
 // The data directory layout.
@@ -118,5 +107,7 @@ export const data_paths = (data_dir: string) => ({
   libraries: join(data_dir, 'libraries.json'),
   // The persisted query index (§4.7): reopened across restarts so the library
   // is not re-projected from blocks every time.
-  index: join(data_dir, 'index.sqlite')
+  index: join(data_dir, 'index.sqlite'),
+  // One JSONL file of aggregate counts per UTC day (#peer/census.ts).
+  census: join(data_dir, 'census')
 })

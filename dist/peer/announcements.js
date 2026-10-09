@@ -23,7 +23,7 @@ const loaded_about = async (context, library_address) => {
     const content = bytes === undefined ? undefined : decode_payload(bytes);
     return is_record(content) ? build_loaded_about_entry({ hash: entry.hash, entry: entry.entry, about_content: content }) : undefined;
 };
-export const create_peer_announcements = ({ context, network, timers, get_block, on_peer_join, on_peer_leave }) => {
+export const create_peer_announcements = ({ context, network, timers, get_block, on_peer_join, on_peer_leave, on_library_verified }) => {
     const { pubsub } = network;
     const announced = new Map();
     const removals = [];
@@ -50,8 +50,10 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
     // §5.3.4: one at a time, so a hostile announcement costs fetches serially.
     const authenticate = async (record) => {
         for (const hint of record.hints) {
-            if (await authenticate_announced({ announced: hint, get_block }) !== undefined)
+            if (await authenticate_announced({ announced: hint, get_block }) !== undefined) {
                 record.verified.add(hint.address);
+                on_library_verified?.(hint.address);
+            }
         }
     };
     const receive = ({ from, data }) => {

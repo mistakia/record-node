@@ -14,6 +14,7 @@ import { create_library_methods } from "./api-libraries.js";
 import { create_track_methods } from "./api-tracks.js";
 import { create_audio_source } from "./audio.js";
 import { create_blob_keeper } from "./blobs.js";
+import { create_census } from "./census.js";
 import { data_paths, resolve_peer_config } from "./config.js";
 import { drain_queues, ingest_into, refuse_when_stopping, require_identity, serialise_write } from "./context.js";
 import { describe_library } from "./describe.js";
@@ -90,6 +91,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         download,
         audio: create_audio_source({ content_store, network, timeout_ms: config.audio_fetch_timeout_ms, max_bytes: config.audio_cache_max_bytes }),
         replication: undefined,
+        census: undefined,
         identity: undefined,
         toolchain: undefined,
         lock,
@@ -102,8 +104,30 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         blobs: undefined
     };
     context.blobs = create_blob_keeper({ context, network, timers: SYSTEM_TIMERS, timeout_ms: config.blob_fetch_timeout_ms });
+    // Libraries whose announcement authenticated, for the census.
+    const verified_listeners = new Set();
     if (network !== undefined) {
-        context.replication = create_peer_replication({ context, network, describe_library: (address) => describe_library(context, address) });
+        context.replication = create_peer_replication({
+            context,
+            network,
+            describe_library: (address) => describe_library(context, address),
+            on_library_verified: (address) => { for (const listener of verified_listeners)
+                listener(address); }
+        });
+    }
+    if (config.census) {
+        if (paths === undefined || network?.observations === undefined)
+            throw new Error('the census needs a data_dir and the libp2p network');
+        context.census = create_census({
+            dir: paths.census,
+            observations: {
+                ...network.observations,
+                on_library_announced: (listener) => {
+                    verified_listeners.add(listener);
+                    return () => { verified_listeners.delete(listener); };
+                }
+            }
+        });
     }
     return {
         config,
@@ -126,8 +150,10 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         get_settings: async () => ({
             peer_id: network?.peer_id ?? peer_id_of(require_identity(context).key_pair),
             addresses: network?.addresses() ?? [],
-            version: VERSION
+            version: VERSION,
+            ...(config.network === false ? {} : { network_mode: config.network.mode })
         }),
+        get_network_census: async (date) => await context.census?.read_row(date),
         export_identity: async () => {
             const { key_pair } = require_identity(context);
             return { public_key: marshal_public_key(key_pair), private_key: marshal_private_key(key_pair) };
@@ -169,6 +195,7 @@ export const start_peer = async (peer) => {
     await open_identity(context, key_pair);
     await serialise_write(context, async () => { await finish_pending_unlinks(context); });
     await context.replication?.start();
+    await context.census?.start();
 };
 // Refuses new work, stops replicating once in-flight merges land, lets queued
 // writes, ingests, and index updates finish, then closes the network, store,
@@ -185,6 +212,7 @@ const stop_context = async (context) => {
     context.stopping = true;
     context.libraries.stop_pin_passes();
     context.blobs.stop();
+    await context.census?.stop();
     await context.replication?.stop();
     await drain_queues(context);
     await context.blobs.settled();

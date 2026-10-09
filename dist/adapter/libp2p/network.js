@@ -32,6 +32,20 @@ export const create_libp2p_network = ({ helia }) => {
             return [...by_peer.values()].map(peer_of);
         },
         addresses: () => libp2p.getMultiaddrs().map(String),
+        observations: {
+            on_connection_open: (listener) => {
+                const handler = ({ detail }) => { listener(detail.remotePeer.toString()); };
+                libp2p.addEventListener('connection:open', handler);
+                return () => { libp2p.removeEventListener('connection:open', handler); };
+            },
+            on_peer_identify: (listener) => {
+                const handler = ({ detail }) => { listener(detail.peerId.toString(), detail.agentVersion); };
+                libp2p.addEventListener('peer:identify', handler);
+                return () => { libp2p.removeEventListener('peer:identify', handler); };
+            },
+            connected_peer_count: () => new Set(libp2p.getConnections().map(({ remotePeer }) => remotePeer.toString())).size,
+            count_rendezvous_addresses: async () => await libp2p.services.mainline_rendezvous?.count_addresses() ?? null
+        },
         // Stopping libp2p aborts every dial still queued, and an aborted TCP dial
         // can surface as an uncaught AbortError, so the queue drains first, for
         // at most DIAL_DRAIN_MS.
