@@ -1,8 +1,9 @@
 // What a library pins (§3.5.1, §4.6): the three AC chain objects, and per
 // entry the signed entry block, the envelope content payload, and item 6
 // when the library's replication policy keeps it (§4.6.1): a track's audio
-// blob and artwork, and the avatar of the library's About entry. Items 1-5 are dag-cbor leaves and pinned directly;
-// item 6 is a UnixFS DAG and pinned recursively.
+// blob and artwork, and the avatar of the library's About entry. Items 1-5 are
+// dag-cbor leaves and pinned directly; item 6 is a UnixFS DAG and pinned
+// recursively.
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { compute_about_id } from '#entry/id.ts'
