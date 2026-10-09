@@ -23,3 +23,4 @@ export declare const no_cache: RequestHandler;
 export declare const bearer_token: (header: string | undefined) => string | undefined;
 export declare const authenticate_requests: (authenticate: Authenticate | undefined) => RequestHandler;
 export declare const handle_errors: (log_error: (error: unknown) => void) => ErrorRequestHandler;
+export declare const skip_abandoned_reads: RequestHandler;
