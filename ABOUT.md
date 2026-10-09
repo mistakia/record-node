@@ -4,7 +4,8 @@ type: text
 description: >-
   Graph entry point for record-node, the Record Protocol v1 reference implementation; holds the
   invariants an agent must keep (committed dist/, toolchain pins, node:sqlite, the 5.5.1 audio
-  import profile, replication policy, derived identity-library state, the data-directory lock) and
+  import profile, replication policy, derived identity-library state, the data-directory lock,
+  network modes and their dial gates, the relay reservation keeper, the counts-only census) and
   known upstream issues.
 base_uri: user:repository/active/record-node/ABOUT.md
 created_at: '2026-10-03T04:29:32.144Z'
@@ -18,7 +19,7 @@ owner_identity_uri: user:identity/trashman.md
 public_read: true
 tags:
   - user:tag/record-project.md
-updated_at: '2026-10-03T17:12:15.320Z'
+updated_at: '2026-10-09T04:45:49.853Z'
 visibility_analyzed_at: '2026-10-07T01:23:26.263Z'
 ---
 
