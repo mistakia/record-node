@@ -32,7 +32,7 @@
         "@noble/curves": "2.0.1",
         "@noble/hashes": "2.0.1",
         "ajv": "8.20.0",
-        "bitboot": "git+https://github.com/tintfoundation/bitboot.git#64ec96380f4f3c0f2668cda731d57d6a29849c7c",
+        "bitboot": "git+https://github.com/tintfoundation/bitboot.git#ee81e28235c188b08dc16f5bf70aa2612bb13cbe",
         "blockstore-core": "7.0.1",
         "blockstore-fs": "4.0.1",
         "datastore-core": "12.0.1",
@@ -527,7 +527,7 @@
 
     "birnam": ["birnam@1.0.0", "", { "dependencies": { "multiformats": "^14.0.0", "weald": "^1.1.2" } }, "sha512-lropqEwi52w2aoOQQ+V4MGc8KP5mVef9DaEKv73dkVXb8UN6moQ7j/f19NesXPYt/l+8MkkHtMBAQsBKR8BqgQ=="],
 
-    "bitboot": ["bitboot@github:tintfoundation/bitboot#64ec963", { "dependencies": { "bittorrent-dht": "11.0.12" } }, "tintfoundation-bitboot-64ec963", "sha512-EuCc2JAkW0npL1wbHACjUoXCIBQng/V6wNnCqT9LrmWxAtXzbDsgmBrGUAEnUoECKEA/HPRtuP8Z3B3WXeThOA=="],
+    "bitboot": ["bitboot@github:tintfoundation/bitboot#ee81e28", { "dependencies": { "bittorrent-dht": "11.0.12" } }, "tintfoundation-bitboot-ee81e28", "sha512-h0Lf6hDhKuwwm1vMHGVr54Rqmxllv8IkfhD/2WPXdAIgrc+tCUPjMtUhX6vthIlDRCSdypSULlrPuJLGa4uk7A=="],
 
     "bittorrent-dht": ["bittorrent-dht@11.0.12", "", { "dependencies": { "bencode": "^4.0.1", "debug": "^4.4.3", "k-bucket": "^5.1.0", "k-rpc": "^5.1.0", "last-one-wins": "^1.0.4", "lru": "^3.1.0", "randombytes": "^2.1.0", "record-cache": "^1.2.0" } }, "sha512-bFmQq874HMIBon/6KNMf/U1OG+UxJ0UzI9oPra2IRlZLuPA7VwBiA7uEpWaO2ww8G76OFjxB1p1XCOS94FuCPQ=="],
 
