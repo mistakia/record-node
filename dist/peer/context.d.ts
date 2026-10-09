@@ -10,6 +10,7 @@ import type { AudioSource } from './audio.ts';
 import type { BlobKeeper } from './blobs.ts';
 import type { PeerConfig } from './config.ts';
 import type { EventBus } from './events.ts';
+import type { ImageSource } from './images.ts';
 import type { DataDirectoryLock } from './lock.ts';
 import type { LibraryManager } from './library.ts';
 import type { Census } from './census.ts';
@@ -33,6 +34,7 @@ export interface PeerContext {
     readonly resolve: ResolveUrl;
     readonly download: Download;
     readonly audio: AudioSource;
+    readonly images: ImageSource;
     replication: PeerReplication | undefined;
     census: Census | undefined;
     identity: PeerIdentity | undefined;

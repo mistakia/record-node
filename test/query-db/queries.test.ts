@@ -33,9 +33,9 @@ beforeAll(async () => {
   const block_store = mine.block_store
   const projector = create_projector({ db, read_content: block_store.get })
   const tracks = [
-    { oplog: mine.oplog, fingerprint: 'alpha', title: 'Alpha', artist: 'Zed', bpm: 120, audio: { duration: 200 }, tags: ['house', 'deep'], timestamp: 1 },
+    { oplog: mine.oplog, fingerprint: 'alpha', title: 'Alpha', artist: 'Zed', bpm: 120, audio: { duration: 200, bitrate: 320000 }, tags: ['house', 'deep'], timestamp: 1 },
     { oplog: mine.oplog, fingerprint: 'beta', title: 'beta', artist: 'Yan', album: 'Night Album', bpm: 90, tags: ['house'], timestamp: 2 },
-    { oplog: mine.oplog, fingerprint: 'gamma', title: 'Gamma', artist: 'Xu', remixer: 'Night Remixer', audio: { duration: 100 }, tags: ['deep'], timestamp: 3 },
+    { oplog: mine.oplog, fingerprint: 'gamma', title: 'Gamma', artist: 'Xu', remixer: 'Night Remixer', audio: { duration: 100, bitrate: 128000 }, tags: ['deep'], timestamp: 3 },
     { oplog: theirs.oplog, fingerprint: 'gamma', title: 'Gamma (theirs)', artist: 'Xu', tags: ['house'], timestamp: 4 },
     { oplog: theirs.oplog, fingerprint: 'delta', title: '100% off', artist: 'Wu', bpm: 128, tags: ['techno'], timestamp: 5 }
   ]
@@ -89,6 +89,9 @@ describe('query-db list_tracks', () => {
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'asc' }).items)).toEqual(['beta', 'alpha', 'delta', 'gamma'].map(id_of))
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'desc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'duration', order: 'asc' }).items).slice(0, 2)).toEqual(['gamma', 'alpha'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bitrate', order: 'desc' }).items).slice(0, 2)).toEqual(['alpha', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'listen_count', order: 'desc' }).items).slice(0, 2)).toEqual(['alpha', 'gamma'].map(id_of))
+    expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'listen_count', order: 'asc' }).items).slice(2)).toEqual(['gamma', 'alpha'].map(id_of))
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'title', order: 'asc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))
     const page = list_tracks({ db, sort: 'added_at', order: 'asc', offset: 1, limit: 2 })
     expect(page).toMatchObject({ total: 4 })

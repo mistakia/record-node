@@ -1,4 +1,4 @@
-// ApiPeer track, tag, pin, and audio methods. Writes go to a write target:
+// ApiPeer track, tag, pin, audio, and image methods. Writes go to a write target:
 // an own library, or one written under a capability (chapter 7).
 
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
@@ -119,7 +119,7 @@ const pin_key_of = (cid: string): string => {
 }
 
 export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
-  'list_tracks' | 'add_track' | 'update_track' | 'rederive_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' | 'get_audio' | 'has_audio'> => ({
+  'list_tracks' | 'add_track' | 'update_track' | 'rederive_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' | 'get_audio' | 'has_audio' | 'get_image'> => ({
   list_tracks: async ({ library_addresses, ...query }) => {
     const { items, total } = list_tracks({
       db: context.db,
@@ -229,5 +229,6 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
   }),
 
   get_audio: async (cid) => await context.audio.read(cid),
-  has_audio: async (cid) => await context.audio.read_local(cid) !== undefined
+  has_audio: async (cid) => await context.audio.read_local(cid) !== undefined,
+  get_image: async (cid, { local_only = false } = {}) => local_only ? await context.images.read_local(cid) : await context.images.read(cid)
 })

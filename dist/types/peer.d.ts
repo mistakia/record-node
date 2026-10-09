@@ -335,6 +335,9 @@ export interface ApiPeer {
     }) => Promise<MetaLogPage>;
     get_audio: (cid: string) => Promise<Uint8Array | undefined>;
     has_audio: (cid: string) => Promise<boolean>;
+    get_image: (cid: string, options?: {
+        local_only?: boolean;
+    }) => Promise<Uint8Array | undefined>;
     import_files: (input: {
         paths: string[];
     } & WriteTargetInput) => Promise<ImportAck>;

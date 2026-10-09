@@ -12,6 +12,7 @@ import { create_docs_router, create_validator, load_api_spec, parse_uploads } fr
 import { attach_event_bridge } from "./websocket.js";
 import { audio_router } from "./routes/audio.js";
 import { identity_router } from "./routes/identity.js";
+import { images_router } from "./routes/images.js";
 import { import_router } from "./routes/import.js";
 import { libraries_router } from "./routes/libraries.js";
 import { listens_router } from "./routes/listens.js";
@@ -45,6 +46,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
     api.use('/identity', identity_router(peer));
     api.use('/import', import_router(peer));
     api.use('/audio', audio_router(peer));
+    api.use('/images', images_router(peer));
     api.use('/resolve', resolve_router(resolver));
     const app = express();
     app.disable('x-powered-by');

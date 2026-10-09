@@ -33,6 +33,11 @@ describe('api: tracks', () => {
     }])
   })
 
+  test('GET /tracks sorts by bitrate', async () => {
+    expect((await fetch(api.url('/tracks?sort=bitrate&order=asc'))).status).toBe(200)
+    expect(last_call('list_tracks')).toEqual([expect.objectContaining({ sort: 'bitrate', order: 'asc' })])
+  })
+
   test('GET /tracks rejects a limit above 500 and an unlisted sort', async () => {
     await expect_error(await fetch(api.url('/tracks?limit=501')), 400, 'VALIDATION_ERROR')
     const body = await expect_error(await fetch(api.url('/tracks?sort=rowid')), 400, 'VALIDATION_ERROR')

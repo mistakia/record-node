@@ -102,6 +102,7 @@ export const make_capability = (overrides: Partial<Capability> = {}): Capability
 export interface FakePeer extends ApiPeer {
   calls: Array<{ method: string, args: unknown[] }>
   audio: Map<string, Uint8Array>
+  images: Map<string, Uint8Array>
   emit: (event: PeerEvent) => void
   listener_count: () => number
 }
@@ -111,6 +112,7 @@ export const create_fake_peer = (): FakePeer => {
   const record = (method: string, ...args: unknown[]) => { calls.push({ method, args }) }
   const handlers = new Set<(event: PeerEvent) => void>()
   const audio = new Map<string, Uint8Array>()
+  const images = new Map<string, Uint8Array>()
   const libraries = new Map<string, Library>([
     [OWN_ADDRESS, make_library(OWN_ADDRESS, { is_own: true, name: 'mine', replication_mode: 'full' })],
     [LINKED_ADDRESS, make_library(LINKED_ADDRESS, { is_linked: true, alias: 'friend', replication_mode: 'full' })]
@@ -128,6 +130,7 @@ export const create_fake_peer = (): FakePeer => {
   return {
     calls,
     audio,
+    images,
     emit: (event) => { for (const handler of handlers) handler(event) },
     listener_count: () => handlers.size,
 
@@ -279,6 +282,10 @@ export const create_fake_peer = (): FakePeer => {
 
     get_audio: async (cid) => audio.get(cid),
     has_audio: async (cid) => audio.has(cid),
+    get_image: async (cid, options) => {
+      record('get_image', cid, options)
+      return images.get(cid)
+    },
 
     import_files: async (input) => {
       record('import_files', input)

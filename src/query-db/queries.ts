@@ -6,7 +6,7 @@ import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 
 import { compute_about_id } from '#entry/id.ts'
 
-export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'added_at'] as const
+export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'bitrate', 'listen_count', 'added_at'] as const
 export type TrackSort = typeof TRACK_SORTS[number]
 export type SortOrder = 'asc' | 'desc'
 
@@ -16,6 +16,9 @@ const SORT_COLUMNS: Record<TrackSort, string> = {
   album: 'album COLLATE NOCASE',
   bpm: 'bpm',
   duration: 'duration_seconds',
+  bitrate: 'bitrate',
+  // Every listen of the track, as Track.listen_count counts them.
+  listen_count: '(SELECT count(*) FROM listens WHERE listens.track_id = matched.track_id)',
   added_at: 'added_at_ms'
 }
 
@@ -296,7 +299,7 @@ export const list_tracks = ({ db, ...input }: { db: DatabaseSync } & ListTracksI
   const column = SORT_COLUMNS[sort]
   const order_by = shuffle
     ? 'random()'
-    : `${column.split(' ')[0]} IS NULL, ${column} ${order.toUpperCase()}, track_id ASC`
+    : `(${column}) IS NULL, ${column} ${order.toUpperCase()}, track_id ASC`
   const total = Number((db.prepare(`SELECT count(*) AS total ${from}`).get(parameters) as Row).total)
   const rows = db.prepare(`SELECT * ${from} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
     .all({ ...parameters, limit, offset }) as Row[]

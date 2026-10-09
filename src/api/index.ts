@@ -16,6 +16,7 @@ import { create_docs_router, create_validator, load_api_spec, parse_uploads } fr
 import { attach_event_bridge, type EventBridge } from './websocket.ts'
 import { audio_router } from './routes/audio.ts'
 import { identity_router } from './routes/identity.ts'
+import { images_router } from './routes/images.ts'
 import { import_router } from './routes/import.ts'
 import { libraries_router } from './routes/libraries.ts'
 import { listens_router } from './routes/listens.ts'
@@ -84,6 +85,7 @@ export const create_api_server = async ({
   api.use('/identity', identity_router(peer))
   api.use('/import', import_router(peer))
   api.use('/audio', audio_router(peer))
+  api.use('/images', images_router(peer))
   api.use('/resolve', resolve_router(resolver))
 
   const app = express()
