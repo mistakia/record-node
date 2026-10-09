@@ -12,6 +12,7 @@ import { circuitRelayServer, circuitRelayTransport } from '@libp2p/circuit-relay
 import { dcutr } from '@libp2p/dcutr';
 import { gossipsub } from '@libp2p/gossipsub';
 import { identify, identifyPush } from '@libp2p/identify';
+import { FaultTolerance } from '@libp2p/interface';
 import { kadDHT, passthroughMapper, removePrivateAddressesMapper } from '@libp2p/kad-dht';
 import { mdns } from '@libp2p/mdns';
 import { noise, pureJsCrypto } from '@libp2p/noise';
@@ -128,6 +129,9 @@ export const create_libp2p_options = (config) => {
     const is_public = mode === 'public';
     return {
         connectionManager: connection_manager_for(mode),
+        // A relayed node whose relay is down still starts; the reservation keeper
+        // reserves once the relay is back.
+        ...(mode === 'relayed' ? { transportManager: { faultTolerance: FaultTolerance.NO_FATAL } } : {}),
         ...(is_public ? {} : { dns: NO_DNS }),
         addresses: addresses_for(config),
         transports: transports_for(config),
@@ -195,13 +199,53 @@ const serve_dht_once_reachable = (libp2p) => {
     libp2p.addEventListener('self:peer:update', on_update);
     on_update();
 };
+// How often a relayed node checks it still holds its circuit address.
+export const RESERVATION_CHECK_MS = 10_000;
+// circuit-relay-v2 reserves on a configured relay once, when it starts
+// listening, and drops the reservation for good when the relay goes away. A
+// relayed node is unreachable without it, so while it has no circuit address
+// this closes the dead circuit listener and listens on the relay again.
+// libp2p offers no public call for this; the transport manager is reached
+// through its components, and a libp2p that moves it fails here loudly.
+const keep_relay_reservation = (libp2p, relay_address) => {
+    const transport_manager = libp2p.components?.transportManager;
+    if (typeof transport_manager?.getListeners !== 'function' || typeof transport_manager.listen !== 'function') {
+        throw new Error('libp2p no longer exposes its transport manager; the relay reservation keeper needs updating');
+    }
+    const manager = transport_manager;
+    const circuit = multiaddr(`${relay_address}${CIRCUIT}`);
+    let checking = false;
+    const check = async () => {
+        if (checking || libp2p.status !== 'started' || libp2p.getMultiaddrs().some(is_circuit))
+            return;
+        checking = true;
+        try {
+            for (const listener of manager.getListeners()) {
+                if ('reservationStore' in listener)
+                    await listener.close();
+            }
+            await manager.listen([circuit]);
+        }
+        catch {
+            // The relay is still down; the next check retries.
+        }
+        finally {
+            checking = false;
+        }
+    };
+    const timer = setInterval(() => { check().catch(() => { }); }, RESERVATION_CHECK_MS);
+    timer.unref();
+    libp2p.addEventListener('stop', () => { clearInterval(timer); }, { once: true });
+};
 // A started Helia whose blockstore fetches from peers over bitswap unless a
 // read passes offline.
 export const create_networked_helia = async ({ blockstore, datastore, network }) => {
     const helia = withBitswap(withLibp2pLight(createHeliaLight({ blockstore, datastore, codecs: [dag_cbor], hashers: [SHA3_512_HASHER] }), create_libp2p_options(network)));
     await helia.start();
     dial_discovered(helia.libp2p);
-    if (network.mode === 'relayed')
+    if (network.mode === 'relayed') {
         serve_dht_once_reachable(helia.libp2p);
+        keep_relay_reservation(helia.libp2p, network.relay_address);
+    }
     return helia;
 };

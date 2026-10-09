@@ -1,6 +1,6 @@
 import { type GossipSub } from '@libp2p/gossipsub';
 import { identify } from '@libp2p/identify';
-import type { ConnectionGater, Libp2p } from '@libp2p/interface';
+import { type ConnectionGater, type Libp2p } from '@libp2p/interface';
 import { ping } from '@libp2p/ping';
 import { createHeliaLight, type Helia } from 'helia';
 import type { Libp2pOptions } from 'libp2p';
@@ -22,6 +22,7 @@ type HeliaInit = NonNullable<Parameters<typeof createHeliaLight>[0]>;
 export declare const agent_string: (mode: NetworkMode, version?: string) => string;
 export declare const create_connection_gater: ({ mode, relay_address, relay_server }: NetworkConfig) => ConnectionGater;
 export declare const create_libp2p_options: (config: NetworkConfig) => Libp2pOptions<RecordServices>;
+export declare const RESERVATION_CHECK_MS = 10000;
 export declare const create_networked_helia: ({ blockstore, datastore, network }: {
     blockstore: NonNullable<HeliaInit["blockstore"]>;
     datastore: NonNullable<HeliaInit["datastore"]>;
