@@ -248,6 +248,16 @@ const serve_dht_once_reachable = (libp2p: RecordLibp2p) => {
 // How often a relayed node checks it still holds its circuit address.
 export const RESERVATION_CHECK_MS = 10_000
 
+// The relay grants a 2 h reservation and circuit-relay-v2 refreshes it
+// silently 5 minutes before expiry; when that silent refresh fails without
+// dropping the underlying connection (seen 2026-10-10: a 22-hour-old relay
+// connection answering NO_RESERVATION while still advertised), libp2p's
+// local address list keeps the stale circuit address and nothing notices.
+// Forcing a fresh reservation on a clock inside the relay's own window,
+// independent of what the node believes it holds, closes that gap without
+// a restart.
+export const RESERVATION_REFRESH_MS = 90 * 60 * 1000
+
 interface CircuitListener { getAddrs: () => unknown[], close: () => Promise<void>, reservationStore?: unknown }
 interface TransportManagerInternals {
   getListeners: () => CircuitListener[]
@@ -257,10 +267,17 @@ interface TransportManagerInternals {
 // circuit-relay-v2 reserves on a configured relay once, when it starts
 // listening, and drops the reservation for good when the relay goes away. A
 // relayed node is unreachable without it, so while it has no circuit address
-// this closes the dead circuit listener and listens on the relay again.
+// this closes the dead circuit listener and listens on the relay again -- and,
+// since a lapsed reservation does not always clear the local circuit address
+// (see RESERVATION_REFRESH_MS above), the same forced re-listen also runs on
+// its own clock regardless of what the node's address list currently shows.
 // libp2p offers no public call for this; the transport manager is reached
 // through its components, and a libp2p that moves it fails here loudly.
-const keep_relay_reservation = (libp2p: RecordLibp2p, relay_address: string) => {
+export const keep_relay_reservation = (
+  libp2p: RecordLibp2p,
+  relay_address: string,
+  { check_interval_ms = RESERVATION_CHECK_MS, refresh_after_ms = RESERVATION_REFRESH_MS }: { check_interval_ms?: number, refresh_after_ms?: number } = {}
+) => {
   const transport_manager = (libp2p as unknown as { components?: { transportManager?: Partial<TransportManagerInternals> } }).components?.transportManager
   if (typeof transport_manager?.getListeners !== 'function' || typeof transport_manager.listen !== 'function') {
     throw new Error('libp2p no longer exposes its transport manager; the relay reservation keeper needs updating')
@@ -268,21 +285,26 @@ const keep_relay_reservation = (libp2p: RecordLibp2p, relay_address: string) => 
   const manager = transport_manager as TransportManagerInternals
   const circuit = multiaddr(`${relay_address}${CIRCUIT}`)
   let checking = false
+  let reserved_at = Date.now()
   const check = async () => {
-    if (checking || libp2p.status !== 'started' || libp2p.getMultiaddrs().some(is_circuit)) return
+    if (checking || libp2p.status !== 'started') return
+    const missing = !libp2p.getMultiaddrs().some(is_circuit)
+    const overdue = Date.now() - reserved_at >= refresh_after_ms
+    if (!missing && !overdue) return
     checking = true
     try {
       for (const listener of manager.getListeners()) {
         if ('reservationStore' in listener) await listener.close()
       }
       await manager.listen([circuit])
+      reserved_at = Date.now()
     } catch {
       // The relay is still down; the next check retries.
     } finally {
       checking = false
     }
   }
-  const timer = setInterval(() => { check().catch(() => {}) }, RESERVATION_CHECK_MS)
+  const timer = setInterval(() => { check().catch(() => {}) }, check_interval_ms)
   timer.unref()
   libp2p.addEventListener('stop', () => { clearInterval(timer) }, { once: true })
 }

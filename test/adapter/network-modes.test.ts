@@ -11,7 +11,7 @@ import { peerIdFromString } from '@libp2p/peer-id'
 import { multiaddr, type Multiaddr } from '@multiformats/multiaddr'
 
 import type { NetworkConfig } from '#adapter/libp2p/config.ts'
-import { agent_string, type RecordLibp2p } from '#adapter/libp2p/node.ts'
+import { agent_string, keep_relay_reservation, type RecordLibp2p } from '#adapter/libp2p/node.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { create_libp2p_peers, dial_address, libp2p_of, LOOPBACK, seeded_data_dir } from '#test/helpers/libp2p.ts'
 import { stop_peer } from '#peer/peer.ts'
@@ -150,6 +150,35 @@ describe('network modes', () => {
     await start_relay()
     await wait_until(has_circuit, 25_000)
   }, 90_000)
+
+  test('the relay reservation keeper refreshes on its own clock even while the stale circuit address is still listed', async () => {
+    // Simulates the 2026-10-10 finding: a lapsed reservation that does not
+    // clear the local circuit address, so the only-while-missing check never
+    // fires. getMultiaddrs() keeps returning a circuit address throughout;
+    // the keeper must still force a re-listen once refresh_after_ms elapses.
+    const relay_address = '/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWG5Ks3bMTkPu7TAqs876nMJ3n7XWLuB63f1TdLZnxYaFi'
+    const circuit = multiaddr(`${relay_address}${CIRCUIT}`)
+    let listen_calls = 0
+    let stop_handler: (() => void) | undefined
+    const fake_libp2p = {
+      status: 'started',
+      getMultiaddrs: () => [circuit],
+      addEventListener: (event: string, handler: () => void) => { if (event === 'stop') stop_handler = handler },
+      components: {
+        transportManager: {
+          getListeners: () => [],
+          listen: async () => { listen_calls++ }
+        }
+      }
+    } as unknown as RecordLibp2p
+
+    keep_relay_reservation(fake_libp2p, relay_address, { check_interval_ms: 5, refresh_after_ms: 20 })
+    try {
+      await wait_until(() => listen_calls >= 2, 2000)
+    } finally {
+      stop_handler?.()
+    }
+  })
 
   test('a node with a peer allowlist connects to and accepts only its listed peers', async () => {
     const listed_key = await seeded_data_dir()

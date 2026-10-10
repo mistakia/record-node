@@ -23,6 +23,11 @@ export declare const agent_string: (mode: NetworkMode, version?: string) => stri
 export declare const create_connection_gater: ({ mode, relay_address, relay_server, peer_allowlist }: NetworkConfig) => ConnectionGater;
 export declare const create_libp2p_options: (config: NetworkConfig) => Libp2pOptions<RecordServices>;
 export declare const RESERVATION_CHECK_MS = 10000;
+export declare const RESERVATION_REFRESH_MS: number;
+export declare const keep_relay_reservation: (libp2p: RecordLibp2p, relay_address: string, { check_interval_ms, refresh_after_ms }?: {
+    check_interval_ms?: number;
+    refresh_after_ms?: number;
+}) => void;
 export declare const create_networked_helia: ({ blockstore, datastore, network }: {
     blockstore: NonNullable<HeliaInit["blockstore"]>;
     datastore: NonNullable<HeliaInit["datastore"]>;
