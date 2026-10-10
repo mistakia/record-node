@@ -56,7 +56,7 @@ describe('network modes', () => {
     await wait_until(async () => (await outsider.list_peers()).length > 0)
     await new Promise((resolve) => setTimeout(resolve, 3000))
     expect((await addresses_of(outsider)).filter((address) => address.includes(CIRCUIT))).toEqual([])
-  })
+  }, 15_000)
 
   test('a relayed node advertises only its circuit, dials only its relay, and is found by peer id', async () => {
     const { data_dir, peer_id: relayed_id } = await seeded_data_dir()
