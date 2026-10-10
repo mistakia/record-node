@@ -43,6 +43,9 @@ export interface PeerConfig {
   // the spec's 1000 ms and 5 s.
   readonly heads_interval_ms: number
   readonly announce_interval_ms: number
+  // §5.3.2 announcements of the own libraries. Off, the node announces
+  // nothing even once a library has an About; it still hears others'.
+  readonly announce: boolean
   // The §5.5.1 libp2p network, or false for a peer that never connects.
   readonly network: NetworkConfig | false
   // The aggregate network census (#peer/census.ts), written under
@@ -65,6 +68,7 @@ export const DEFAULT_PEER_CONFIG: PeerConfig = Object.freeze({
   blob_fetch_timeout_ms: 10 * 60_000,
   heads_interval_ms: HEADS_INTERVAL_FLOOR_MS,
   announce_interval_ms: ANNOUNCE_INTERVAL_FLOOR_MS,
+  announce: true,
   network: DEFAULT_NETWORK_CONFIG,
   census: false
 })
@@ -82,7 +86,7 @@ export const resolve_peer_config = (config: Partial<PeerConfig> = {}): PeerConfi
   for (const field of OPTIONAL_STRING_FIELDS) {
     if (resolved[field] !== undefined && typeof resolved[field] !== 'string') throw new TypeError(`${field} must be a string`)
   }
-  for (const field of ['allow_toolchain_mismatch', 'census'] as const) {
+  for (const field of ['allow_toolchain_mismatch', 'announce', 'census'] as const) {
     if (typeof resolved[field] !== 'boolean') throw new TypeError(`${field} must be true or false`)
   }
   for (const field of ['ingest_prepare_concurrency', 'traversal_concurrency', 'traversal_timeout_ms', 'audio_fetch_timeout_ms', 'audio_cache_max_bytes', 'blob_fetch_timeout_ms', 'heads_interval_ms', 'announce_interval_ms'] as const) {

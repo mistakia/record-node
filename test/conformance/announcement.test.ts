@@ -200,4 +200,15 @@ describe('announcement', () => {
     expect(record_messages_from(await peer_id_of(a))).toEqual([])
     expect((await b.get_library(address))?.is_linked).toBe(true)
   })
+
+  // Not part of the spec: the node config that keeps an own library unannounced.
+  test('a peer with announce off announces nothing, even with an About entry', async () => {
+    const quiet = await peers.start({ config: { announce: false } })
+    await quiet.set_about({ address: quiet.identity().own_address, fields: { name: 'Q' } })
+    const { peer: loud } = await announcing_peer('L')
+    const { received } = await join_observer()
+    const loud_id = await peer_id_of(loud)
+    await wait_until(() => received.some(({ from }) => from === loud_id))
+    expect(record_messages_from(await peer_id_of(quiet))).toEqual([])
+  })
 })

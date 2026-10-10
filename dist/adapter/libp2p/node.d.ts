@@ -20,7 +20,7 @@ export type NetworkedHelia = Helia & {
 };
 type HeliaInit = NonNullable<Parameters<typeof createHeliaLight>[0]>;
 export declare const agent_string: (mode: NetworkMode, version?: string) => string;
-export declare const create_connection_gater: ({ mode, relay_address, relay_server }: NetworkConfig) => ConnectionGater;
+export declare const create_connection_gater: ({ mode, relay_address, relay_server, peer_allowlist }: NetworkConfig) => ConnectionGater;
 export declare const create_libp2p_options: (config: NetworkConfig) => Libp2pOptions<RecordServices>;
 export declare const RESERVATION_CHECK_MS = 10000;
 export declare const create_networked_helia: ({ blockstore, datastore, network }: {

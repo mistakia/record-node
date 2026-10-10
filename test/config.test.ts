@@ -75,6 +75,12 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ network: { psk: 'x' } }) })).rejects.toThrow('network has unknown keys: psk')
   })
 
+  test('announce is on by default, and a boolean', async () => {
+    expect((await load_config({ env: {} })).peer.announce).toBe(true)
+    expect((await load_config({ config_path: config_file({ announce: false }) })).peer.announce).toBe(false)
+    await expect(load_config({ config_path: config_file({ announce: 'false' }) })).rejects.toThrow('announce must be true or false')
+  })
+
   test('census is off by default, a boolean, and needs a network', async () => {
     expect((await load_config({ env: {} })).peer.census).toBe(false)
     expect((await load_config({ config_path: config_file({ census: true }) })).peer.census).toBe(true)
@@ -151,6 +157,14 @@ describe('network modes (spec §5.6)', () => {
     await refuses({ mode: 'relayed', relay_address: RELAY, listen: ['/ip4/10.27.0.22/tcp/4100'] }, 'network.listen cannot be set')
     await refuses({ mode: 'relayed', relay_address: RELAY, mainline_rendezvous: true }, 'mainline_rendezvous cannot be set')
     await refuses({ mode: 'relayed', relay_address: RELAY, tor: { socks_address: '127.0.0.1:9050' } }, 'network.tor cannot be set')
+  })
+
+  test('a peer allowlist is absent by default, and a list of peer ids in any mode', async () => {
+    expect(await network_of({})).not.toHaveProperty('peer_allowlist')
+    expect(await network_of({ mode: 'relayed', relay_address: RELAY, peer_allowlist: [VPS_PEER_ID] })).toMatchObject({ peer_allowlist: [VPS_PEER_ID] })
+    expect(await network_of({ peer_allowlist: [] })).toMatchObject({ peer_allowlist: [] })
+    await refuses({ peer_allowlist: VPS_PEER_ID }, 'network.peer_allowlist must be an array of peer ids')
+    await refuses({ peer_allowlist: ['not-a-peer-id'] }, 'network.peer_allowlist must be an array of peer ids')
   })
 
   test('public refuses a relay address or Tor, and unknown modes are refused', async () => {

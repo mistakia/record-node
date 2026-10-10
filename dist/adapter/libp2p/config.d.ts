@@ -24,6 +24,7 @@ export interface NetworkConfig {
     readonly relay_server: RelayServerConfig | false;
     readonly relay_address?: string | undefined;
     readonly tor?: TorConfig | undefined;
+    readonly peer_allowlist?: readonly string[] | undefined;
 }
 export declare const RENDEZVOUS_NAME = "record-network-v1";
 export declare const DEFAULT_MAINLINE_RENDEZVOUS: MainlineRendezvousConfig;

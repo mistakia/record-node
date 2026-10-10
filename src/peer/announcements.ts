@@ -62,7 +62,7 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
     build: async () => {
       // One own recordstore is announced as about, and the others with the
       // linked libraries in logs; the identity library never is (§5.3.2).
-      if (context.identity === undefined) return undefined
+      if (!context.config.announce || context.identity === undefined) return undefined
       const own_address = default_own_library(context)
       if (own_address === undefined) return undefined
       const about = await loaded_about(context, own_address)

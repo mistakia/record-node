@@ -91,13 +91,15 @@ const same_host_and_port = (left: Multiaddr, right: Multiaddr): boolean => {
   return left_host?.value === right_host?.value && left_port?.name === 'tcp' && left_port.value === right_port?.value
 }
 
-// The dials a mode refuses (§5.6.2, §5.6.3), and the own-peers relay's
-// reservation rule (§5.6.3).
-export const create_connection_gater = ({ mode, relay_address, relay_server }: NetworkConfig): ConnectionGater => {
+const peer_id_of = (address: Multiaddr): string => address.getComponents().findLast(({ name }) => name === 'p2p')?.value as string
+
+// The dials a mode refuses (§5.6.2, §5.6.3), the own-peers relay's
+// reservation rule (§5.6.3), and the peer allowlist.
+export const create_connection_gater = ({ mode, relay_address, relay_server, peer_allowlist }: NetworkConfig): ConnectionGater => {
   const gater: ConnectionGater = {}
   if (mode === 'relayed' && relay_address !== undefined) {
     const relay = multiaddr(relay_address)
-    const relay_peer_id = relay.getComponents().findLast(({ name }) => name === 'p2p')?.value as string
+    const relay_peer_id = peer_id_of(relay)
     // Only the relay, and peers through it: no public address, and no LAN
     // address a remote peer could steer the node into dialing.
     gater.denyDialMultiaddr = (address) => is_circuit(address)
@@ -114,6 +116,16 @@ export const create_connection_gater = ({ mode, relay_address, relay_server }: N
   if (relay_server !== false && relay_server.allowed_peer_ids.length > 0) {
     const allowed = new Set(relay_server.allowed_peer_ids)
     gater.denyInboundRelayReservation = (peer: PeerId) => !allowed.has(peer.toString())
+  }
+  if (peer_allowlist !== undefined) {
+    // Checked on the remote peer id once a connection is encrypted, relayed
+    // ones included, so an unlisted peer never opens a stream: no topics,
+    // heads or bitswap. The relay always passes, or nothing could reach it.
+    const listed = new Set([...peer_allowlist, ...(relay_address === undefined ? [] : [peer_id_of(multiaddr(relay_address))])])
+    const unlisted = (peer: PeerId) => !listed.has(peer.toString())
+    gater.denyDialPeer = unlisted
+    gater.denyInboundEncryptedConnection = unlisted
+    gater.denyOutboundEncryptedConnection = unlisted
   }
   return gater
 }

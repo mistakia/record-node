@@ -24,6 +24,7 @@ export const DEFAULT_PEER_CONFIG = Object.freeze({
     blob_fetch_timeout_ms: 10 * 60_000,
     heads_interval_ms: HEADS_INTERVAL_FLOOR_MS,
     announce_interval_ms: ANNOUNCE_INTERVAL_FLOOR_MS,
+    announce: true,
     network: DEFAULT_NETWORK_CONFIG,
     census: false
 });
@@ -41,7 +42,7 @@ export const resolve_peer_config = (config = {}) => {
         if (resolved[field] !== undefined && typeof resolved[field] !== 'string')
             throw new TypeError(`${field} must be a string`);
     }
-    for (const field of ['allow_toolchain_mismatch', 'census']) {
+    for (const field of ['allow_toolchain_mismatch', 'announce', 'census']) {
         if (typeof resolved[field] !== 'boolean')
             throw new TypeError(`${field} must be true or false`);
     }

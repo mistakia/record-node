@@ -56,6 +56,9 @@ export interface NetworkConfig {
   // The relay a relayed node reserves on: a multiaddr ending /p2p/<peer id>.
   readonly relay_address?: string | undefined
   readonly tor?: TorConfig | undefined
+  // Absent, any peer with the swarm key may connect. Set, the node connects
+  // to and accepts only these peer ids and its relay (not part of the spec).
+  readonly peer_allowlist?: readonly string[] | undefined
 }
 
 // sha1 of this name is the §5.2.1 info hash.
@@ -114,7 +117,7 @@ const MODE_DEFAULTS: Record<NetworkMode, NetworkConfig> = {
 
 export const DEFAULT_NETWORK_CONFIG: NetworkConfig = MODE_DEFAULTS.public
 
-const KNOWN_KEYS = new Set(['mode', 'listen', 'announce_addresses', 'bootstrap', 'mdns', 'dht', 'upnp', 'mainline_rendezvous', 'relay_server', 'relay_address', 'tor'])
+const KNOWN_KEYS = new Set(['mode', 'listen', 'announce_addresses', 'bootstrap', 'mdns', 'dht', 'upnp', 'mainline_rendezvous', 'relay_server', 'relay_address', 'tor', 'peer_allowlist'])
 
 // Keys a mode fixes: setting one to anything but the mode's value is refused,
 // since it would advertise or dial what the mode promises not to (§5.6).
@@ -173,6 +176,15 @@ const resolve_relay_server = (value: unknown): RelayServerConfig | false => {
   return Object.freeze({ allowed_peer_ids: Object.freeze([...allowed]) })
 }
 
+// A base58btc peer id: an Ed25519 12D3KooW… or an RSA Qm… multihash.
+const PEER_ID = /^(?:12D3KooW|Qm)[1-9A-HJ-NP-Za-km-z]+$/
+
+const resolve_peer_allowlist = (value: unknown): readonly string[] | undefined => {
+  if (value === undefined) return undefined
+  if (!is_string_list(value) || !value.every((peer_id) => PEER_ID.test(peer_id))) throw new TypeError('network.peer_allowlist must be an array of peer ids')
+  return Object.freeze([...value])
+}
+
 const resolve_tor = (value: unknown): TorConfig | undefined => {
   if (value === undefined) return undefined
   if (!is_object(value)) throw new TypeError('network.tor must be an object')
@@ -210,6 +222,7 @@ export const resolve_network_config = (network: unknown): NetworkConfig | false 
   resolved.mainline_rendezvous = resolve_mainline_rendezvous(resolved.mainline_rendezvous)
   resolved.relay_server = resolve_relay_server(resolved.relay_server)
   resolved.tor = resolve_tor(resolved.tor)
+  resolved.peer_allowlist = resolve_peer_allowlist(resolved.peer_allowlist)
   if (resolved.relay_address !== undefined && (typeof resolved.relay_address !== 'string' || !RELAY_ADDRESS.test(resolved.relay_address))) {
     throw new TypeError('network.relay_address must be /ip4, /ip6 or /dns* with /tcp/<port>/p2p/<relay peer id>')
   }
@@ -220,5 +233,6 @@ export const resolve_network_config = (network: unknown): NetworkConfig | false 
   if (mode === 'relayed' && resolved.relay_address === undefined) throw new TypeError('network.relay_address is required in relayed mode')
   if (resolved.tor === undefined) delete resolved.tor
   if (resolved.relay_address === undefined) delete resolved.relay_address
+  if (resolved.peer_allowlist === undefined) delete resolved.peer_allowlist
   return Object.freeze(resolved) as unknown as NetworkConfig
 }

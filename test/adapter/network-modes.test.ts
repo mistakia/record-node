@@ -1,14 +1,14 @@
 // The §5.6 modes on loopback: the own-peers relay's reservation gate, a
 // relayed node that advertises and dials only through its relay yet is found
 // by peer id and replicates, the DCUtR exchange over a relayed connection,
-// and the §5.6.4 agent string.
+// the §5.6.4 agent string, and the peer allowlist.
 
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createServer } from 'node:net'
 
 import type { Connection, Stream } from '@libp2p/interface'
 import { peerIdFromString } from '@libp2p/peer-id'
-import { multiaddr } from '@multiformats/multiaddr'
+import { multiaddr, type Multiaddr } from '@multiformats/multiaddr'
 
 import type { NetworkConfig } from '#adapter/libp2p/config.ts'
 import { agent_string, type RecordLibp2p } from '#adapter/libp2p/node.ts'
@@ -25,6 +25,15 @@ const CIRCUIT = '/p2p-circuit'
 const DCUTR = '/libp2p/dcutr'
 
 const addresses_of = async (peer: Peer) => (await peer.get_settings()).addresses ?? []
+
+// A dialer negotiates its muxer optimistically, so a dial the far side's
+// gater refuses may still resolve before that side aborts it. Refused means
+// no connection survives and no protocol runs over one.
+const refuses_dial = async (from: Peer, address: Multiaddr, to_peer_id: string) => {
+  await libp2p_of(from).dial(address).catch(() => undefined)
+  await expect(libp2p_of(from).services.ping.ping(address)).rejects.toThrow()
+  await wait_until(() => !libp2p_of(from).getConnections().some(({ remotePeer }) => remotePeer.toString() === to_peer_id))
+}
 const relayed_network = (relay_address: string): Partial<NetworkConfig> => ({ ...LOOPBACK, mode: 'relayed', listen: [], relay_address })
 
 describe('network modes', () => {
@@ -141,4 +150,34 @@ describe('network modes', () => {
     await start_relay()
     await wait_until(has_circuit, 25_000)
   }, 90_000)
+
+  test('a node with a peer allowlist connects to and accepts only its listed peers', async () => {
+    const listed_key = await seeded_data_dir()
+    const closed = await peers.start({ peer_allowlist: [listed_key.peer_id] })
+    const closed_address = await dial_address(closed)
+    const listed = await peers.start({}, { data_dir: listed_key.data_dir })
+    const unlisted = await peers.start()
+    const closed_id = libp2p_of(closed).peerId.toString()
+
+    await libp2p_of(listed).services.ping.ping(multiaddr(closed_address))
+    await refuses_dial(unlisted, multiaddr(closed_address), closed_id)
+    await expect(libp2p_of(closed).dial(multiaddr(await dial_address(unlisted)))).rejects.toThrow()
+    expect(libp2p_of(closed).getConnections().map(({ remotePeer }) => remotePeer.toString())).toEqual([listed_key.peer_id])
+  }, 30_000)
+
+  test('a relayed node with a peer allowlist keeps its relay and refuses unlisted peers through it', async () => {
+    const closed_key = await seeded_data_dir()
+    const listed_key = await seeded_data_dir()
+    const relay = await peers.start({ relay_server: { allowed_peer_ids: [closed_key.peer_id] } })
+    const relay_address = await dial_address(relay)
+    // The relay is not listed, and still passes.
+    const closed = await peers.start({ ...relayed_network(relay_address), peer_allowlist: [listed_key.peer_id] }, { data_dir: closed_key.data_dir })
+    await wait_until(async () => (await addresses_of(closed)).some((address) => address.includes(CIRCUIT)), 15_000)
+    const circuit = multiaddr(`${relay_address}${CIRCUIT}/p2p/${closed_key.peer_id}`)
+
+    const unlisted = await peers.start()
+    await refuses_dial(unlisted, circuit, closed_key.peer_id)
+    const listed = await peers.start({}, { data_dir: listed_key.data_dir })
+    await libp2p_of(listed).services.ping.ping(circuit)
+  }, 60_000)
 })

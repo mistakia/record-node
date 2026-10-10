@@ -18,6 +18,7 @@ export interface PeerConfig {
     readonly blob_fetch_timeout_ms: number;
     readonly heads_interval_ms: number;
     readonly announce_interval_ms: number;
+    readonly announce: boolean;
     readonly network: NetworkConfig | false;
     readonly census: boolean;
 }

@@ -54,7 +54,7 @@ const MODE_DEFAULTS = {
     })
 };
 export const DEFAULT_NETWORK_CONFIG = MODE_DEFAULTS.public;
-const KNOWN_KEYS = new Set(['mode', 'listen', 'announce_addresses', 'bootstrap', 'mdns', 'dht', 'upnp', 'mainline_rendezvous', 'relay_server', 'relay_address', 'tor']);
+const KNOWN_KEYS = new Set(['mode', 'listen', 'announce_addresses', 'bootstrap', 'mdns', 'dht', 'upnp', 'mainline_rendezvous', 'relay_server', 'relay_address', 'tor', 'peer_allowlist']);
 // Keys a mode fixes: setting one to anything but the mode's value is refused,
 // since it would advertise or dial what the mode promises not to (§5.6).
 const FIXED_BY_MODE = {
@@ -116,6 +116,15 @@ const resolve_relay_server = (value) => {
         throw new TypeError('network.relay_server.allowed_peer_ids must be an array of peer ids');
     return Object.freeze({ allowed_peer_ids: Object.freeze([...allowed]) });
 };
+// A base58btc peer id: an Ed25519 12D3KooW… or an RSA Qm… multihash.
+const PEER_ID = /^(?:12D3KooW|Qm)[1-9A-HJ-NP-Za-km-z]+$/;
+const resolve_peer_allowlist = (value) => {
+    if (value === undefined)
+        return undefined;
+    if (!is_string_list(value) || !value.every((peer_id) => PEER_ID.test(peer_id)))
+        throw new TypeError('network.peer_allowlist must be an array of peer ids');
+    return Object.freeze([...value]);
+};
 const resolve_tor = (value) => {
     if (value === undefined)
         return undefined;
@@ -159,6 +168,7 @@ export const resolve_network_config = (network) => {
     resolved.mainline_rendezvous = resolve_mainline_rendezvous(resolved.mainline_rendezvous);
     resolved.relay_server = resolve_relay_server(resolved.relay_server);
     resolved.tor = resolve_tor(resolved.tor);
+    resolved.peer_allowlist = resolve_peer_allowlist(resolved.peer_allowlist);
     if (resolved.relay_address !== undefined && (typeof resolved.relay_address !== 'string' || !RELAY_ADDRESS.test(resolved.relay_address))) {
         throw new TypeError('network.relay_address must be /ip4, /ip6 or /dns* with /tcp/<port>/p2p/<relay peer id>');
     }
@@ -174,5 +184,7 @@ export const resolve_network_config = (network) => {
         delete resolved.tor;
     if (resolved.relay_address === undefined)
         delete resolved.relay_address;
+    if (resolved.peer_allowlist === undefined)
+        delete resolved.peer_allowlist;
     return Object.freeze(resolved);
 };
