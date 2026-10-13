@@ -23,11 +23,15 @@ const main = async () => {
         return;
     }
     const config = await load_config({ config_path: values.config, port: values.port, data_dir: values['data-dir'] });
+    const started = performance.now();
     const peer = await create_peer({ config: config.peer });
+    const created = performance.now();
     await start_peer(peer);
     peer.context.toolchain?.catch((error) => { console.warn(`ingest disabled: ${error.message}`); });
     const server = await create_api_server({ peer, resolve: as_api_resolver(peer.context.resolve), port: config.port, host: config.host, cors_origins: config.cors_origins });
-    console.log(`record-node listening on http://${config.host}:${server.port}/api (data ${config.peer.data_dir ?? 'in memory'})`);
+    const seconds = (ms) => (ms / 1000).toFixed(1);
+    const index = config.peer.index_dir === undefined ? '' : `, index ${config.peer.index_dir}`;
+    console.log(`record-node listening on http://${config.host}:${server.port}/api (data ${config.peer.data_dir ?? 'in memory'}${index}) after ${seconds(performance.now() - started)} s (create ${seconds(created - started)} s)`);
     let stopping = false;
     const shutdown = (signal) => {
         if (stopping)

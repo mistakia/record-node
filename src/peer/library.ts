@@ -16,6 +16,7 @@ import type { LibraryType } from '#types/library.ts'
 import { PeerError } from '#types/peer.ts'
 import { run_bounded } from './bounded.ts'
 import { load_entry_blocks } from './load.ts'
+import { open_phases, type OpenPhases } from './open-phases.ts'
 import { canonical_cid } from '#entry/identity-record.ts'
 import { chain_pins, entry_pins, pin_into, stored_item_6, type KeepsBlobs, type PinSet } from './pins.ts'
 import type { LibraryStateStore, StoredPolicy } from './state.ts'
@@ -170,19 +171,20 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   // other cache is verified in full and, if it holds, marked verified.
   // Otherwise, as for a library cached before or whose cache fell behind a
   // crash, the oplog is walked from the blockstore, verified, and recached.
-  const load_oplog = async (chain: ResolvedAcChain, heads: readonly string[]) => {
+  const load_oplog = async (chain: ResolvedAcChain, heads: readonly string[], phases: OpenPhases) => {
     const library_address = chain.address
-    const { blocks, verified_heads } = entry_blocks.load(library_address)
+    const { blocks, verified_heads } = phases.time('read_cache', () => entry_blocks.load(library_address))
     const trusted = verified_heads !== undefined && same_heads(verified_heads, heads)
     const cached = create_oplog({ chain })
-    const from_cache = (trusted ? restore_entries : merge_entries)({ oplog: cached, blocks })
+    const from_cache = phases.time(trusted ? 'restore' : 'verify_cache', () => (trusted ? restore_entries : merge_entries)({ oplog: cached, blocks }))
     if (from_cache.rejected.length === 0 && same_heads(cached.heads, heads)) {
       if (!trusted) entry_blocks.mark_verified({ library_address, heads: cached.heads })
       return { oplog: cached, loaded: from_cache }
     }
     const oplog = create_oplog({ chain })
-    const loaded = merge_entries({ oplog, blocks: await load_entry_blocks({ heads, content_store }) })
-    entry_blocks.replace({ library_address, entries: oplog.entries.values(), heads: oplog.heads })
+    const walked = await phases.time_async('walk_blocks', async () => await load_entry_blocks({ heads, content_store }))
+    const loaded = phases.time('verify_walk', () => merge_entries({ oplog, blocks: walked }))
+    phases.time('write_cache', () => { entry_blocks.replace({ library_address, entries: oplog.entries.values(), heads: oplog.heads }) })
     return { oplog, loaded }
   }
 
@@ -191,11 +193,12 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   const open_library = async (library_address: string): Promise<LibraryHandle> => {
     const existing = libraries.get(library_address)
     if (existing !== undefined) return existing
-    const chain = await resolve_ac_chain({ library_address, block_store: content_store })
+    const phases = open_phases()
+    const chain = await phases.time_async('resolve_chain', async () => await resolve_ac_chain({ library_address, block_store: content_store }))
     const pins: PinSet = new Map()
     await pin_into({ content_store, pins, items: chain_pins(chain) })
     const heads = (await state_store.load()).heads.get(library_address) ?? []
-    const { oplog, loaded } = await load_oplog(chain, heads)
+    const { oplog, loaded } = await load_oplog(chain, heads, phases)
     const handle: LibraryHandle = { chain, oplog, pins }
     // A stored entry that no longer verifies, under a rule a later version
     // added, drops out of the oplog; that is never silent.
@@ -213,16 +216,23 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     // library not in the index, a schema change, or heads that no longer
     // reproduce after load — clears the library's rows and projects them over.
     const marker = await projector.projection_state({ library_address })
-    if (marker !== undefined && JSON.stringify(marker.heads) === JSON.stringify(actual_heads)) {
-      if (marker.pending.length > 0) await projector.project_keys({ oplog: handle.oplog, keys: marker.pending })
-    } else {
-      await projector.remove_library({ library_address })
-      await projector.project_library({ oplog: handle.oplog })
-    }
+    await phases.time_async('project', async () => {
+      if (marker !== undefined && JSON.stringify(marker.heads) === JSON.stringify(actual_heads)) {
+        if (marker.pending.length > 0) await projector.project_keys({ oplog: handle.oplog, keys: marker.pending })
+      } else {
+        await projector.remove_library({ library_address })
+        await projector.project_library({ oplog: handle.oplog })
+      }
+    })
+    phases.report(`library ${library_address} opened with ${handle.oplog.entries.size} entries`)
     // Re-pinning every entry repairs its pins and fills the pin set, at a few
     // small reads per entry: minutes for a large library on a slow disk. So
     // it runs after the open returns, queued with the holds and releases.
-    exclusive_pins(async () => { await pin_entries(handle, handle.oplog.entries.values(), { pass: true }) }).catch((error: unknown) => {
+    exclusive_pins(async () => {
+      const pass = open_phases()
+      await pass.time_async('repin', async () => { await pin_entries(handle, handle.oplog.entries.values(), { pass: true }) })
+      pass.report(`library ${library_address} re-pinned ${handle.oplog.entries.size} entries`)
+    }).catch((error: unknown) => {
       process.emitWarning(`library ${library_address}: re-pinning its entries at open failed: ${(error as Error).message}`)
     })
     return handle
