@@ -29,7 +29,7 @@ export const DEFAULT_PEER_CONFIG = Object.freeze({
     census: false
 });
 const STRING_FIELDS = ['ffmpeg_path', 'fpcalc_path'];
-const OPTIONAL_STRING_FIELDS = ['data_dir', 'ytdlp_path'];
+const OPTIONAL_STRING_FIELDS = ['data_dir', 'index_dir', 'ytdlp_path'];
 // Checks every value's type, since a config file is untyped JSON: a string
 // "false" must never enable allow_toolchain_mismatch.
 export const resolve_peer_config = (config = {}) => {
@@ -55,22 +55,24 @@ export const resolve_peer_config = (config = {}) => {
         throw new RangeError(`heads_interval_ms must be at least ${HEADS_INTERVAL_FLOOR_MS}`);
     if (resolved.announce_interval_ms < ANNOUNCE_INTERVAL_FLOOR_MS)
         throw new RangeError(`announce_interval_ms must be at least ${ANNOUNCE_INTERVAL_FLOOR_MS}`);
+    if (resolved.index_dir !== undefined && resolved.data_dir === undefined)
+        throw new TypeError('index_dir needs a data_dir');
     const network = resolve_network_config(resolved.network);
     if (resolved.census && (network === false || resolved.data_dir === undefined))
         throw new TypeError('census needs a network and a data_dir');
     return Object.freeze({ ...resolved, network });
 };
-// The data directory layout.
-export const data_paths = (data_dir) => ({
+// The data directory layout; the SQLite stores go to index_dir when set.
+export const data_paths = (data_dir, index_dir = data_dir) => ({
     blocks: join(data_dir, 'blocks'),
     datastore: join(data_dir, 'datastore'),
     // Pin counts (#fabric/pin-index.ts), derived and refilled at open.
-    pins: join(data_dir, 'pins.sqlite'),
+    pins: join(index_dir, 'pins.sqlite'),
     identity: join(data_dir, 'identity.key'),
     libraries: join(data_dir, 'libraries.json'),
     // The persisted query index (§4.7): reopened across restarts so the library
     // is not re-projected from blocks every time.
-    index: join(data_dir, 'index.sqlite'),
+    index: join(index_dir, 'index.sqlite'),
     // One JSONL file of aggregate counts per UTC day (#peer/census.ts).
     census: join(data_dir, 'census')
 });

@@ -79,12 +79,12 @@ export interface CreatePeerOptions {
 
 export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network }: CreatePeerOptions = {}): Promise<Peer> => {
   const config = resolve_peer_config(overrides)
-  const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir)
+  const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir, config.index_dir)
   // Before anything in the directory opens (§8.4.6); a held lock leaves it untouched.
   const lock = config.data_dir === undefined ? undefined : lock_data_dir(config.data_dir)
   let store: PeerStore
   try {
-    store = await open_peer_store({ data_dir: config.data_dir, network: join_network === undefined ? config.network : false })
+    store = await open_peer_store({ data_dir: config.data_dir, index_dir: config.index_dir, network: join_network === undefined ? config.network : false })
   } catch (error) {
     lock?.release()
     throw error

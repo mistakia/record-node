@@ -20,7 +20,7 @@ export interface NodeConfig {
   readonly peer: PeerConfig
 }
 
-const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
 
 const read_config_file = async (path: string): Promise<Record<string, unknown>> => {
   const value: unknown = JSON.parse(await readFile(path, 'utf8'))

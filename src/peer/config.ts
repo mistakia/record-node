@@ -18,6 +18,10 @@ export interface PeerConfig {
   // Where blocks, pins, the identity key, and library heads live. Absent,
   // the peer keeps everything in memory and forgets it on stop.
   readonly data_dir?: string | undefined
+  // Where the derived SQLite stores (the query index and the pin index) live,
+  // when not in data_dir: they take random reads, which a fast disk serves
+  // far better than one sized for blocks. Needs data_dir.
+  readonly index_dir?: string | undefined
   readonly ffmpeg_path: string
   readonly fpcalc_path: string
   // yt-dlp for URL ingest (§6.4.2); record-resolver finds it on PATH or
@@ -74,7 +78,7 @@ export const DEFAULT_PEER_CONFIG: PeerConfig = Object.freeze({
 })
 
 const STRING_FIELDS = ['ffmpeg_path', 'fpcalc_path'] as const
-const OPTIONAL_STRING_FIELDS = ['data_dir', 'ytdlp_path'] as const
+const OPTIONAL_STRING_FIELDS = ['data_dir', 'index_dir', 'ytdlp_path'] as const
 
 // Checks every value's type, since a config file is untyped JSON: a string
 // "false" must never enable allow_toolchain_mismatch.
@@ -96,22 +100,23 @@ export const resolve_peer_config = (config: Partial<PeerConfig> = {}): PeerConfi
   }
   if (resolved.heads_interval_ms < HEADS_INTERVAL_FLOOR_MS) throw new RangeError(`heads_interval_ms must be at least ${HEADS_INTERVAL_FLOOR_MS}`)
   if (resolved.announce_interval_ms < ANNOUNCE_INTERVAL_FLOOR_MS) throw new RangeError(`announce_interval_ms must be at least ${ANNOUNCE_INTERVAL_FLOOR_MS}`)
+  if (resolved.index_dir !== undefined && resolved.data_dir === undefined) throw new TypeError('index_dir needs a data_dir')
   const network = resolve_network_config(resolved.network)
   if (resolved.census && (network === false || resolved.data_dir === undefined)) throw new TypeError('census needs a network and a data_dir')
   return Object.freeze({ ...resolved, network })
 }
 
-// The data directory layout.
-export const data_paths = (data_dir: string) => ({
+// The data directory layout; the SQLite stores go to index_dir when set.
+export const data_paths = (data_dir: string, index_dir: string = data_dir) => ({
   blocks: join(data_dir, 'blocks'),
   datastore: join(data_dir, 'datastore'),
   // Pin counts (#fabric/pin-index.ts), derived and refilled at open.
-  pins: join(data_dir, 'pins.sqlite'),
+  pins: join(index_dir, 'pins.sqlite'),
   identity: join(data_dir, 'identity.key'),
   libraries: join(data_dir, 'libraries.json'),
   // The persisted query index (§4.7): reopened across restarts so the library
   // is not re-projected from blocks every time.
-  index: join(data_dir, 'index.sqlite'),
+  index: join(index_dir, 'index.sqlite'),
   // One JSONL file of aggregate counts per UTC day (#peer/census.ts).
   census: join(data_dir, 'census')
 })

@@ -8,7 +8,8 @@ export interface PeerStore {
     readonly network: Network | undefined;
     readonly stop: () => Promise<void>;
 }
-export declare const open_peer_store: ({ data_dir, network }: {
+export declare const open_peer_store: ({ data_dir, index_dir, network }: {
     data_dir: string | undefined;
+    index_dir?: string | undefined;
     network: NetworkConfig | false;
 }) => Promise<PeerStore>;

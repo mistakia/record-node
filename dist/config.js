@@ -7,7 +7,7 @@ import { DEFAULT_PEER_CONFIG, resolve_peer_config } from '#peer/config.ts';
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_HOST = '127.0.0.1';
 export const default_data_dir = () => join(homedir(), '.record');
-const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
 const read_config_file = async (path) => {
     const value = JSON.parse(await readFile(path, 'utf8'));
     if (value === null || typeof value !== 'object' || Array.isArray(value))

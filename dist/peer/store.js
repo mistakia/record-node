@@ -3,6 +3,7 @@
 // profile with bitswap behind it; without, it has no libp2p, block brokers,
 // or routers. Store reads stay local either way; only Network.fetch_block
 // reaches peers. Pins are counted in the pin index beside the blocks.
+import { mkdirSync } from 'node:fs';
 import { opendir, rmdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as dag_cbor from '@ipld/dag-cbor';
@@ -56,8 +57,10 @@ const remove_retired_pin_dirs = async (datastore, signal) => {
         }
     }
 };
-export const open_peer_store = async ({ data_dir, network }) => {
-    const paths = data_dir === undefined ? undefined : data_paths(data_dir);
+export const open_peer_store = async ({ data_dir, index_dir, network }) => {
+    const paths = data_dir === undefined ? undefined : data_paths(data_dir, index_dir);
+    if (index_dir !== undefined)
+        mkdirSync(index_dir, { recursive: true });
     const blockstore = paths === undefined ? new MemoryBlockstore() : new FsBlockstore(paths.blocks);
     const datastore = paths === undefined ? new MemoryDatastore() : new FsDatastore(paths.datastore);
     const pin_db = open_pin_db(paths?.pins);

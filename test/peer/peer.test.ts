@@ -22,8 +22,8 @@ import type { PeerEvent, TrackQuery } from '#types/peer.ts'
 const QUERY: TrackQuery = { offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' }
 const running: Peer[] = []
 
-const start = async (data_dir?: string): Promise<Peer> => {
-  const peer = await create_peer({ config: { allow_toolchain_mismatch: preflight_bypassed, network: false, ...(data_dir === undefined ? {} : { data_dir }) } })
+const start = async (data_dir?: string, index_dir?: string): Promise<Peer> => {
+  const peer = await create_peer({ config: { allow_toolchain_mismatch: preflight_bypassed, network: false, ...(data_dir === undefined ? {} : { data_dir }), ...(index_dir === undefined ? {} : { index_dir }) } })
   await start_peer(peer)
   running.push(peer)
   return peer
@@ -55,6 +55,20 @@ describe('peer', () => {
     expect(items).toEqual([expect.objectContaining({ id: f7.track_id, tags: [{ library_address: own_address, tag: 'kept' }], listen_count: 1 })])
     expect((await second.get_audio(f7.audio_cid))?.length).toBe(items[0]?.audio_size_bytes)
     expect(await second.content_store.is_pinned(f7.audio_cid)).toBe(true)
+  })
+
+  test('index_dir holds the SQLite stores apart from the data directory, across a restart', async () => {
+    const data_dir = mkdtempSync(join(tmpdir(), 'record-peer-test-'))
+    const index_dir = join(mkdtempSync(join(tmpdir(), 'record-index-test-')), 'nested')
+    const first = await start(data_dir, index_dir)
+    await first.ingest_file(f7.fixture_path)
+    await stop(first)
+    expect(existsSync(join(index_dir, 'index.sqlite'))).toBe(true)
+    expect(existsSync(join(index_dir, 'pins.sqlite'))).toBe(true)
+    expect(existsSync(join(data_dir, 'index.sqlite'))).toBe(false)
+    expect(existsSync(join(data_dir, 'pins.sqlite'))).toBe(false)
+    const second = await start(data_dir, index_dir)
+    expect((await second.list_tracks(QUERY)).items.map(({ id }) => id)).toEqual([f7.track_id])
   })
 
   test('pins are counted in the pin index, and Helia pin records left by an older version are deleted', async () => {

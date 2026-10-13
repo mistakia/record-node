@@ -25,8 +25,8 @@ describe('config', () => {
   })
 
   test('flags override the file named by RECORD_CONFIG', async () => {
-    const path = config_file({ port: 4000, data_dir: '/from/file', ffmpeg_path: '/opt/ffmpeg' })
-    expect(await load_config({ env: { RECORD_CONFIG: path } })).toMatchObject({ port: 4000, peer: { data_dir: '/from/file', ffmpeg_path: '/opt/ffmpeg' } })
+    const path = config_file({ port: 4000, data_dir: '/from/file', index_dir: '/fast/index', ffmpeg_path: '/opt/ffmpeg' })
+    expect(await load_config({ env: { RECORD_CONFIG: path } })).toMatchObject({ port: 4000, peer: { data_dir: '/from/file', index_dir: '/fast/index', ffmpeg_path: '/opt/ffmpeg' } })
     expect(await load_config({ env: { RECORD_CONFIG: path }, port: '5000', data_dir: '/from/flag' }))
       .toMatchObject({ port: 5000, peer: { data_dir: '/from/flag', ffmpeg_path: '/opt/ffmpeg' } })
   })
