@@ -15,7 +15,7 @@ import { createHeliaLight } from 'helia';
 import { create_helia_content_store } from '#adapter/libp2p/content-store.ts';
 import { create_libp2p_network } from '#adapter/libp2p/network.ts';
 import { create_networked_helia } from '#adapter/libp2p/node.ts';
-import { open_pin_db } from '#fabric/pin-index.ts';
+import { create_library_pin_record, open_pin_db } from '#fabric/pin-index.ts';
 import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts';
 import { data_paths } from "./config.js";
 // The datastore directories where Helia's pin records were kept before the
@@ -93,6 +93,7 @@ export const open_peer_store = async ({ data_dir, index_dir, network }) => {
     return {
         helia,
         content_store: create_helia_content_store({ helia, blockstore, pin_db, commit: pin_commit }),
+        pin_record: create_library_pin_record({ db: pin_db, commit: pin_commit }),
         network: opened.network,
         stop: async () => {
             retiring.abort();

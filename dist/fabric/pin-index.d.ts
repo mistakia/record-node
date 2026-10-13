@@ -14,3 +14,15 @@ export declare const create_pin_index: ({ db, read, has, commit }: {
     has: (cid: CID) => Promise<boolean>;
     commit?: CommitBatcher | undefined;
 }) => PinIndex;
+export interface LibraryPinRecord {
+    load: (library_address: string) => Map<string, boolean> | undefined;
+    begin: (library_address: string) => void;
+    set: (library_address: string, pins: ReadonlyArray<readonly [string, boolean]>) => void;
+    delete: (library_address: string, cids: readonly string[]) => void;
+    settle: (library_address: string) => void;
+    clear: (library_address: string) => void;
+}
+export declare const create_library_pin_record: ({ db, commit }: {
+    db: DatabaseSync;
+    commit?: CommitBatcher | undefined;
+}) => LibraryPinRecord;

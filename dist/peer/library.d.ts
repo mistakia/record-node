@@ -1,5 +1,6 @@
 import { type ResolvedAcChain } from '#access-control/resolve.ts';
 import type { ContentStore } from '#fabric/content-store.ts';
+import type { LibraryPinRecord } from '#fabric/pin-index.ts';
 import type { KeyPair } from '#identity/key-pair.ts';
 import type { VerifiedEntry } from '#oplog/accept.ts';
 import { type AccessChange, type Oplog } from '#oplog/dag.ts';
@@ -62,11 +63,12 @@ export interface LibraryManager {
     pins_settled: () => Promise<void>;
     stop_pin_passes: () => void;
 }
-export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, on_entries, keeps_blobs, retained }: {
+export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs, retained }: {
     content_store: ContentStore;
     projector: Projector;
     entry_blocks: EntryBlockCache;
     state_store: LibraryStateStore;
+    pin_record?: LibraryPinRecord | undefined;
     keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs;
     retained?: () => ReadonlySet<string>;
     on_entries?: (input: {

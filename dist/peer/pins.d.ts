@@ -31,4 +31,4 @@ export declare const pin_into: ({ content_store, pins, items }: {
     content_store: ContentStore;
     pins: PinSet;
     items: Iterable<[string, boolean]>;
-}) => Promise<void>;
+}) => Promise<Array<[string, boolean]>>;

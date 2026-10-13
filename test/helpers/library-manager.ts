@@ -9,6 +9,7 @@ import { build_track_envelope } from '#entry/envelope.ts'
 import { compute_track_id } from '#entry/id.ts'
 import { build_put_operation } from '#entry/operations.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
+import { create_library_pin_record, open_pin_db } from '#fabric/pin-index.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import { create_library_manager, type LibraryManager } from '#peer/library.ts'
 import { create_memory_state_store } from '#peer/state.ts'
@@ -17,18 +18,21 @@ import { create_projector } from '#query-db/projector.ts'
 import { open_query_db } from '#query-db/schema.ts'
 
 // reopen makes a second manager over the same stores, as a restart would,
-// optionally through a wrapper of the content store.
+// optionally through a wrapper of the content store, and without the library
+// pin record when recorded is false, so its opens re-pin every entry.
 export const open_library_manager = () => {
   const content_store = create_memory_content_store()
   const db = open_query_db()
   const state_store = create_memory_state_store()
-  const reopen = (store: ContentStore = content_store) => create_library_manager({
+  const pin_record = create_library_pin_record({ db: open_pin_db() })
+  const reopen = (store: ContentStore = content_store, { recorded = true } = {}) => create_library_manager({
     content_store: store,
     projector: create_projector({ db, read_content: store.get }),
     entry_blocks: create_entry_block_cache({ db }),
-    state_store
+    state_store,
+    pin_record: recorded ? pin_record : undefined
   })
-  return { content_store, db, state_store, manager: reopen(), reopen }
+  return { content_store, db, state_store, pin_record, manager: reopen(), reopen }
 }
 
 // The chain is written to the store but not opened, so nothing is pinned yet.

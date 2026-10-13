@@ -104,6 +104,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     projector: create_projector({ db, read_content: content_store.get, commit: index_commit }),
     entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
     state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
+    pin_record: store.pin_record,
     keeps_blobs: (chain) => keeps_blobs(context)(chain),
     retained: () => context.blobs.retained(),
     on_entries: (input) => {

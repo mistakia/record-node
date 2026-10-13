@@ -115,7 +115,7 @@ describe('library-structure', () => {
         unpinned.push(cid)
         await content_store.unpin(cid)
       }
-    })
+    }, { recorded: false })
     await restarted.open_library(kept.chain.address)
     await restarted.open_library(gone.chain.address)
     const unlinked = restarted.unlink_library(gone.chain.address)

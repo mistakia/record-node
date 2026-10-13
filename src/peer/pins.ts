@@ -87,20 +87,24 @@ export const entry_pins = async ({ content_store, library_address, entry, keeps_
   return pins
 }
 
-// Pins each CID the store holds and records it in the set. A CID whose blocks
-// are not all local yet is left out, so the set holds only real pins.
+// Pins each CID the store holds and records it in the set, returning the
+// pins it added. A CID whose blocks are not all local yet is left out, so the
+// set holds only real pins.
 export const pin_into = async ({ content_store, pins, items }: {
   content_store: ContentStore
   pins: PinSet
   items: Iterable<[string, boolean]>
-}): Promise<void> => {
+}): Promise<Array<[string, boolean]>> => {
+  const added: Array<[string, boolean]> = []
   for (const [cid, recursive] of items) {
     if (pins.get(cid) === true || pins.get(cid) === recursive) continue
     try {
       await content_store.pin(cid, { recursive })
       pins.set(cid, recursive)
+      added.push([cid, recursive])
     } catch (error) {
       if (!(error instanceof ProtocolError && error.code === 'content_unavailable')) throw error
     }
   }
+  return added
 }

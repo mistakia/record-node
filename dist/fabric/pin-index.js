@@ -6,10 +6,11 @@
 // synchronous transaction: concurrent pins of different roots never wait on
 // each other, and a crash never tears a count.
 //
-// The index is derived. Every library open pins its entries and kept blobs
-// again, and the identity library's pin records are pinned at start, so an
-// index that is missing, of another version, or unreadable is replaced by an
-// empty one and refilled by that pass.
+// The index is derived. A library open pins its entries and kept blobs again
+// unless its recorded pin set is clean (library pin record, below), and the
+// identity library's pin records are pinned at start, so an index that is
+// missing, of another version, or unreadable is replaced by an empty one and
+// refilled by that pass.
 import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { walk_blocks } from "./block.js";
@@ -18,7 +19,10 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS block_pins (multihash BLOB PRIMARY KEY, refs INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS root_pins (multihash BLOB PRIMARY KEY, recursive INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS library_pin_sets (id INTEGER PRIMARY KEY, library TEXT NOT NULL UNIQUE, clean INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS library_pins (set_id INTEGER NOT NULL, cid TEXT NOT NULL, recursive INTEGER NOT NULL, PRIMARY KEY (set_id, cid)) WITHOUT ROWID;
 `;
+const TABLES = ['meta', 'block_pins', 'root_pins', 'library_pin_sets', 'library_pins'];
 const open = (path) => {
     const db = new DatabaseSync(path);
     db.exec('PRAGMA journal_mode = WAL');
@@ -37,7 +41,7 @@ const open = (path) => {
         }
     })();
     if (version !== SCHEMA_VERSION) {
-        for (const table of ['meta', 'block_pins', 'root_pins'])
+        for (const table of TABLES)
             db.exec(`DROP TABLE IF EXISTS ${table}`);
     }
     db.exec(SCHEMA);
@@ -62,6 +66,20 @@ export const open_pin_db = (path = ':memory:') => {
         return open(path);
     }
 };
+// Runs fn as one transaction, through the batcher when there is one.
+const in_transaction = (db, commit, fn) => {
+    if (commit !== undefined)
+        return commit.run(fn);
+    db.exec('BEGIN');
+    try {
+        fn();
+        db.exec('COMMIT');
+    }
+    catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+    }
+};
 export const create_pin_index = ({ db, read, has, commit }) => {
     const select_root = db.prepare('SELECT recursive FROM root_pins WHERE multihash = ?');
     const upsert_root = db.prepare('INSERT OR REPLACE INTO root_pins (multihash, recursive) VALUES (?, ?)');
@@ -75,19 +93,7 @@ export const create_pin_index = ({ db, read, has, commit }) => {
         const row = select_root.get(key(cid));
         return row === undefined ? undefined : row.recursive === 1;
     };
-    const transaction = (fn) => {
-        if (commit !== undefined)
-            return commit.run(fn);
-        db.exec('BEGIN');
-        try {
-            fn();
-            db.exec('COMMIT');
-        }
-        catch (error) {
-            db.exec('ROLLBACK');
-            throw error;
-        }
-    };
+    const transaction = (fn) => { in_transaction(db, commit, fn); };
     // Pin and unpin of one root run one at a time, so a walk always matches
     // the kind it was made for.
     const roots = new Map();
@@ -175,5 +181,63 @@ export const create_pin_index = ({ db, read, has, commit }) => {
             await remove();
             return true;
         })
+    };
+};
+export const create_library_pin_record = ({ db, commit }) => {
+    const select_set = db.prepare('SELECT id, clean FROM library_pin_sets WHERE library = ?');
+    const insert_set = db.prepare('INSERT INTO library_pin_sets (library, clean) VALUES (?, 0) ON CONFLICT(library) DO NOTHING');
+    const set_clean = db.prepare('UPDATE library_pin_sets SET clean = ? WHERE library = ?');
+    const delete_set = db.prepare('DELETE FROM library_pin_sets WHERE library = ?');
+    const select_pins = db.prepare('SELECT cid, recursive FROM library_pins WHERE set_id = ?');
+    const upsert_pin = db.prepare('INSERT INTO library_pins (set_id, cid, recursive) VALUES (?, ?, ?) ON CONFLICT(set_id, cid) DO UPDATE SET recursive = excluded.recursive');
+    const delete_pin = db.prepare('DELETE FROM library_pins WHERE set_id = ? AND cid = ?');
+    const delete_pins = db.prepare('DELETE FROM library_pins WHERE set_id = ?');
+    const set_id = (library_address) => {
+        insert_set.run(library_address);
+        return select_set.get(library_address).id;
+    };
+    const transaction = (fn) => { in_transaction(db, commit, fn); };
+    return {
+        load: (library_address) => {
+            const row = select_set.get(library_address);
+            if (row?.clean !== 1)
+                return undefined;
+            const pins = new Map();
+            for (const { cid, recursive } of select_pins.all(row.id))
+                pins.set(cid, recursive === 1);
+            return pins;
+        },
+        begin: (library_address) => { transaction(() => { set_clean.run(0, library_address); }); },
+        set: (library_address, pins) => {
+            if (pins.length === 0)
+                return;
+            transaction(() => {
+                const id = set_id(library_address);
+                for (const [cid, recursive] of pins)
+                    upsert_pin.run(id, cid, recursive ? 1 : 0);
+            });
+        },
+        delete: (library_address, cids) => {
+            const row = select_set.get(library_address);
+            if (row === undefined || cids.length === 0)
+                return;
+            transaction(() => { for (const cid of cids)
+                delete_pin.run(row.id, cid); });
+        },
+        settle: (library_address) => {
+            transaction(() => {
+                set_id(library_address);
+                set_clean.run(1, library_address);
+            });
+        },
+        clear: (library_address) => {
+            const row = select_set.get(library_address);
+            if (row === undefined)
+                return;
+            transaction(() => {
+                delete_pins.run(row.id);
+                delete_set.run(library_address);
+            });
+        }
     };
 };
