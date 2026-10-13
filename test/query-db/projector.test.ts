@@ -224,4 +224,36 @@ describe('query-db projector', () => {
     await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: compute_track_id('AQAA-1') })] })
     expect(list_tracks({ db, library_addresses: both }).total).toBe(2)
   })
+
+  test('tracks.listen_count follows listens projected before and after the track, and fills on upgrade', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'record-listen-count-'))
+    try {
+      const path = join(dir, 'index.sqlite')
+      const writer = generate_key_pair()
+      const library = await open_test_library({ writers: [writer] })
+      const listens = await open_test_library({ name: 'listens', type: 'listens', writers: [writer] })
+      const db = open_query_db({ path })
+      const projector = create_projector({ db, read_content: library.block_store.get })
+      const track_id = compute_track_id('AQAA-heard')
+      const listen = async (timestamp: number) => {
+        await projector.project_entries({ oplog: listens.oplog, entries: [append_listen({ oplog: listens.oplog, track_id, address: library.chain.address, key_pair: writer, timestamp })] })
+      }
+      const stored = (target: DatabaseSync) => Number(target.prepare('SELECT listen_count FROM tracks WHERE track_id = ?').get(track_id)?.listen_count)
+      await listen(1)
+      await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-heard' })] })
+      await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-quiet' })] })
+      await listen(2)
+      expect(stored(db)).toBe(2)
+      expect(list_tracks({ db, sort: 'listen_count', order: 'desc' }).items[0]).toMatchObject({ id: track_id, listen_count: 2 })
+      const plan = db.prepare('EXPLAIN QUERY PLAN SELECT t.track_id FROM tracks AS t ORDER BY t.listen_count DESC, t.track_id DESC LIMIT 10').all()
+      expect(JSON.stringify(plan)).toContain('tracks_by_listen_count')
+      db.exec('DROP INDEX tracks_by_listen_count; DROP TRIGGER listens_count_insert; DROP TRIGGER listens_count_delete; ALTER TABLE tracks DROP COLUMN listen_count')
+      db.close()
+      const reopened = open_query_db({ path })
+      expect(stored(reopened)).toBe(2)
+      reopened.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

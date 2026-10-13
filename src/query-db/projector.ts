@@ -71,8 +71,8 @@ const create_statements = (db: DatabaseSync) => ({
     INSERT INTO tracks (
       library_address, track_id, entry_hash, content_cid, audio_cid, audio_size_bytes, title, artist,
       artists, album, album_artist, remixer, genre, bpm, duration_seconds, bitrate, codec, sample_rate,
-      lossless, artwork, added_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      lossless, artwork, added_at_ms, listen_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT count(*) FROM listens WHERE track_id = ?2))`),
   insert_tag: db.prepare('INSERT OR IGNORE INTO tags (library_address, track_id, tag) VALUES (?, ?, ?)'),
   insert_resolver: db.prepare(`
     INSERT OR IGNORE INTO resolvers (

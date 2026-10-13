@@ -10,7 +10,7 @@ export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'bitr
 export type TrackSort = typeof TRACK_SORTS[number]
 export type SortOrder = 'asc' | 'desc'
 
-// A sort's key over the candidate row `t`. Every sort but listen_count has a
+// A sort's key over the candidate row `t`. Every sort has a
 // (column, track_id) index (schema.ts), so a page walks limit + offset index
 // entries in order instead of sorting every match. A nullable key pages its
 // non-null rows and its null rows apart, so nulls come last in both
@@ -27,8 +27,9 @@ const SORT_KEYS: Record<TrackSort, SortKey> = {
   bpm: { key: 't.bpm', nullable_column: 't.bpm' },
   duration: { key: 't.duration_seconds', nullable_column: 't.duration_seconds' },
   bitrate: { key: 't.bitrate', nullable_column: 't.bitrate' },
-  // Every listen of the track, as Track.listen_count counts them.
-  listen_count: { key: '(SELECT count(*) FROM listens WHERE listens.track_id = t.track_id)' },
+  // Every listen of the track, as Track.listen_count counts them, kept on the
+  // row by the listens triggers (schema.ts).
+  listen_count: { key: 't.listen_count' },
   added_at: { key: 't.added_at_ms' }
 }
 

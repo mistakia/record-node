@@ -10,8 +10,9 @@ const SORT_KEYS = {
     bpm: { key: 't.bpm', nullable_column: 't.bpm' },
     duration: { key: 't.duration_seconds', nullable_column: 't.duration_seconds' },
     bitrate: { key: 't.bitrate', nullable_column: 't.bitrate' },
-    // Every listen of the track, as Track.listen_count counts them.
-    listen_count: { key: '(SELECT count(*) FROM listens WHERE listens.track_id = t.track_id)' },
+    // Every listen of the track, as Track.listen_count counts them, kept on the
+    // row by the listens triggers (schema.ts).
+    listen_count: { key: 't.listen_count' },
     added_at: { key: 't.added_at_ms' }
 };
 export const DEFAULT_LIMIT = 100;

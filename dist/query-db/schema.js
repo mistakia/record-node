@@ -46,6 +46,13 @@ const counted = ({ table, row, sign }) => {
     return `INSERT INTO library_totals (library_address, ${columns.join(', ')}) VALUES (${row}.library_address, ${values.join(', ')})
       ON CONFLICT(library_address) DO UPDATE SET ${columns.map((column) => `${column} = ${column} + excluded.${column}`).join(', ')};`;
 };
+// The columns a row's totals depend on, so an update of any other column,
+// such as listen_count, fires no totals trigger.
+const TOTALS_COLUMNS = {
+    tracks: 'library_address, audio_size_bytes',
+    entries: 'library_address, op',
+    logs: 'library_address, linked_address'
+};
 const totals_triggers = (table) => `
   CREATE TRIGGER IF NOT EXISTS ${table}_totals_insert AFTER INSERT ON ${table} BEGIN
     ${counted({ table, row: 'NEW', sign: '+' })}
@@ -53,7 +60,7 @@ const totals_triggers = (table) => `
   CREATE TRIGGER IF NOT EXISTS ${table}_totals_delete AFTER DELETE ON ${table} BEGIN
     ${counted({ table, row: 'OLD', sign: '-' })}
   END;
-  CREATE TRIGGER IF NOT EXISTS ${table}_totals_update AFTER UPDATE ON ${table} BEGIN
+  CREATE TRIGGER IF NOT EXISTS ${table}_totals_update AFTER UPDATE OF ${TOTALS_COLUMNS[table]} ON ${table} BEGIN
     ${counted({ table, row: 'OLD', sign: '-' })}
     ${counted({ table, row: 'NEW', sign: '+' })}
   END;`;
@@ -67,6 +74,23 @@ const LIBRARY_TOTALS_SCHEMA = `
   ) WITHOUT ROWID;
   ${['tracks', 'entries', 'logs'].map(totals_triggers).join('\n')}
 `;
+// tracks.listen_count follows the listens table; a track row takes its count
+// when inserted (projector.ts).
+const LISTEN_COUNT_SCHEMA = `
+  CREATE INDEX IF NOT EXISTS tracks_by_listen_count ON tracks (listen_count, track_id);
+  CREATE TRIGGER IF NOT EXISTS listens_count_insert AFTER INSERT ON listens BEGIN
+    UPDATE tracks SET listen_count = listen_count + 1 WHERE track_id = NEW.track_id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS listens_count_delete AFTER DELETE ON listens BEGIN
+    UPDATE tracks SET listen_count = listen_count - 1 WHERE track_id = OLD.track_id;
+  END;
+`;
+// An index written before tracks.listen_count existed: the column is added
+// and filled for the tracks that have listens, once.
+const ADD_LISTEN_COUNT = `
+  ALTER TABLE tracks ADD COLUMN listen_count INTEGER NOT NULL DEFAULT 0;
+  UPDATE tracks SET listen_count = (SELECT count(*) FROM listens WHERE listens.track_id = tracks.track_id)
+  WHERE track_id IN (SELECT track_id FROM listens);`;
 // The totals of rows written before library_totals existed: one scan, once.
 const FILL_TOTALS = `
   INSERT INTO library_totals (library_address, track_count, audio_size_bytes, put_count, linked_library_count)
@@ -116,6 +140,10 @@ const SCHEMA = `
     lossless INTEGER,
     artwork TEXT NOT NULL DEFAULT '[]',
     added_at_ms INTEGER NOT NULL,
+    -- Every listen of the track id in any listens library, kept by the
+    -- listens triggers and set at insert, so the listen_count sort reads an
+    -- index instead of counting per row.
+    listen_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (library_address, track_id)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS tracks_by_track_id ON tracks (track_id);
@@ -189,6 +217,7 @@ const SCHEMA = `
     PRIMARY KEY (library_address, entry_hash)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS listens_by_track_id ON listens (track_id, timestamp);
+${LISTEN_COUNT_SCHEMA}
 
   -- Per-library projection markers (§4.7): the library's entry heads at the
   -- moment its rows were last written, and the keys whose content payload was
@@ -224,7 +253,12 @@ ${LIBRARY_TOTALS_SCHEMA}
 const STAMP_VERSION = "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 export const apply_schema = (db) => {
     const has_totals = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_totals'").get() !== undefined;
+    const has_tracks = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tracks'").get() !== undefined;
+    const lacks_listen_count = has_tracks &&
+        db.prepare("SELECT 1 FROM pragma_table_info('tracks') WHERE name = 'listen_count'").get() === undefined;
     in_transaction(db, () => {
+        if (lacks_listen_count)
+            db.exec(ADD_LISTEN_COUNT);
         db.exec(SCHEMA);
         if (!has_totals)
             db.exec(FILL_TOTALS);
