@@ -1,11 +1,10 @@
 // Signed entries at rest and on the wire (§4.1): the exact 8-field object,
 // its canonical bytes, and its entry hash.
 
-import { base58btc } from 'multiformats/bases/base58'
 import type { CID } from 'multiformats/cid'
 
 import { decode_canonical, encode_canonical, type CanonicalBytes } from '#encoding/canonical-bytes.ts'
-import { compute_cid } from '#encoding/cid.ts'
+import { compute_cid, format_protocol_cid } from '#encoding/cid.ts'
 import { assert_signed_entry_size } from '#encoding/size-bounds.ts'
 import { is_compressed_pubkey } from '#identity/key-pair.ts'
 import type { SignedEntry } from '#types/entry.ts'
@@ -38,7 +37,7 @@ export const assert_signed_entry_shape = (value: unknown): SignedEntry => {
 }
 
 const with_hash = ({ entry, bytes, cid }: { entry: SignedEntry, bytes: CanonicalBytes, cid: CID }): HashedEntry =>
-  Object.freeze({ hash: cid.toString(base58btc), multihash: cid.multihash.bytes, bytes, entry })
+  Object.freeze({ hash: format_protocol_cid(cid), multihash: cid.multihash.bytes, bytes, entry })
 
 export const hash_signed_entry = (entry: SignedEntry): HashedEntry => {
   const { id, payload, next, refs, v, clock, key, sig } = entry

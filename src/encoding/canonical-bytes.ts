@@ -12,8 +12,13 @@ export type CanonicalBytes = Uint8Array & { readonly [canonical_bytes_brand]: tr
 export const encode_canonical = (value: unknown): CanonicalBytes =>
   encode(value) as CanonicalBytes
 
-const bytes_equal = (a: Uint8Array, b: Uint8Array) =>
-  a.length === b.length && a.every((byte, index) => byte === b[index])
+// A plain loop: a closure per byte cost a large library's open a tenth of
+// its CPU.
+const bytes_equal = (a: Uint8Array, b: Uint8Array): boolean => {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index++) if (a[index] !== b[index]) return false
+  return true
+}
 
 // Readers reject non-canonical input instead of re-encoding it (§2.1): the
 // input must equal the canonical encoding of what it decodes to.

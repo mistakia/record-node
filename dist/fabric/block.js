@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import { decode as decode_dag_cbor, code as DAG_CBOR_CODE } from '@ipld/dag-cbor';
 import { decode as decode_dag_pb, code as DAG_PB_CODE } from '@ipld/dag-pb';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { sha3_512 } from '@noble/hashes/sha3.js';
+import { sha3_512 } from '#encoding/sha3.ts';
 import { importer } from 'ipfs-unixfs-importer';
 import { base58btc } from 'multiformats/bases/base58';
 import { CID } from 'multiformats/cid';

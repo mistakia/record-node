@@ -3,7 +3,16 @@
 import { encode, decode } from '@ipld/dag-cbor';
 import { ProtocolError } from '#types/errors.ts';
 export const encode_canonical = (value) => encode(value);
-const bytes_equal = (a, b) => a.length === b.length && a.every((byte, index) => byte === b[index]);
+// A plain loop: a closure per byte cost a large library's open a tenth of
+// its CPU.
+const bytes_equal = (a, b) => {
+    if (a.length !== b.length)
+        return false;
+    for (let index = 0; index < a.length; index++)
+        if (a[index] !== b[index])
+            return false;
+    return true;
+};
 // Readers reject non-canonical input instead of re-encoding it (§2.1): the
 // input must equal the canonical encoding of what it decodes to.
 export const decode_canonical = (bytes) => {
