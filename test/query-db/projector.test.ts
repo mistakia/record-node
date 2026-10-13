@@ -2,6 +2,9 @@
 // listens, and late-arriving content.
 
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
@@ -9,8 +12,25 @@ import { append_listen } from '#oplog/listens.ts'
 import { create_projector } from '#query-db/projector.ts'
 import { get_about, get_library_summary, get_listen_count, get_track, list_linked_libraries } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
+import type { DatabaseSync } from 'node:sqlite'
 import { open_test_library } from '#test/helpers/library.ts'
 import { add_link, add_track, delete_track, set_about, store_content, track_content } from './fixtures.ts'
+
+// The summary computed from the rows themselves, which library_totals must match.
+const scanned_summary = (db: DatabaseSync, library_address: string) => {
+  const row = db.prepare(`
+    SELECT
+      (SELECT count(*) FROM tracks WHERE library_address = :a) AS track_count,
+      (SELECT coalesce(sum(audio_size_bytes), 0) FROM tracks WHERE library_address = :a) AS audio_size_bytes,
+      (SELECT count(*) FROM logs WHERE library_address = :a AND linked_address IS NOT NULL) AS linked_library_count,
+      (SELECT count(*) FROM entries WHERE library_address = :a AND op = 'PUT') AS length`).get({ a: library_address }) ?? {}
+  return {
+    track_count: Number(row.track_count),
+    audio_size_bytes: Number(row.audio_size_bytes),
+    linked_library_count: Number(row.linked_library_count),
+    length: Number(row.length)
+  }
+}
 
 const setup = async () => {
   const writer = generate_key_pair()
@@ -141,5 +161,52 @@ describe('query-db projector', () => {
     await projector.remove_library({ library_address: oplog.chain.address })
     const libraries = db.prepare('SELECT DISTINCT library_address FROM entries UNION SELECT DISTINCT library_address FROM tags').all()
     expect(libraries.map(({ library_address }) => library_address)).toEqual([other.chain.address])
+  })
+
+  test('library totals follow adds, relabels, late content, deletes, links, and removal', async () => {
+    const { oplog, writer, block_store, db, projector } = await setup()
+    const address = oplog.chain.address
+    const check = () => { expect(get_library_summary({ db, library_address: address })).toEqual(scanned_summary(db, address)) }
+    for (const fingerprint of ['AQAA-1', 'AQAA-2', 'AQAA-3']) {
+      await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint })] })
+    }
+    check()
+    expect(get_library_summary({ db, library_address: address })).toMatchObject({ track_count: 3, audio_size_bytes: 3 * 4096, length: 3 })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', tags: ['relabel'], timestamp: 99 })] })
+    const late = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-late', store: false })
+    await projector.project_entries({ oplog, entries: [late] })
+    check()
+    await store_content({ block_store, value: track_content({ fingerprint: 'AQAA-late' }) })
+    await projector.project_keys({ oplog, keys: [compute_track_id('AQAA-late')] })
+    await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: compute_track_id('AQAA-2') })] })
+    const other = await open_test_library({ name: 'other' })
+    await projector.project_entries({ oplog, entries: [await add_link({ oplog, key_pair: writer, block_store, address: other.chain.address })] })
+    check()
+    expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 3, audio_size_bytes: 3 * 4096, linked_library_count: 1, length: 4 })
+    await projector.remove_library({ library_address: address })
+    expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
+  })
+
+  test('an index written before library_totals existed fills the totals once at open', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'record-totals-'))
+    try {
+      const path = join(dir, 'index.sqlite')
+      const writer = generate_key_pair()
+      const library = await open_test_library({ writers: [writer] })
+      const address = library.oplog.chain.address
+      const db = open_query_db({ path })
+      const projector = create_projector({ db, read_content: library.block_store.get })
+      for (const fingerprint of ['AQAA-1', 'AQAA-2']) {
+        await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint })] })
+      }
+      db.exec('DROP TABLE library_totals')
+      db.close()
+      const reopened = open_query_db({ path })
+      expect(get_library_summary({ db: reopened, library_address: address })).toEqual({ track_count: 2, audio_size_bytes: 2 * 4096, linked_library_count: 0, length: 2 })
+      expect(get_library_summary({ db: reopened, library_address: address })).toEqual(scanned_summary(reopened, address))
+      reopened.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

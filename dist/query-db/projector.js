@@ -24,8 +24,8 @@ const KEYED_TABLES = [
 const create_statements = (db) => ({
     clear_key: KEYED_TABLES.map(([table, column]) => db.prepare(`DELETE FROM ${table} WHERE library_address = ? AND ${column} = ?`)),
     delete_entry: db.prepare('DELETE FROM entries WHERE library_address = ? AND key = ?'),
-    upsert_entry: db.prepare(`
-    INSERT OR REPLACE INTO entries (library_address, key, entry_hash, op, type, clock_time, timestamp)
+    insert_entry: db.prepare(`
+    INSERT INTO entries (library_address, key, entry_hash, op, type, clock_time, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
     insert_track: db.prepare(`
     INSERT INTO tracks (
@@ -46,7 +46,7 @@ const create_statements = (db) => ({
     insert_listen: db.prepare(`
     INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
     VALUES (?, ?, ?, ?, ?)`),
-    remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
+    remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens', 'library_totals'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
     read_marker: db.prepare('SELECT heads, pending FROM library_heads WHERE library_address = ?'),
     upsert_marker: db.prepare(`
     INSERT INTO library_heads (library_address, heads, pending)
@@ -118,12 +118,12 @@ const write_key = ({ statements, oplog, key, entry, content }) => {
     const library_address = oplog.chain.address;
     for (const statement of statements.clear_key)
         statement.run(library_address, key);
-    if (entry === undefined || !is_envelope_operation(entry.operation)) {
-        statements.delete_entry.run(library_address, key);
+    // Deleted, not replaced, so the library_totals triggers see the old row go.
+    statements.delete_entry.run(library_address, key);
+    if (entry === undefined || !is_envelope_operation(entry.operation))
         return;
-    }
     const { operation } = entry;
-    statements.upsert_entry.run(library_address, key, entry.hash, operation.op, operation.value.type, entry.entry.clock.time, operation.value.timestamp);
+    statements.insert_entry.run(library_address, key, entry.hash, operation.op, operation.value.type, entry.entry.clock.time, operation.value.timestamp);
     if (is_put(operation))
         write_put({ statements, oplog, entry, envelope: operation.value, content });
 };

@@ -286,19 +286,16 @@ export const list_linked_libraries = ({ db, library_address }) => db.prepare(`
   SELECT linked_address, alias FROM logs
   WHERE library_address = ? AND linked_address IS NOT NULL
   ORDER BY linked_address`).all(library_address).map((row) => ({ address: String(row.linked_address), alias: nullable_text(row.alias) }));
-// The counts of the API Library shape.
+// The counts of the API Library shape, from the trigger-kept library_totals
+// row (schema.ts); a library with no rows has none.
 export const get_library_summary = ({ db, library_address }) => {
-    const row = db.prepare(`
-    SELECT
-      (SELECT count(*) FROM tracks WHERE library_address = :library_address) AS track_count,
-      (SELECT coalesce(sum(audio_size_bytes), 0) FROM tracks WHERE library_address = :library_address) AS audio_size_bytes,
-      (SELECT count(*) FROM logs WHERE library_address = :library_address AND linked_address IS NOT NULL) AS linked_library_count,
-      (SELECT count(*) FROM entries WHERE library_address = :library_address AND op = 'PUT') AS length`).get({ library_address });
+    const row = db.prepare('SELECT track_count, audio_size_bytes, linked_library_count, put_count FROM library_totals WHERE library_address = ?')
+        .get(library_address);
     return {
-        track_count: Number(row.track_count),
-        audio_size_bytes: Number(row.audio_size_bytes),
-        linked_library_count: Number(row.linked_library_count),
-        length: Number(row.length)
+        track_count: Number(row?.track_count ?? 0),
+        audio_size_bytes: Number(row?.audio_size_bytes ?? 0),
+        linked_library_count: Number(row?.linked_library_count ?? 0),
+        length: Number(row?.put_count ?? 0)
     };
 };
 // The library's profile under its canonical about id (§2.6).

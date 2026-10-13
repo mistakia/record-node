@@ -5,7 +5,7 @@
 import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 // Dependents first, so a drop never trips over an index or a view.
-export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'meta'];
+export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'library_totals', 'meta'];
 // Not projections, so a rebuild by replay leaves them empty and each library's
 // next open refills them.
 const ENTRY_BLOCK_TABLES = ['entry_blocks', 'entry_blocks_verified'];
@@ -29,6 +29,55 @@ const ENTRY_BLOCKS_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS entry_blocks_by_library ON entry_blocks (library_address);
 `;
+// Each library's summary counts, kept by triggers on every row change, so
+// GET /libraries reads one row instead of scanning a library's tracks and
+// entries, which on a large library and a cold disk held the event loop for
+// minutes. A row change's old values leave the totals and its new ones join
+// them; INSERT OR REPLACE fires no delete trigger, so no writer of these
+// tables may use it.
+const counted = ({ table, row, sign }) => {
+    const deltas = {
+        tracks: { track_count: '1', audio_size_bytes: `coalesce(${row}.audio_size_bytes, 0)` },
+        entries: { put_count: `${row}.op = 'PUT'` },
+        logs: { linked_library_count: `${row}.linked_address IS NOT NULL` }
+    }[table];
+    const columns = Object.keys(deltas);
+    const values = Object.values(deltas).map((delta) => `${sign}(${delta})`);
+    return `INSERT INTO library_totals (library_address, ${columns.join(', ')}) VALUES (${row}.library_address, ${values.join(', ')})
+      ON CONFLICT(library_address) DO UPDATE SET ${columns.map((column) => `${column} = ${column} + excluded.${column}`).join(', ')};`;
+};
+const totals_triggers = (table) => `
+  CREATE TRIGGER IF NOT EXISTS ${table}_totals_insert AFTER INSERT ON ${table} BEGIN
+    ${counted({ table, row: 'NEW', sign: '+' })}
+  END;
+  CREATE TRIGGER IF NOT EXISTS ${table}_totals_delete AFTER DELETE ON ${table} BEGIN
+    ${counted({ table, row: 'OLD', sign: '-' })}
+  END;
+  CREATE TRIGGER IF NOT EXISTS ${table}_totals_update AFTER UPDATE ON ${table} BEGIN
+    ${counted({ table, row: 'OLD', sign: '-' })}
+    ${counted({ table, row: 'NEW', sign: '+' })}
+  END;`;
+const LIBRARY_TOTALS_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS library_totals (
+    library_address TEXT PRIMARY KEY,
+    track_count INTEGER NOT NULL DEFAULT 0,
+    audio_size_bytes INTEGER NOT NULL DEFAULT 0,
+    put_count INTEGER NOT NULL DEFAULT 0,
+    linked_library_count INTEGER NOT NULL DEFAULT 0
+  ) WITHOUT ROWID;
+  ${['tracks', 'entries', 'logs'].map(totals_triggers).join('\n')}
+`;
+// The totals of rows written before library_totals existed: one scan, once.
+const FILL_TOTALS = `
+  INSERT INTO library_totals (library_address, track_count, audio_size_bytes, put_count, linked_library_count)
+  SELECT library_address, sum(track_count), sum(audio_size_bytes), sum(put_count), sum(linked_library_count) FROM (
+    SELECT library_address, count(*) AS track_count, coalesce(sum(audio_size_bytes), 0) AS audio_size_bytes,
+      0 AS put_count, 0 AS linked_library_count FROM tracks GROUP BY library_address
+    UNION ALL
+    SELECT library_address, 0, 0, count(*), 0 FROM entries WHERE op = 'PUT' GROUP BY library_address
+    UNION ALL
+    SELECT library_address, 0, 0, 0, count(*) FROM logs WHERE linked_address IS NOT NULL GROUP BY library_address
+  ) GROUP BY library_address`;
 const SCHEMA = `
   -- The current entry per (library, key) under §4.4.2. A current DEL stays as
   -- a row with op DEL: that is the tombstone.
@@ -164,6 +213,8 @@ ${ENTRY_BLOCKS_SCHEMA}
     rules_version INTEGER NOT NULL
   ) WITHOUT ROWID;
 
+${LIBRARY_TOTALS_SCHEMA}
+
   -- Schema version, for §4.7 rebuilds on schema change. Not protocol.
   CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -172,8 +223,13 @@ ${ENTRY_BLOCKS_SCHEMA}
 `;
 const STAMP_VERSION = "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 export const apply_schema = (db) => {
-    db.exec(SCHEMA);
-    db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION));
+    const has_totals = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_totals'").get() !== undefined;
+    in_transaction(db, () => {
+        db.exec(SCHEMA);
+        if (!has_totals)
+            db.exec(FILL_TOTALS);
+        db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION));
+    });
 };
 export const drop_schema = (db) => {
     for (const table of [...QUERY_TABLES, ...ENTRY_BLOCK_TABLES])
