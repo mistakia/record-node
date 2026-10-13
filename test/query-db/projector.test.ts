@@ -10,7 +10,7 @@ import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { append_listen } from '#oplog/listens.ts'
 import { create_projector } from '#query-db/projector.ts'
-import { get_about, get_library_summary, get_listen_count, get_track, list_linked_libraries } from '#query-db/queries.ts'
+import { get_about, get_library_summary, get_listen_count, get_track, list_linked_libraries, list_tracks } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import type { DatabaseSync } from 'node:sqlite'
 import { open_test_library } from '#test/helpers/library.ts'
@@ -208,5 +208,20 @@ describe('query-db projector', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  test('an unfiltered list without shared track ids counts from the totals', async () => {
+    const { oplog, writer, block_store, db, projector } = await setup()
+    const other = await open_test_library({ name: 'other', writers: [writer] })
+    for (const [library, fingerprint] of [[oplog, 'AQAA-1'], [oplog, 'AQAA-2'], [other.oplog, 'AQAA-3']] as const) {
+      await projector.project_entries({ oplog: library, entries: [await add_track({ oplog: library, key_pair: writer, block_store, fingerprint })] })
+    }
+    const both = [oplog.chain.address, other.chain.address]
+    expect(list_tracks({ db }).total).toBe(3)
+    expect(list_tracks({ db, library_addresses: both }).total).toBe(3)
+    expect(list_tracks({ db, library_addresses: [other.chain.address] }).total).toBe(1)
+    expect(list_tracks({ db, library_addresses: [] }).total).toBe(0)
+    await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: compute_track_id('AQAA-1') })] })
+    expect(list_tracks({ db, library_addresses: both }).total).toBe(2)
   })
 })

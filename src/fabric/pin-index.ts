@@ -31,6 +31,10 @@ const open = (path: string): DatabaseSync => {
   db.exec('PRAGMA journal_mode = WAL')
   // A lost last transaction is repaired by the next open's pin pass.
   db.exec('PRAGMA synchronous = NORMAL')
+  // As the query index (query-db/schema.ts): reads through the mapped file
+  // and a cache larger than the 2 MB default.
+  db.exec('PRAGMA cache_size = -32768')
+  db.exec('PRAGMA mmap_size = 1073741824')
   const version = (() => {
     try {
       return (db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | undefined)?.value

@@ -325,10 +325,11 @@ export const list_tracks = ({ db, ...input }: { db: DatabaseSync } & ListTracksI
   const scoped = library_addresses !== undefined
   const searching = query !== undefined && query.length > 0
   const unique_tags = [...new Set(tags)]
-  // Whether two scoped libraries hold one track id, from the track id index.
-  const duplicates = cached_count(db, JSON.stringify(['duplicates', library_addresses ?? null]), () => Number((db.prepare(`
+  // Whether two scoped libraries hold one track id, from the track id index;
+  // the primary key rules it out within one library.
+  const duplicates = !(scoped && new Set(library_addresses).size <= 1) && cached_count(db, JSON.stringify(['duplicates', library_addresses ?? null]), () => Number((db.prepare(`
     SELECT EXISTS (
-      SELECT 1 FROM tracks ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
+      SELECT 1 FROM tracks INDEXED BY tracks_by_track_id ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
       GROUP BY track_id HAVING count(*) > 1
     ) AS duplicates`
   ).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}) as Row).duplicates)) === 1
@@ -359,7 +360,13 @@ export const list_tracks = ({ db, ...input }: { db: DatabaseSync } & ListTracksI
     db.prepare(`SELECT t.library_address, t.track_id FROM tracks AS t WHERE ${where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
       .all({ ...parameters, ...page }) as Row[]
 
-  const total = count('')
+  // Unfiltered and without duplicates, every scoped row counts: the
+  // trigger-kept totals answer without reading them.
+  const total = searching || unique_tags.length > 0 || duplicates
+    ? count('')
+    : Number((db.prepare(`SELECT coalesce(sum(track_count), 0) AS total FROM library_totals
+        ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}`
+    ).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}) as Row).total)
   const direction = order.toUpperCase()
   const { key, nullable_column } = SORT_KEYS[sort]
   let page_keys: Row[]

@@ -254,6 +254,13 @@ const open = (path) => {
     // open finds the marker behind the oplog and re-projects. So no commit
     // waits on an fsync, which costs ingest dearly on a slow disk.
     db.exec('PRAGMA synchronous = NORMAL');
+    // SQLite's 2 MB default cache sends every scan of a large index back to
+    // disk, and on base-storage's image a cold read of the first track page
+    // took 28 s. Reads go through the mapped file, so the OS page cache serves
+    // them; the cache holds the hot B-tree pages, and sorts stay in memory.
+    db.exec('PRAGMA cache_size = -131072');
+    db.exec('PRAGMA mmap_size = 2147483648');
+    db.exec('PRAGMA temp_store = MEMORY');
     // An older or unreadable schema: drop every table and start over. The
     // next library open finds no marker and rebuilds the index by replay.
     if (stored_version(db) !== String(SCHEMA_VERSION))

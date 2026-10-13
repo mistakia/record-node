@@ -229,9 +229,13 @@ export const read_meta_log = (context, { offset, limit, type, current_only }) =>
     const oplog = context.libraries.get(address)?.oplog;
     if (oplog === undefined)
         throw new Error('the identity library is not open');
-    const records = [...oplog.entries.values()]
-        .map((entry) => meta_log_record(context, entry))
-        .filter((record) => (type === undefined || record.type === type) && (!current_only || record.is_current))
-        .sort((a, b) => b.clock_time - a.clock_time || (a.entry_hash < b.entry_hash ? -1 : 1));
-    return { address, heads: [...oplog.heads].sort(), items: records.slice(offset, offset + limit), total: records.length };
+    // Filtered and sorted as entries, so only the page is built into records:
+    // the app's head-check asks for one.
+    const is_current = (entry) => is_identity_operation(entry.operation) && entry.state_key !== undefined && oplog.current.get(entry.state_key) === entry;
+    const entries = [...oplog.entries.values()]
+        .filter((entry) => (type === undefined || String(entry.operation.value.type) === type) &&
+        (!current_only || is_current(entry)))
+        .sort((a, b) => b.entry.clock.time - a.entry.clock.time || (a.hash < b.hash ? -1 : 1));
+    const items = entries.slice(offset, offset + limit).map((entry) => meta_log_record(context, entry));
+    return { address, heads: [...oplog.heads].sort(), items, total: entries.length };
 };
