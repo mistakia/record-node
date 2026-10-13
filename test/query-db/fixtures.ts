@@ -111,10 +111,17 @@ export const jittered_reader = (block_store: BlockStore): ContentReader => async
 }
 
 // Every row of every table in a stable order.
-export const dump_query_db = (db: DatabaseSync) => Object.fromEntries(QUERY_TABLES.map((table) => {
-  const rows = db.prepare(`SELECT * FROM ${table}`).all().map((row) => JSON.stringify(Object.entries(row)))
-  return [table, rows.sort()]
-}))
+const dump_rows = (db: DatabaseSync, sql: string): string[] =>
+  db.prepare(sql).all().map((row) => JSON.stringify(Object.entries(row))).sort()
+
+// Every projection table, and the search index by track rather than by its
+// insertion-ordered rowids.
+export const dump_query_db = (db: DatabaseSync) => ({
+  ...Object.fromEntries(QUERY_TABLES.map((table) => [table, dump_rows(db, `SELECT * FROM ${table}`)])),
+  track_search: dump_rows(db, `
+    SELECT k.library_address, k.track_id, s.title, s.artist, s.album, s.remixer
+    FROM track_search AS s JOIN track_search_keys AS k ON k.id = s.rowid`)
+})
 
 // Fisher-Yates over a seeded generator, so a failing order reproduces.
 export const shuffled = <T>(items: readonly T[], seed: number): T[] => {

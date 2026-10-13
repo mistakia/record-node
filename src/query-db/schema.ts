@@ -11,6 +11,9 @@ export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', '
 // Not projections, so a rebuild by replay leaves them empty and each library's
 // next open refills them.
 const ENTRY_BLOCK_TABLES = ['entry_blocks', 'entry_blocks_verified'] as const
+// The track search index (TRACK_SEARCH_SCHEMA), which triggers derive from
+// tracks; its rowids follow insertion order, so it is no projection to compare.
+const SEARCH_TABLES = ['track_search', 'track_search_keys'] as const
 
 // Bump when the schema changes, so an index written by an older version is
 // dropped and rebuilt by replay at the next open instead of being misread. A
@@ -103,6 +106,44 @@ const ADD_LISTEN_COUNT = `
   ALTER TABLE tracks ADD COLUMN listen_count INTEGER NOT NULL DEFAULT 0;
   UPDATE tracks SET listen_count = (SELECT count(*) FROM listens WHERE listens.track_id = tracks.track_id)
   WHERE track_id IN (SELECT track_id FROM listens);`
+
+// Track search: a trigram index over the four fields a search matches, kept
+// by triggers on tracks, so a query of three or more characters reads its
+// matches instead of testing every track with LIKE, which on a large index
+// held the event loop for hundreds of milliseconds per keystroke. tracks has
+// no rowid, so track_search_keys gives each row the one its index row takes.
+const search_key = (row: 'NEW' | 'OLD') =>
+  `(SELECT id FROM track_search_keys WHERE library_address = ${row}.library_address AND track_id = ${row}.track_id)`
+
+const TRACK_SEARCH_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS track_search_keys (
+    id INTEGER PRIMARY KEY,
+    library_address TEXT NOT NULL,
+    track_id TEXT NOT NULL,
+    UNIQUE (library_address, track_id)
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS track_search USING fts5(title, artist, album, remixer, tokenize = 'trigram');
+  CREATE TRIGGER IF NOT EXISTS tracks_search_insert AFTER INSERT ON tracks BEGIN
+    INSERT INTO track_search_keys (library_address, track_id) VALUES (NEW.library_address, NEW.track_id);
+    INSERT INTO track_search (rowid, title, artist, album, remixer) VALUES (${search_key('NEW')}, NEW.title, NEW.artist, NEW.album, NEW.remixer);
+  END;
+  CREATE TRIGGER IF NOT EXISTS tracks_search_delete AFTER DELETE ON tracks BEGIN
+    DELETE FROM track_search WHERE rowid = ${search_key('OLD')};
+    DELETE FROM track_search_keys WHERE library_address = OLD.library_address AND track_id = OLD.track_id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS tracks_search_update AFTER UPDATE OF library_address, track_id, title, artist, album, remixer ON tracks BEGIN
+    DELETE FROM track_search WHERE rowid = ${search_key('OLD')};
+    DELETE FROM track_search_keys WHERE library_address = OLD.library_address AND track_id = OLD.track_id;
+    INSERT INTO track_search_keys (library_address, track_id) VALUES (NEW.library_address, NEW.track_id);
+    INSERT INTO track_search (rowid, title, artist, album, remixer) VALUES (${search_key('NEW')}, NEW.title, NEW.artist, NEW.album, NEW.remixer);
+  END;
+`
+
+// The search index of tracks written before it existed: one scan, once.
+const FILL_TRACK_SEARCH = `
+  INSERT INTO track_search_keys (library_address, track_id) SELECT library_address, track_id FROM tracks;
+  INSERT INTO track_search (rowid, title, artist, album, remixer)
+  SELECT k.id, t.title, t.artist, t.album, t.remixer FROM track_search_keys AS k JOIN tracks AS t USING (library_address, track_id);`
 
 // The totals of rows written before library_totals existed: one scan, once.
 const FILL_TOTALS = `
@@ -258,6 +299,8 @@ ${ENTRY_BLOCKS_SCHEMA}
 
 ${LIBRARY_TOTALS_SCHEMA}
 
+${TRACK_SEARCH_SCHEMA}
+
   -- Schema version, for §4.7 rebuilds on schema change. Not protocol.
   CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -270,18 +313,20 @@ const STAMP_VERSION = "INSERT INTO meta (key, value) VALUES ('schema_version', ?
 export const apply_schema = (db: DatabaseSync): void => {
   const has_totals = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_totals'").get() !== undefined
   const has_tracks = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tracks'").get() !== undefined
+  const has_search = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'track_search_keys'").get() !== undefined
   const lacks_listen_count = has_tracks &&
     db.prepare("SELECT 1 FROM pragma_table_info('tracks') WHERE name = 'listen_count'").get() === undefined
   in_transaction(db, () => {
     if (lacks_listen_count) db.exec(ADD_LISTEN_COUNT)
     db.exec(SCHEMA)
     if (!has_totals) db.exec(FILL_TOTALS)
+    if (has_tracks && !has_search) db.exec(FILL_TRACK_SEARCH)
     db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION))
   })
 }
 
 export const drop_schema = (db: DatabaseSync): void => {
-  for (const table of [...QUERY_TABLES, ...ENTRY_BLOCK_TABLES]) db.exec(`DROP TABLE IF EXISTS ${table}`)
+  for (const table of [...SEARCH_TABLES, ...QUERY_TABLES, ...ENTRY_BLOCK_TABLES]) db.exec(`DROP TABLE IF EXISTS ${table}`)
 }
 
 // The written schema version, or undefined when the version cannot be read

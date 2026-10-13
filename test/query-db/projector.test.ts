@@ -210,6 +210,29 @@ describe('query-db projector', () => {
     }
   })
 
+  test('an index written before track search existed fills the search index once at open', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'record-track-search-'))
+    try {
+      const path = join(dir, 'index.sqlite')
+      const writer = generate_key_pair()
+      const library = await open_test_library({ writers: [writer] })
+      const db = open_query_db({ path })
+      const projector = create_projector({ db, read_content: library.block_store.get })
+      for (const [fingerprint, title] of [['AQAA-1', 'Morning Song'], ['AQAA-2', 'Evening Song']] as const) {
+        await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint, title })] })
+      }
+      expect(list_tracks({ db, query: 'song' }).total).toBe(2)
+      db.exec('DROP TRIGGER tracks_search_insert; DROP TRIGGER tracks_search_delete; DROP TRIGGER tracks_search_update; DROP TABLE track_search; DROP TABLE track_search_keys')
+      db.close()
+      const reopened = open_query_db({ path })
+      expect(list_tracks({ db: reopened, query: 'song' }).total).toBe(2)
+      expect(list_tracks({ db: reopened, query: 'morning' }).total).toBe(1)
+      reopened.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('an unfiltered list without shared track ids counts from the totals', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const other = await open_test_library({ name: 'other', writers: [writer] })

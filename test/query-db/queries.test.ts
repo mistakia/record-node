@@ -85,6 +85,24 @@ describe('query-db list_tracks', () => {
     expect(list_tracks({ db, query: '_' }).total).toBe(0)
   })
 
+  test('a query of three or more characters reads the trigram index as a case-insensitive substring, quotes and operators literal', () => {
+    expect(ids(list_tracks({ db, own_library_addresses: [own], query: 'NIGHT', sort: 'title', order: 'asc' }).items)).toEqual(['beta', 'gamma'].map(id_of))
+    expect(list_tracks({ db, own_library_addresses: [own], query: 'NIGHT' }).total).toBe(2)
+    expect(ids(list_tracks({ db, query: '0% o' }).items)).toEqual([id_of('delta')])
+    expect(list_tracks({ db, query: 'night OR zed' }).total).toBe(0)
+    expect(list_tracks({ db, query: 'a "b' }).total).toBe(0)
+    expect(list_tracks({ db, query: 'ght Alb' }).total).toBe(1)
+    // A phrase never spans two fields.
+    expect(list_tracks({ db, query: 'betaYan' }).total).toBe(0)
+    const plan = JSON.stringify(db.prepare("EXPLAIN QUERY PLAN SELECT rowid FROM track_search WHERE track_search MATCH '\"night\"'").all())
+    expect(plan).toContain('VIRTUAL TABLE INDEX')
+  })
+
+  test('a query of one or two characters scans with LIKE, since a trigram cannot match it', () => {
+    expect(ids(list_tracks({ db, query: 'ze' }).items)).toEqual([id_of('alpha')])
+    expect(list_tracks({ db, query: 'xu' }).total).toBe(1)
+  })
+
   test('sorts by whitelisted fields with nulls last, and pages with an unpaginated total', () => {
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'asc' }).items)).toEqual(['beta', 'alpha', 'delta', 'gamma'].map(id_of))
     expect(ids(list_tracks({ db, own_library_addresses: [own], sort: 'bpm', order: 'desc' }).items)).toEqual(['delta', 'alpha', 'beta', 'gamma'].map(id_of))

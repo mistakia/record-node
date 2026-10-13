@@ -25,6 +25,27 @@ const assert_page = ({ offset, limit }) => {
     }
 };
 const like_pattern = (query) => `%${query.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+// A trigram index matches a substring of at least three characters; a
+// shorter query falls back to the LIKE scan.
+const TRIGRAM = 3;
+// The query as one FTS5 phrase, which the trigram index matches as a
+// case-insensitive substring of a single column.
+const search_phrase = (query) => `"${query.replaceAll('"', '""')}"`;
+const MATCHED_KEYS = 'SELECT k.library_address, k.track_id FROM track_search AS s JOIN track_search_keys AS k ON k.id = s.rowid WHERE track_search MATCH :phrase';
+// Up to this many matches, a search page reads them and sorts them; past it,
+// walking the sort's index and testing each row against the matches reaches a
+// page sooner. Measured on 206k tracks, the two cross near 8,000.
+const SORTED_MATCHES_MAX = 5000;
+const track_source = (source) => ({
+    tracks: { from: 'tracks AS t', filter: '' },
+    match_keys: { from: 'track_search AS s JOIN track_search_keys AS t ON t.id = s.rowid', filter: 'track_search MATCH :phrase AND ' },
+    match_rows: {
+        from: 'track_search AS s JOIN track_search_keys AS k ON k.id = s.rowid JOIN tracks AS t ON t.library_address = k.library_address AND t.track_id = k.track_id',
+        filter: 'track_search MATCH :phrase AND '
+    },
+    // The unary + keeps the planner from driving the page off the matches.
+    tested_rows: { from: 'tracks AS t', filter: `(+t.library_address, +t.track_id) IN (${MATCHED_KEYS}) AND ` }
+})[source];
 const json_strings = (value) => JSON.parse(String(value));
 const nullable_number = (value) => value === null || value === undefined ? null : Number(value);
 const nullable_text = (value) => value === null || value === undefined ? null : String(value);
@@ -162,6 +183,7 @@ export const list_tracks = ({ db, ...input }) => {
         throw new RangeError(`order must be asc or desc, not ${String(order)}`);
     const scoped = library_addresses !== undefined;
     const searching = query !== undefined && query.length > 0;
+    const indexed = searching && [...query].length >= TRIGRAM;
     const unique_tags = [...new Set(tags)];
     // Whether two scoped libraries hold one track id, from the track id index;
     // the primary key rules it out within one library.
@@ -172,7 +194,7 @@ export const list_tracks = ({ db, ...input }) => {
     ) AS duplicates`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).duplicates)) === 1;
     const filters = [
         representative_sql({ scoped, duplicates }),
-        searching
+        searching && !indexed
             ? "(t.title LIKE :pattern ESCAPE '\\' OR t.artist LIKE :pattern ESCAPE '\\' OR t.album LIKE :pattern ESCAPE '\\' OR t.remixer LIKE :pattern ESCAPE '\\')"
             : '',
         unique_tags.length > 0
@@ -188,12 +210,18 @@ export const list_tracks = ({ db, ...input }) => {
     const parameters = {
         ...(duplicates ? { own_library_addresses: JSON.stringify(own_library_addresses) } : {}),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
-        ...(searching ? { pattern: like_pattern(query) } : {}),
+        ...(indexed ? { phrase: search_phrase(query) } : searching ? { pattern: like_pattern(query) } : {}),
         ...(unique_tags.length > 0 ? { tags: JSON.stringify(unique_tags), tag_count: unique_tags.length } : {})
     };
-    const count = (condition) => cached_count(db, JSON.stringify([condition, parameters]), () => Number(db.prepare(`SELECT count(*) AS total FROM tracks AS t WHERE ${where} ${condition}`).get(parameters).total));
-    const keys = (condition, order_by, page) => db.prepare(`SELECT t.library_address, t.track_id FROM tracks AS t WHERE ${where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
-        .all({ ...parameters, ...page });
+    const count = (condition) => cached_count(db, JSON.stringify([condition, parameters]), () => {
+        const { from, filter } = track_source(!indexed ? 'tracks' : condition === '' ? 'match_keys' : 'match_rows');
+        return Number(db.prepare(`SELECT count(*) AS total FROM ${from} WHERE ${filter}${where} ${condition}`).get(parameters).total);
+    });
+    const keys = (condition, order_by, page) => {
+        const { from, filter } = track_source(!indexed ? 'tracks' : total <= SORTED_MATCHES_MAX ? 'match_rows' : 'tested_rows');
+        return db.prepare(`SELECT t.library_address, t.track_id FROM ${from} WHERE ${filter}${where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
+            .all({ ...parameters, ...page });
+    };
     // Unfiltered and without duplicates, every scoped row counts: the
     // trigger-kept totals answer without reading them.
     const total = searching || unique_tags.length > 0 || duplicates
