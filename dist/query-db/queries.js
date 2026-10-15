@@ -242,8 +242,10 @@ export const list_tracks = ({ db, ...input }) => {
     // probing each row's labels until the page fills: about (offset + limit)
     // times scope / total rows. A probe costs about twice a sorted match
     // (measured on 206k tracks), so the walk wins while it reads under half as
-    // many rows as there are matches: a broad filter's first pages.
-    const walked = labelled && total > 0 && 2 * (offset + limit) * scope_total() / total < total;
+    // many rows as there are matches: a broad filter's first pages. The
+    // estimate assumes labels spread evenly along the sort, and a shuffled page
+    // cannot stop early, so it always sorts.
+    const walked = labelled && !shuffle && total > 0 && 2 * (offset + limit) * scope_total() / total < total;
     const page_where = walked ? where_for(true) : where;
     const keys = (condition, order_by, page) => {
         const { from, filter } = track_source(!indexed ? 'tracks' : total <= SORTED_MATCHES_MAX ? 'match_rows' : 'tested_rows');
