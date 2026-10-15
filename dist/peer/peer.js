@@ -8,6 +8,7 @@ import { generate_key_pair } from '#identity/key-pair.ts';
 import { create_entry_block_cache } from '#query-db/entry-blocks.ts';
 import { create_projector } from '#query-db/projector.ts';
 import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts';
+import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts';
 import { open_query_db } from '#query-db/schema.ts';
 import { SYSTEM_TIMERS } from '#replication/timers.ts';
 import { create_library_methods } from "./api-libraries.js";
@@ -56,7 +57,9 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     const db = paths === undefined ? open_query_db() : open_query_db({ path: paths.index });
     // Commit batching so a disk-backed peer's per-filed index writes coalesce;
     // the index is derived (§4.7), so a lost last batch is rebuilt at open.
-    const index_commit = paths === undefined ? undefined : create_commit_batcher(db, DEFAULT_COMMIT_POLICY);
+    // Its WAL is checkpointed by a worker, never by a commit on this thread.
+    const index_checkpointer = paths === undefined ? undefined : start_wal_checkpointer({ db, path: paths.index });
+    const index_commit = paths === undefined ? undefined : create_commit_batcher(db, DEFAULT_COMMIT_POLICY, index_checkpointer);
     const events = create_event_bus();
     const content_store = store.content_store;
     const network = join_network?.({ content_store }) ?? store.network;
@@ -90,6 +93,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         content_store,
         db,
         index_commit,
+        index_checkpointer,
         libraries,
         events,
         resolve: refuse_input_errors(resolve ?? create_resolver({ ytdlp_path: config.ytdlp_path })),
@@ -230,6 +234,7 @@ const stop_context = async (context) => {
     await context.libraries.pins_settled();
     await context.store.stop();
     context.index_commit?.close();
+    await context.index_checkpointer?.stop();
     context.db.close();
     context.lock?.release();
     context.identity = undefined;

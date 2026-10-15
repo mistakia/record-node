@@ -14,8 +14,17 @@
 // contract a lost single transaction already had. A throwing run rolls the
 // whole open batch back: the batch is small and its contents are rebuilt by
 // the next open, so a rollback costs at most a few derived writes.
+//
+// A batch begins IMMEDIATE, taking the writer lock up front: the store's WAL
+// checkpointer (wal-checkpointer.ts) briefly holds that lock to truncate the
+// WAL, and SQLite waits out a busy lock at BEGIN but fails a read-to-write
+// upgrade at once. With a checkpointer, each commit nudges it, and a hold that
+// would begin with the WAL past its bound first commits any open batch and
+// awaits a drain, which is what keeps the WAL bounded under continuous writes.
 
 import type { DatabaseSync } from 'node:sqlite'
+
+import type { WalCheckpointer } from './wal-checkpointer.ts'
 
 export interface CommitPolicy {
   // Commits an open batch after it has sat this long without a new run.
@@ -39,7 +48,7 @@ export interface CommitBatcher {
   close: () => void
 }
 
-export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): CommitBatcher => {
+export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy, checkpointer?: WalCheckpointer): CommitBatcher => {
   let open = false
   let count = 0
   let holds = 0
@@ -57,6 +66,7 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
         open = false
         count = 0
         db.exec('COMMIT')
+        checkpointer?.nudge()
       }
     } finally {
       // Always disarm the timer: a throw from the COMMIT must not leave it
@@ -73,7 +83,7 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
 
   return {
     run (fn) {
-      if (!open) db.exec('BEGIN')
+      if (!open) db.exec('BEGIN IMMEDIATE')
       open = true
       try {
         fn()
@@ -90,6 +100,10 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
       else schedule()
     },
     async hold (job) {
+      if (holds === 0 && checkpointer?.over_bound() === true) {
+        commit()
+        await checkpointer.drain()
+      }
       holds += 1
       try {
         return await job()

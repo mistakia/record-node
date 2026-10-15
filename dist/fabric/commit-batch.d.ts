@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { WalCheckpointer } from './wal-checkpointer.ts';
 export interface CommitPolicy {
     window_ms: number;
     max_transactions: number;
@@ -10,4 +11,4 @@ export interface CommitBatcher {
     flush: () => void;
     close: () => void;
 }
-export declare const create_commit_batcher: (db: DatabaseSync, policy: CommitPolicy) => CommitBatcher;
+export declare const create_commit_batcher: (db: DatabaseSync, policy: CommitPolicy, checkpointer?: WalCheckpointer) => CommitBatcher;
