@@ -24,6 +24,10 @@ const KEYED_TABLES = [
 const create_statements = (db) => ({
     clear_key: KEYED_TABLES.map(([table, column]) => db.prepare(`DELETE FROM ${table} WHERE library_address = ? AND ${column} = ?`)),
     delete_entry: db.prepare('DELETE FROM entries WHERE library_address = ? AND key = ?'),
+    delete_tags: db.prepare('DELETE FROM tags WHERE library_address = ? AND track_id = ?'),
+    read_track_content: db.prepare('SELECT content_cid FROM tracks WHERE library_address = ? AND track_id = ?'),
+    update_entry: db.prepare('UPDATE entries SET entry_hash = ?, clock_time = ?, timestamp = ? WHERE library_address = ? AND key = ?'),
+    update_track_entry: db.prepare('UPDATE tracks SET entry_hash = ?, added_at_ms = ? WHERE library_address = ? AND track_id = ?'),
     insert_entry: db.prepare(`
     INSERT INTO entries (library_address, key, entry_hash, op, type, clock_time, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
@@ -127,6 +131,30 @@ const write_key = ({ statements, oplog, key, entry, content }) => {
     if (is_put(operation))
         write_put({ statements, oplog, entry, envelope: operation.value, content });
 };
+// The current entry of a key whose track row it only relabels: a track PUT of
+// the content the row already projects, whose payload was stored at that
+// write. Undefined when the key needs a full write.
+const relabel_entry = ({ statements, oplog, key, unfilled }) => {
+    if (unfilled.has(key))
+        return undefined;
+    const entry = oplog.current.get(key);
+    if (entry === undefined || !is_put(entry.operation) || entry.operation.value.type !== 'track')
+        return undefined;
+    const row = statements.read_track_content.get(oplog.chain.address, key);
+    return row?.content_cid === entry.operation.value.content ? entry : undefined;
+};
+// A relabel in place: the entry and its labels change, and nothing derived
+// from the content does, so the row keeps its content columns and search
+// index entry, and the content is never read.
+const write_relabel = ({ statements, oplog, key, entry }) => {
+    const library_address = oplog.chain.address;
+    const envelope = entry.operation.value;
+    statements.update_entry.run(entry.hash, entry.entry.clock.time, envelope.timestamp, library_address, key);
+    statements.update_track_entry.run(entry.hash, added_at_of({ oplog, key }), library_address, key);
+    statements.delete_tags.run(library_address, key);
+    for (const tag of envelope.tags ?? [])
+        statements.insert_tag.run(library_address, key, tag);
+};
 const write_listen = ({ statements, library_address, entry }) => {
     const { trackId, address, timestamp } = entry.operation;
     statements.insert_listen.run(library_address, entry.hash, trackId, address, timestamp);
@@ -173,20 +201,32 @@ export const create_projector = ({ db, read_content, commit }) => {
     // Content loads are async, and the oplog can move on while they run. A key
     // whose current entry changed under a load is loaded again, so a write
     // always carries the current entry at write time (§4.5 concurrent merges).
+    // A relabel loads nothing, and is judged again at write time; one that no
+    // longer holds is loaded in the next round.
     const write_keys = async ({ oplog, keys }) => {
         let pending = new Set(keys);
         while (pending.size > 0) {
-            const loaded = await Promise.all([...pending].map(async (key) => {
+            const unfilled = pending_of(statements, oplog.chain.address);
+            const relabels = new Set([...pending].filter((key) => relabel_entry({ statements, oplog, key, unfilled }) !== undefined));
+            const loaded = await Promise.all([...pending].filter((key) => !relabels.has(key)).map(async (key) => {
                 const entry = oplog.current.get(key);
                 return { key, entry, content: await load_content({ read_content, oplog, entry }) };
             }));
             const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry);
+            const retry = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key));
             transact(() => {
+                for (const key of relabels) {
+                    const entry = relabel_entry({ statements, oplog, key, unfilled });
+                    if (entry === undefined)
+                        retry.add(key);
+                    else
+                        write_relabel({ statements, oplog, key, entry });
+                }
                 for (const { key, entry, content } of stable)
                     write_key({ statements, oplog, key, entry, content });
                 touch_marker({ statements, oplog, stable });
             });
-            pending = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key));
+            pending = retry;
         }
     };
     const write_listens = (oplog, entries) => transact(() => {

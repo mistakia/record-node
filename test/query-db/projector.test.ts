@@ -99,6 +99,37 @@ describe('query-db projector', () => {
     expect(track?.added_at_ms).toBe(10)
   })
 
+  test('a relabel of the same content rewrites the labels in place without reading the content, unless it is missing', async () => {
+    const writer = generate_key_pair()
+    const { oplog, block_store } = await open_test_library({ writers: [writer] })
+    const db = open_query_db()
+    const reads: string[] = []
+    const projector = create_projector({ db, read_content: async (cid) => { reads.push(cid); return await block_store.get(cid) } })
+    const track = { oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', title: 'Title' }
+    const track_id = compute_track_id('AQAA-track')
+    await projector.project_entries({ oplog, entries: [await add_track({ ...track, tags: ['old'], timestamp: 10 })] })
+    reads.length = 0
+    const relabel = await add_track({ ...track, tags: ['new', 'other'], timestamp: 20 })
+    await projector.project_entries({ oplog, entries: [relabel] })
+    expect(reads).toEqual([])
+    expect(get_track({ db, track_id })).toMatchObject({ title: 'Title', added_at_ms: 10, tags: [{ tag: 'new' }, { tag: 'other' }] })
+    for (const table of ['tracks', 'entries']) {
+      const column = table === 'tracks' ? 'track_id' : 'key'
+      expect(db.prepare(`SELECT entry_hash FROM ${table} WHERE ${column} = ?`).get(track_id)?.entry_hash).toBe(relabel.hash)
+    }
+    expect(list_tracks({ db, query: 'Title' }).items.map(({ id }) => id)).toEqual([track_id])
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual(scanned_summary(db, oplog.chain.address))
+
+    // A row whose content was missing at its write loads it again.
+    const late = { oplog, key_pair: writer, block_store, fingerprint: 'AQAA-late', title: 'Late', store: false }
+    await projector.project_entries({ oplog, entries: [await add_track({ ...late, tags: ['a'] })] })
+    await store_content({ block_store, value: track_content({ fingerprint: 'AQAA-late', title: 'Late' }) })
+    reads.length = 0
+    await projector.project_entries({ oplog, entries: [await add_track({ ...late, tags: ['b'] })] })
+    expect(reads.length).toBe(1)
+    expect(get_track({ db, track_id: compute_track_id('AQAA-late') })).toMatchObject({ title: 'Late', tags: [{ tag: 'b' }] })
+  })
+
   test('a current DEL tombstones the key and removes its rows', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const track_id = compute_track_id('AQAA-track')

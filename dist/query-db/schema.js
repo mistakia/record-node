@@ -201,7 +201,9 @@ const SCHEMA = `
     tag TEXT NOT NULL,
     PRIMARY KEY (library_address, track_id, tag)
   ) WITHOUT ROWID;
-  CREATE INDEX IF NOT EXISTS tags_by_tag ON tags (tag, track_id);
+  -- Label filters and counts read one library's labels at a time.
+  DROP INDEX IF EXISTS tags_by_tag;
+  CREATE INDEX IF NOT EXISTS tags_by_library_tag ON tags (library_address, tag, track_id);
   CREATE INDEX IF NOT EXISTS tags_by_track_id ON tags (track_id);
 
   -- Source pointers of live tracks (§2.4.2), enumerated fields only.

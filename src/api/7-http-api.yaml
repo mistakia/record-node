@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.7.0
+  version: 1.8.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -107,6 +107,25 @@ paths:
             items: { type: string }
           style: form
           explode: true
+        - name: tag_groups
+          in: query
+          description: |
+            Filter by label groups, given as a JSON array of arrays of
+            labels. A track matches a group when it carries any label in
+            it, and matches the filter when it matches every group.
+            Combines with `tags`, each of which acts as a group of one.
+            Labels count from every scoped library, as for `tags`.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 32
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 256
+                  items: { $ref: '#/components/schemas/Label' }
         - name: query
           in: query
           description: Full-text search across title, artist, album, remixer.
@@ -147,6 +166,14 @@ paths:
         the identity does not own needs a capability granting
         `library.append_track`. For URL ingest use `POST /import/url`; for
         file upload use `POST /import/file`.
+
+        `tags` gives the entry's envelope labels (spec §2.4.3), so a track
+        joins the library with its labels in one PUT. A track the target
+        already holds keeps its entry when its labels equal `tags` as a
+        set, and otherwise is relabelled to them with a PUT of its current
+        content, as `PATCH /tracks/{id}/tags` with `set` would. Without
+        `tags`, a held track is left as it is and a new one carries no
+        labels.
       requestBody:
         required: true
         content:
@@ -156,6 +183,9 @@ paths:
               required: [content_cid]
               properties:
                 content_cid: { type: string }
+                tags:
+                  type: array
+                  items: { $ref: '#/components/schemas/Label' }
                 library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
@@ -298,6 +328,60 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /tracks/{id}/tags:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Track id (sha256 of the AcoustID fingerprint, lowercase hex).
+        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+    patch:
+      tags: [tags]
+      summary: Change a track's labels in the target library.
+      description: |
+        Appends a PUT of the track's current content with the envelope
+        labels (spec §2.4.3) the request gives: `add` and `remove` change
+        the current labels, and `set` replaces them. `set` excludes `add`
+        and `remove`, a request gives at least one of the three, and no
+        label is both added and removed; otherwise it fails with 400.
+        Adding a label the track carries, or removing one it does not,
+        changes nothing. A request that leaves the labels equal as a set
+        appends nothing, so it is safe to repeat.
+
+        Under a capability, a change that only adds labels needs
+        `library.append_tag` or `library.append_track`, and any other
+        needs `library.append_track` (spec §3.5.6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                add:
+                  type: array
+                  items: { $ref: '#/components/schemas/Label' }
+                remove:
+                  type: array
+                  items: { $ref: '#/components/schemas/Label' }
+                set:
+                  type: array
+                  items: { $ref: '#/components/schemas/Label' }
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
+      responses:
+        '200':
+          description: The track as the target library now holds it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /tracks/{cid}/pin:
     parameters:
       - name: cid
@@ -348,6 +432,12 @@ paths:
             items: { type: string }
           style: form
           explode: true
+        - name: prefix
+          in: query
+          description: |
+            Only labels that begin with this string, compared code point
+            by code point, e.g. `view/` for the labels under `view/`.
+          schema: { type: string, minLength: 1, maxLength: 128 }
       responses:
         '200':
           description: OK
@@ -374,10 +464,7 @@ paths:
               required: [track_id, tag]
               properties:
                 track_id: { type: string }
-                tag:
-                  type: string
-                  minLength: 1
-                  maxLength: 128
+                tag: { $ref: '#/components/schemas/Label' }
                 library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
@@ -416,6 +503,57 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /tags/batch:
+    post:
+      tags: [tags]
+      summary: Change the labels of many tracks in the target library.
+      description: |
+        Applies each item as `PATCH /tracks/{id}/tags` would, in request
+        order, to the one target library, and answers with one result per
+        item in the same order. Items naming the same track apply one
+        after the other. An item whose track the target does not hold, or
+        whose change the cited capability does not authorise, fails alone
+        and the others still apply. A request that fails as a whole (its
+        target, or an item breaking the rules of `PATCH
+        /tracks/{id}/tags`) fails before any item applies.
+
+        The node appends the changed entries as one batch: it sends one
+        `library:index-updated` event for the batch, and no `track:added`
+        event per track.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/LabelBatchItem' }
+                library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
+                capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
+      responses:
+        '200':
+          description: One result per item, in request order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/LabelBatchResult' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1517,6 +1655,59 @@ components:
           type: string
           description: Library address that applied the tag.
         tag: { type: string }
+
+    Label:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: An envelope label (spec §2.4.3).
+
+    LabelBatchItem:
+      type: object
+      required: [track_id]
+      description: |
+        One track's label change, under the rules of `PATCH
+        /tracks/{id}/tags`.
+      properties:
+        track_id: { type: string, pattern: '^[a-f0-9]{64}$' }
+        add:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+        remove:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+        set:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+
+    LabelBatchResult:
+      type: object
+      required: [track_id, status]
+      properties:
+        track_id: { type: string }
+        status:
+          type: string
+          enum: [updated, unchanged, failed]
+          description: |
+            `updated` appended a PUT with the new labels. `unchanged`
+            appended nothing, since the labels were already equal as a
+            set. `failed` appended nothing, for the reason in `error`.
+        tags:
+          type: array
+          description: The track's labels after the item; absent when it failed.
+          items: { type: string }
+        error:
+          type: object
+          required: [code, message]
+          description: Present when the item failed.
+          properties:
+            code:
+              type: string
+              enum: [NOT_FOUND, FORBIDDEN, CAPABILITY_EXPIRED, CAPABILITY_REVOKED, VALIDATION_ERROR]
+              description: |
+                `VALIDATION_ERROR` when the item's entry breaks a protocol
+                rule, such as the payload size bound (spec §2.9).
+            message: { type: string }
 
     TagCount:
       type: object

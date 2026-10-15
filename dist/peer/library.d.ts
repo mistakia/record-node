@@ -10,6 +10,13 @@ import type { Projector } from '#query-db/projector.ts';
 import type { LibraryType } from '#types/library.ts';
 import { type KeepsBlobs, type PinSet } from './pins.ts';
 import type { LibraryStateStore, StoredPolicy } from './state.ts';
+export type AppendOutcome = {
+    ok: true;
+    entry: VerifiedEntry | undefined;
+} | {
+    ok: false;
+    error: unknown;
+};
 export interface LibraryHandle {
     readonly chain: ResolvedAcChain;
     readonly oplog: Oplog;
@@ -37,6 +44,11 @@ export interface LibraryManager {
         payload: unknown;
         key_pair: KeyPair;
     }) => Promise<VerifiedEntry>;
+    append_many: (input: {
+        library_address: string;
+        builds: ReadonlyArray<() => unknown>;
+        key_pair: KeyPair;
+    }) => Promise<AppendOutcome[]>;
     register: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];
@@ -75,5 +87,6 @@ export declare const create_library_manager: ({ content_store, projector, entry_
         library_address: string;
         entries: readonly VerifiedEntry[];
         inert: readonly VerifiedEntry[];
+        batched?: boolean;
     }) => void;
 }) => LibraryManager;

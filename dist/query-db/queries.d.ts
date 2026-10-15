@@ -85,6 +85,7 @@ export interface ListTracksInput {
     readonly own_library_addresses?: readonly string[] | undefined;
     readonly library_addresses?: readonly string[] | undefined;
     readonly tags?: readonly string[] | undefined;
+    readonly tag_groups?: ReadonlyArray<readonly string[]> | undefined;
     readonly query?: string | undefined;
     readonly shuffle?: boolean | undefined;
     readonly sort?: TrackSort | undefined;
@@ -101,10 +102,11 @@ export declare const get_track: ({ db, track_id, own_library_addresses, library_
     own_library_addresses?: readonly string[];
     library_addresses?: readonly string[];
 }) => TrackRow | undefined;
-export declare const list_tags: ({ db, library_addresses }: {
+export declare const list_tags: ({ db, library_addresses, prefix }: {
     db: DatabaseSync;
     library_addresses?: readonly string[];
-}) => TagCount[];
+    prefix?: string | undefined;
+}) => readonly TagCount[];
 export declare const get_listen_count: ({ db, track_id, listens_addresses }: {
     db: DatabaseSync;
     track_id: string;

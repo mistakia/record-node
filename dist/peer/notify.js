@@ -1,6 +1,7 @@
 // Indexed entries as WebSocket events (x-websocket-events in 7-http-api.yaml):
 // track changes, capabilities issued and revoked, and entries a revocation
-// made inert (§3.5.10, §8.6.8).
+// made inert (§3.5.10, §8.6.8). A batch (POST /tags/batch) reports only as
+// its library's index update, so a client refetches once, not per track.
 import { is_access_record, is_envelope_operation, is_put } from '#entry/operations.ts';
 import { get_library_summary, get_track } from '#query-db/queries.ts';
 import { describe_capability, revoked_dependency } from "./capabilities.js";
@@ -40,13 +41,13 @@ const emit_access_events = ({ context, library_address, entries, inert }) => {
         });
     }
 };
-export const project_entry_events = ({ context, library_address, entries, inert }) => {
+export const project_entry_events = ({ context, library_address, entries, inert, batched = false }) => {
     const { emit } = context.events;
     if (context.identity === undefined || library_address === context.identity.identity_address)
         return;
     const own_library_addresses = own_recordstore_addresses(context);
     const pins = identity_state(context).pins;
-    for (const { operation } of entries) {
+    for (const { operation } of batched ? [] : entries) {
         if (!is_envelope_operation(operation) || operation.value.type !== 'track')
             continue;
         const track_id = operation.key;
