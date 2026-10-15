@@ -18,6 +18,7 @@ export const DEFAULT_COMMIT_POLICY = { window_ms: 100, max_transactions: 8 };
 export const create_commit_batcher = (db, policy) => {
     let open = false;
     let count = 0;
+    let holds = 0;
     let timer;
     const stop_timer = () => {
         if (timer !== undefined)
@@ -63,10 +64,23 @@ export const create_commit_batcher = (db, policy) => {
                 throw error;
             }
             count += 1;
+            if (holds > 0)
+                return;
             if (count >= policy.max_transactions)
                 commit();
             else
                 schedule();
+        },
+        async hold(job) {
+            holds += 1;
+            try {
+                return await job();
+            }
+            finally {
+                holds -= 1;
+                if (holds === 0)
+                    commit();
+            }
         },
         flush: commit,
         close: commit

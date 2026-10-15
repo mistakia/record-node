@@ -75,7 +75,7 @@ export interface LibraryManager {
     pins_settled: () => Promise<void>;
     stop_pin_passes: () => void;
 }
-export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs, retained }: {
+export declare const create_library_manager: ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs, retained, hold_commits }: {
     content_store: ContentStore;
     projector: Projector;
     entry_blocks: EntryBlockCache;
@@ -83,6 +83,7 @@ export declare const create_library_manager: ({ content_store, projector, entry_
     pin_record?: LibraryPinRecord | undefined;
     keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs;
     retained?: () => ReadonlySet<string>;
+    hold_commits?: <T>(job: () => Promise<T>) => Promise<T>;
     on_entries?: (input: {
         library_address: string;
         entries: readonly VerifiedEntry[];

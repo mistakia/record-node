@@ -28,7 +28,7 @@ const canonical_or_self = (cid) => {
 // serves far faster side by side than one after another.
 const PIN_CONCURRENCY = 16;
 const same_heads = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
-export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }) => {
+export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set(), hold_commits = async (job) => await job() }) => {
     const libraries = new Map();
     let indexing = Promise.resolve();
     // Item 6 holds and releases apply one at a time, so a release made after a
@@ -152,7 +152,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
             await next_turn();
         }
         if (entries.length > 0)
-            await index_stored({ library_address, entries, access: { inert, keys }, batched: true });
+            await hold_commits(async () => { await index_stored({ library_address, entries, access: { inert, keys }, batched: true }); });
         return outcomes;
     };
     // The oplog at the persisted heads, from the entry block cache when it

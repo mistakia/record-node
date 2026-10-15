@@ -100,7 +100,7 @@ const PIN_CONCURRENCY = 16
 const same_heads = (a: Iterable<string>, b: Iterable<string>): boolean =>
   JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
 
-export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }: {
+export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set(), hold_commits = async (job) => await job() }: {
   content_store: ContentStore
   projector: Projector
   entry_blocks: EntryBlockCache
@@ -115,6 +115,9 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs
   // Canonical CIDs the identity library pins (§4.6.2): never released here.
   retained?: () => ReadonlySet<string>
+  // Holds the index and pin stores' commits while job runs, so a batch's
+  // pins, entry blocks and projection commit once (CommitBatcher.hold).
+  hold_commits?: <T>(job: () => Promise<T>) => Promise<T>
   // After entries are indexed, with the entries a revocation among them made
   // inert; batched for an append_many batch, which reports as one change.
   on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[], inert: readonly VerifiedEntry[], batched?: boolean }) => void
@@ -251,7 +254,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
       }
       await next_turn()
     }
-    if (entries.length > 0) await index_stored({ library_address, entries, access: { inert, keys }, batched: true })
+    if (entries.length > 0) await hold_commits(async () => { await index_stored({ library_address, entries, access: { inert, keys }, batched: true }) })
     return outcomes
   }
 
