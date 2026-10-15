@@ -14,8 +14,13 @@
 // contract a lost single transaction already had. A throwing run rolls the
 // whole open batch back: the batch is small and its contents are rebuilt by
 // the next open, so a rollback costs at most a few derived writes.
+//
+// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it, and a
+// hold that would begin with the WAL past its bound first commits any open
+// batch and awaits a drain, which is what keeps the WAL bounded under
+// continuous writes.
 export const DEFAULT_COMMIT_POLICY = { window_ms: 100, max_transactions: 8 };
-export const create_commit_batcher = (db, policy) => {
+export const create_commit_batcher = (db, policy, checkpointer) => {
     let open = false;
     let count = 0;
     let holds = 0;
@@ -33,6 +38,7 @@ export const create_commit_batcher = (db, policy) => {
                 open = false;
                 count = 0;
                 db.exec('COMMIT');
+                checkpointer?.nudge();
             }
         }
         finally {
@@ -72,6 +78,10 @@ export const create_commit_batcher = (db, policy) => {
                 schedule();
         },
         async hold(job) {
+            if (holds === 0 && checkpointer?.over_bound() === true) {
+                commit();
+                await checkpointer.drain();
+            }
             holds += 1;
             try {
                 return await job();

@@ -3,6 +3,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 
 import type { CommitBatcher } from '#fabric/commit-batch.ts'
+import type { WalCheckpointer } from '#fabric/wal-checkpointer.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { Download } from '#ingest/download.ts'
@@ -37,6 +38,8 @@ export interface PeerContext {
   readonly db: DatabaseSync
   // Defers the query-index commits to a batch; none on an in-memory peer.
   readonly index_commit: CommitBatcher | undefined
+  // Checkpoints the query index's WAL off the event loop; none on an in-memory peer.
+  readonly index_checkpointer: WalCheckpointer | undefined
   readonly libraries: LibraryManager
   readonly events: EventBus
   readonly resolve: ResolveUrl

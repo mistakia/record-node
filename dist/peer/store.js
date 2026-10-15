@@ -17,6 +17,7 @@ import { create_libp2p_network } from '#adapter/libp2p/network.ts';
 import { create_networked_helia } from '#adapter/libp2p/node.ts';
 import { create_library_pin_record, open_pin_db } from '#fabric/pin-index.ts';
 import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts';
+import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts';
 import { data_paths } from "./config.js";
 // The datastore directories where Helia's pin records were kept before the
 // pin index. Nothing reads them; they are deleted in the background.
@@ -66,7 +67,9 @@ export const open_peer_store = async ({ data_dir, index_dir, network }) => {
     const pin_db = open_pin_db(paths?.pins);
     // Commit batching so a disk-backed peer's per-pin writes coalesce; the pin
     // index is derived and refilled at open, so a lost last batch is repaired.
-    const pin_commit = paths === undefined ? undefined : create_commit_batcher(pin_db, DEFAULT_COMMIT_POLICY);
+    // Its WAL is checkpointed by a worker, never by a commit on this thread.
+    const pin_checkpointer = paths === undefined ? undefined : start_wal_checkpointer({ db: pin_db, path: paths.pins });
+    const pin_commit = paths === undefined ? undefined : create_commit_batcher(pin_db, DEFAULT_COMMIT_POLICY, pin_checkpointer);
     const retiring = new AbortController();
     const removal = paths === undefined
         ? Promise.resolve()
@@ -86,6 +89,7 @@ export const open_peer_store = async ({ data_dir, index_dir, network }) => {
     catch (error) {
         retiring.abort();
         await removal;
+        await pin_checkpointer?.stop();
         pin_db.close();
         throw error;
     }
@@ -99,9 +103,14 @@ export const open_peer_store = async ({ data_dir, index_dir, network }) => {
         stop: async () => {
             retiring.abort();
             await removal;
-            pin_commit?.close();
-            await helia.stop();
-            pin_db.close();
+            try {
+                pin_commit?.close();
+                await helia.stop();
+            }
+            finally {
+                await pin_checkpointer?.stop();
+                pin_db.close();
+            }
         }
     };
 };
