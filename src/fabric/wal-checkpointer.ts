@@ -7,21 +7,17 @@
 // checkpoint moved to a worker. So the write connection never checkpoints
 // itself, and a worker thread holding its own connection does it instead.
 //
-// The worker never waits on a lock, so it can never hold one the writer waits
-// on for long. It runs PASSIVE checkpoints, which take no writer lock, and once
-// one has copied every committed frame it tries TRUNCATE without waiting: that
-// succeeds only while no batch is open, and then has next to nothing left to
-// copy, so its hold on the writer lock is short. The write connection waits
-// that out with a busy_timeout, and begins its batches IMMEDIATE
-// (commit-batch.ts) so the wait happens at BEGIN, where SQLite honors the
-// timeout, rather than at a read-to-write upgrade, where it does not.
+// The worker only ever runs PASSIVE checkpoints, which take no lock the
+// writer waits on, so nothing the worker does can stall or fail a write. A
+// PASSIVE pass copies the committed frames into the database file; once one
+// has caught up with every frame, SQLite rewinds the WAL at the next write
+// and that write's commit cuts the file back to journal_size_limit.
 //
-// Under continuous writes a PASSIVE pass never catches up, so the bound comes
-// from the writer: a held batch (CommitBatcher.hold) that would begin with the
-// WAL past truncate_bytes first awaits drain(), which has the worker checkpoint
-// until it catches up and truncates. The event loop stays free meanwhile; only
-// the next large write waits. A WAL the worker could not truncate is rewound by
-// SQLite at the next write and cut back to journal_size_limit.
+// Under continuous writes a pass never catches up, so the bound comes from
+// the writer: a held batch (CommitBatcher.hold) that would begin with the WAL
+// past truncate_bytes first awaits drain(), which has the worker pass until it
+// catches up while the writer waits. The event loop stays free meanwhile; only
+// the next large write waits, and never longer than drain_timeout_ms.
 //
 // The worker body is evaluated source, not a module file, so the same code
 // runs under Bun from src/, under Node from dist/, and inside record-app's
@@ -34,18 +30,14 @@ import { Worker } from 'node:worker_threads'
 export interface WalCheckpointPolicy {
   // Least time between two checkpoint passes; a pass runs only after a commit.
   interval_ms: number
-  // WAL size past which the worker truncates once caught up, and a held
-  // batch first drains.
+  // WAL size past which a held batch first drains; also the size SQLite cuts
+  // a rewound WAL back to.
   truncate_bytes: number
   // Longest a held batch waits for a drain before it goes ahead anyway.
   drain_timeout_ms: number
 }
 
 export const DEFAULT_WAL_CHECKPOINT_POLICY: WalCheckpointPolicy = { interval_ms: 500, truncate_bytes: 64 * 1024 * 1024, drain_timeout_ms: 10_000 }
-
-// How long the write connection waits out the worker's short TRUNCATE hold
-// before failing a write.
-const WRITER_BUSY_TIMEOUT_MS = 5000
 
 export interface WalCheckpointer {
   // Notes a commit, so a pass runs within interval_ms.
@@ -54,7 +46,7 @@ export interface WalCheckpointer {
   over_bound: () => boolean
   // Resolves once the WAL is within truncate_bytes, or the worker has caught
   // up with every committed frame, or drain_timeout_ms has passed. Call with
-  // no batch open.
+  // no batch open, so the next write can rewind the WAL.
   drain: () => Promise<void>
   // Runs a final checkpoint and ends the worker. Call after the last commit
   // and before the write connection closes.
@@ -63,53 +55,46 @@ export interface WalCheckpointer {
 
 const WORKER_SOURCE = `
 const { parentPort, workerData } = require('node:worker_threads')
-const { statSync } = require('node:fs')
 const { DatabaseSync } = require('node:sqlite')
-const { path, interval_ms, truncate_bytes } = workerData
+const { path, interval_ms } = workerData
 const db = new DatabaseSync(path)
-// Never wait on a lock: a busy one means the writer is mid-batch, and the
-// next pass tries again.
-db.exec('PRAGMA busy_timeout = 0')
-const wal_bytes = () => {
-  try { return statSync(path + '-wal').size } catch { return 0 }
-}
-const checkpoint = (mode) => db.prepare('PRAGMA wal_checkpoint(' + mode + ')').get()
-// One PASSIVE pass, then a TRUNCATE when it caught up and the WAL is over the
-// bound. True when every committed frame is in the database file.
-const pass = (bound) => {
+// One PASSIVE pass; true when every committed frame is in the database file.
+const pass = () => {
   try {
-    const { busy, log, checkpointed } = checkpoint('PASSIVE')
-    const caught_up = busy === 0 && log === checkpointed
-    if (caught_up && wal_bytes() > bound) checkpoint('TRUNCATE')
-    return caught_up
+    const { busy, log, checkpointed } = db.prepare('PRAGMA wal_checkpoint(PASSIVE)').get()
+    return busy === 0 && log === checkpointed
   } catch (error) {
     parentPort.postMessage({ type: 'error', message: error.message })
     return false
   }
 }
-let last = 0
+let last = Date.now()
 let timer
+let draining
 const scheduled = () => {
   timer = undefined
   last = Date.now()
-  pass(truncate_bytes)
+  pass()
 }
-// Passes back to back, a turn apart, until one catches up or the deadline.
-const drain = (deadline) => {
-  if (pass(truncate_bytes) || Date.now() >= deadline) {
-    parentPort.postMessage({ type: 'drained' })
+// Passes a turn apart until one catches up or the deadline passes.
+const drain = (id, deadline) => {
+  draining = undefined
+  if (pass() || Date.now() >= deadline) {
+    parentPort.postMessage({ type: 'drained', id })
     return
   }
-  setTimeout(() => { drain(deadline) }, 5)
+  draining = setTimeout(() => { drain(id, deadline) }, 5)
 }
 parentPort.on('message', (message) => {
   if (message.type === 'nudge') {
     if (timer === undefined) timer = setTimeout(scheduled, Math.max(0, last + interval_ms - Date.now()))
   } else if (message.type === 'drain') {
-    drain(Date.now() + message.timeout_ms)
+    if (draining !== undefined) clearTimeout(draining)
+    drain(message.id, Date.now() + message.timeout_ms)
   } else if (message.type === 'stop') {
     if (timer !== undefined) clearTimeout(timer)
-    pass(0)
+    if (draining !== undefined) clearTimeout(draining)
+    pass()
     db.close()
     parentPort.close()
   }
@@ -132,27 +117,34 @@ export const start_wal_checkpointer = ({ db, path, policy = DEFAULT_WAL_CHECKPOI
   policy?: WalCheckpointPolicy
 }): WalCheckpointer => {
   db.exec('PRAGMA wal_autocheckpoint = 0')
-  db.exec(`PRAGMA busy_timeout = ${WRITER_BUSY_TIMEOUT_MS}`)
   // A WAL SQLite rewinds is cut back to the bound, not left at its high-water size.
   db.exec(`PRAGMA journal_size_limit = ${policy.truncate_bytes}`)
   const worker = new Worker(WORKER_SOURCE, {
     eval: true,
-    workerData: { path, interval_ms: policy.interval_ms, truncate_bytes: policy.truncate_bytes }
+    workerData: { path, interval_ms: policy.interval_ms }
   })
+  // Idle, the worker never holds the process open; a pending drain or stop
+  // refs it, so awaiting either keeps Node alive until it answers.
   worker.unref()
   let stopping = false
   let alive = true
-  let draining: Promise<void> | undefined
-  let drained: (() => void) | undefined
+  let next_drain = 0
+  let draining: { id: number, promise: Promise<void>, resolve: () => void } | undefined
+  const end_drain = () => {
+    if (draining === undefined) return
+    draining.resolve()
+    draining = undefined
+    if (alive) worker.unref()
+  }
   const fall_back = (reason: string) => {
     if (!alive) return
     alive = false
-    drained?.()
+    end_drain()
     process.emitWarning(`WAL checkpointer for ${path} ended (${reason}); the write connection checkpoints itself`)
     db.exec('PRAGMA wal_autocheckpoint = 1000')
   }
-  worker.on('message', (message: { type: string, message?: string }) => {
-    if (message.type === 'drained') drained?.()
+  worker.on('message', (message: { type: string, id?: number, message?: string }) => {
+    if (message.type === 'drained' && message.id === draining?.id) end_drain()
     else if (message.type === 'error') process.emitWarning(`WAL checkpoint of ${path} failed: ${message.message ?? ''}`)
   })
   worker.on('error', (error: Error) => { if (!stopping) fall_back(error.message) })
@@ -164,25 +156,29 @@ export const start_wal_checkpointer = ({ db, path, policy = DEFAULT_WAL_CHECKPOI
     },
     over_bound: () => alive && wal_bytes(path) > policy.truncate_bytes,
     async drain () {
-      if (!alive || wal_bytes(path) <= policy.truncate_bytes) return
+      if (!alive || stopping || wal_bytes(path) <= policy.truncate_bytes) return
       // Callers arriving meanwhile share the one drain.
-      draining ??= new Promise<void>((resolve) => {
-        drained = () => {
-          drained = undefined
-          draining = undefined
-          resolve()
-        }
-        worker.postMessage({ type: 'drain', timeout_ms: policy.drain_timeout_ms })
-      })
-      await draining
+      if (draining === undefined) {
+        const id = ++next_drain
+        let settle = () => {}
+        const promise = new Promise<void>((resolve) => { settle = resolve })
+        draining = { id, promise, resolve: settle }
+        worker.ref()
+        worker.postMessage({ type: 'drain', id, timeout_ms: policy.drain_timeout_ms })
+        // A pass already under way may outlast the worker's own deadline.
+        const timer = setTimeout(() => { if (draining?.id === id) end_drain() }, policy.drain_timeout_ms)
+        timer.unref()
+      }
+      await draining.promise
     },
     async stop () {
       if (stopping) return
       stopping = true
-      drained?.()
+      end_drain()
       if (!alive) return
       alive = false
       // The worker exits once it has checkpointed and closed its connection.
+      worker.ref()
       await new Promise<void>((resolve) => {
         worker.once('exit', () => { resolve() })
         worker.postMessage({ type: 'stop' })

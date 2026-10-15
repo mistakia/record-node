@@ -15,12 +15,10 @@
 // whole open batch back: the batch is small and its contents are rebuilt by
 // the next open, so a rollback costs at most a few derived writes.
 //
-// A batch begins IMMEDIATE, taking the writer lock up front: the store's WAL
-// checkpointer (wal-checkpointer.ts) briefly holds that lock to truncate the
-// WAL, and SQLite waits out a busy lock at BEGIN but fails a read-to-write
-// upgrade at once. With a checkpointer, each commit nudges it, and a hold that
-// would begin with the WAL past its bound first commits any open batch and
-// awaits a drain, which is what keeps the WAL bounded under continuous writes.
+// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it, and a
+// hold that would begin with the WAL past its bound first commits any open
+// batch and awaits a drain, which is what keeps the WAL bounded under
+// continuous writes.
 
 import type { DatabaseSync } from 'node:sqlite'
 
@@ -83,7 +81,7 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy, ch
 
   return {
     run (fn) {
-      if (!open) db.exec('BEGIN IMMEDIATE')
+      if (!open) db.exec('BEGIN')
       open = true
       try {
         fn()

@@ -119,10 +119,13 @@ export const open_peer_store = async ({ data_dir, index_dir, network }: {
     stop: async () => {
       retiring.abort()
       await removal
-      pin_commit?.close()
-      await helia.stop()
-      await pin_checkpointer?.stop()
-      pin_db.close()
+      try {
+        pin_commit?.close()
+        await helia.stop()
+      } finally {
+        await pin_checkpointer?.stop()
+        pin_db.close()
+      }
     }
   }
 }

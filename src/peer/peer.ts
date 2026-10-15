@@ -277,9 +277,12 @@ const stop_context = async (context: PeerContext): Promise<void> => {
   await context.libraries.settled()
   await context.libraries.pins_settled()
   await context.store.stop()
-  context.index_commit?.close()
-  await context.index_checkpointer?.stop()
-  context.db.close()
+  try {
+    context.index_commit?.close()
+  } finally {
+    await context.index_checkpointer?.stop()
+    context.db.close()
+  }
   context.lock?.release()
   context.identity = undefined
 }
