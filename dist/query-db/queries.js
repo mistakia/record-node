@@ -87,11 +87,13 @@ const rows_by_key = (db, keys) => {
         .map((key) => by_key.get(`${String(key.library_address)} ${String(key.track_id)}`))
         .filter((row) => row !== undefined);
 };
-// Match counts by query, kept while the index is unchanged: a count reads
-// every matched row, and a client paging one list asks for it on every page.
-// The connection's change count moves on its own writes, data_version on any
-// other connection's. Neither moves on a rollback, so a count read inside an
-// open transaction, as during a commit batch, is never kept.
+// Counts by query, kept while the index is unchanged: a match count reads
+// every matched row, and a client paging one list asks for it on every page;
+// tag counts read every label of the scoped libraries, and a client asks for
+// them on every index event. The connection's change count moves on its own
+// writes, data_version on any other connection's. Neither moves on a
+// rollback, so a count read inside an open transaction, as during a commit
+// batch, is never kept.
 const MAX_CACHED_COUNTS = 256;
 const count_cache = new WeakMap();
 const cached_count = (db, key, count) => {
@@ -104,9 +106,8 @@ const cached_count = (db, key, count) => {
         cache = { generation, counts: new Map() };
         count_cache.set(db, cache);
     }
-    const cached = cache.counts.get(key);
-    if (cached !== undefined)
-        return cached;
+    if (cache.counts.has(key))
+        return cache.counts.get(key);
     const value = count();
     cache.counts.set(key, value);
     return value;
@@ -175,7 +176,7 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
 };
 // GET /tracks. One item per track id; tag labels come from every scoped library.
 export const list_tracks = ({ db, ...input }) => {
-    const { own_library_addresses = [], library_addresses, tags = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
+    const { own_library_addresses = [], library_addresses, tags = [], tag_groups = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
     assert_page({ offset, limit });
     if (!TRACK_SORTS.includes(sort))
         throw new RangeError(`sort must be one of ${TRACK_SORTS.join(', ')}, not ${sort}`);
@@ -184,7 +185,8 @@ export const list_tracks = ({ db, ...input }) => {
     const scoped = library_addresses !== undefined;
     const searching = query !== undefined && query.length > 0;
     const indexed = searching && [...query].length >= TRIGRAM;
-    const unique_tags = [...new Set(tags)];
+    // Every group must match, by any of its labels; a tags label is a group of one.
+    const groups = [...new Set(tags)].map((tag) => [tag]).concat(tag_groups.map((group) => [...new Set(group)]));
     // Whether two scoped libraries hold one track id, from the track id index;
     // the primary key rules it out within one library.
     const duplicates = !(scoped && new Set(library_addresses).size <= 1) && cached_count(db, JSON.stringify(['duplicates', library_addresses ?? null]), () => Number(db.prepare(`
@@ -197,21 +199,17 @@ export const list_tracks = ({ db, ...input }) => {
         searching && !indexed
             ? "(t.title LIKE :pattern ESCAPE '\\' OR t.artist LIKE :pattern ESCAPE '\\' OR t.album LIKE :pattern ESCAPE '\\' OR t.remixer LIKE :pattern ESCAPE '\\')"
             : '',
-        unique_tags.length > 0
-            ? `t.track_id IN (
+        ...groups.map((_, index) => `t.track_id IN (
           SELECT track_id FROM tags
-          WHERE tag IN (SELECT value FROM json_each(:tags))
-          ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
-          GROUP BY track_id HAVING count(DISTINCT tag) = :tag_count
-        )`
-            : ''
+          WHERE ${scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses)) AND ' : ''}tag IN (SELECT value FROM json_each(:tag_group_${index}))
+        )`)
     ].filter((filter) => filter.length > 0);
     const where = filters.join(' AND ');
     const parameters = {
         ...(duplicates ? { own_library_addresses: JSON.stringify(own_library_addresses) } : {}),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
         ...(indexed ? { phrase: search_phrase(query) } : searching ? { pattern: like_pattern(query) } : {}),
-        ...(unique_tags.length > 0 ? { tags: JSON.stringify(unique_tags), tag_count: unique_tags.length } : {})
+        ...Object.fromEntries(groups.map((group, index) => [`tag_group_${index}`, JSON.stringify(group)]))
     };
     const count = (condition) => cached_count(db, JSON.stringify([condition, parameters]), () => {
         const { from, filter } = track_source(!indexed ? 'tracks' : condition === '' ? 'match_keys' : 'match_rows');
@@ -224,7 +222,7 @@ export const list_tracks = ({ db, ...input }) => {
     };
     // Unfiltered and without duplicates, every scoped row counts: the
     // trigger-kept totals answer without reading them.
-    const total = searching || unique_tags.length > 0 || duplicates
+    const total = searching || groups.length > 0 || duplicates
         ? count('')
         : Number(db.prepare(`SELECT coalesce(sum(track_count), 0) AS total FROM library_totals
         ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).total);
@@ -263,15 +261,25 @@ export const get_track = ({ db, track_id, own_library_addresses = [], library_ad
         return undefined;
     return hydrate_tracks({ db, rows: [row], own_library_addresses, library_addresses, with_timestamps: true })[0];
 };
-// GET /tags: tags by the number of distinct live tracks carrying them, most first.
-export const list_tags = ({ db, library_addresses }) => {
+// GET /tags: tags by the number of distinct live tracks carrying them, most
+// first. A prefix bounds the labels by range, so it reads only theirs: every
+// label starting with it sorts at or after it and before it followed by the
+// byte 0xff, which UTF-8 never contains.
+export const list_tags = ({ db, library_addresses, prefix }) => cached_count(db, JSON.stringify(['tags', library_addresses ?? null, prefix ?? null]), () => {
     const scoped = library_addresses !== undefined;
+    const filters = [
+        scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses))' : '',
+        prefix === undefined ? '' : "tag >= :prefix AND tag < :prefix || CAST(x'ff' AS TEXT)"
+    ].filter((filter) => filter.length > 0);
     const rows = db.prepare(`
     SELECT tag, count(DISTINCT track_id) AS count FROM tags
-    ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
-    GROUP BY tag ORDER BY count DESC, tag ASC`).all(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {});
+    ${filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : ''}
+    GROUP BY tag ORDER BY count DESC, tag ASC`).all({
+        ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
+        ...(prefix === undefined ? {} : { prefix })
+    });
     return rows.map((row) => ({ tag: String(row.tag), count: Number(row.count) }));
-};
+});
 // The response for POST /listens. listens_addresses narrows to the given
 // listens libraries.
 export const get_listen_count = ({ db, track_id, listens_addresses }) => {

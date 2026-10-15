@@ -33,6 +33,15 @@ describe('api: tracks', () => {
     }])
   })
 
+  test('GET /tracks takes label groups as JSON and rejects a malformed or empty group', async () => {
+    const groups = [['genre/house', 'genre/techno, deep'], ['era/2010s']]
+    expect((await fetch(api.url(`/tracks?tag_groups=${encodeURIComponent(JSON.stringify(groups))}`))).status).toBe(200)
+    expect(last_call('list_tracks')).toEqual([expect.objectContaining({ tag_groups: groups })])
+    for (const value of ['genre/house', JSON.stringify([[]]), JSON.stringify(['genre/house'])]) {
+      await expect_error(await fetch(api.url(`/tracks?tag_groups=${encodeURIComponent(value)}`)), 400, 'VALIDATION_ERROR')
+    }
+  })
+
   test('GET /tracks sorts by bitrate', async () => {
     expect((await fetch(api.url('/tracks?sort=bitrate&order=asc'))).status).toBe(200)
     expect(last_call('list_tracks')).toEqual([expect.objectContaining({ sort: 'bitrate', order: 'asc' })])
@@ -52,6 +61,12 @@ describe('api: tracks', () => {
     await expect_error(await post_json(api.url('/tracks'), {}), 400, 'VALIDATION_ERROR')
   })
 
+  test('POST /tracks passes labels for the adopted entry', async () => {
+    expect((await post_json(api.url('/tracks'), { content_cid: CONTENT_CID, tags: ['tier/personal'] })).status).toBe(200)
+    expect(last_call('add_track')).toEqual([expect.objectContaining({ content_cid: CONTENT_CID, tags: ['tier/personal'] })])
+    await expect_error(await post_json(api.url('/tracks'), { content_cid: CONTENT_CID, tags: [''] }), 400, 'VALIDATION_ERROR')
+  })
+
   test('DELETE /tracks/{id} removes, 404s unknown, and rejects a malformed id', async () => {
     expect((await fetch(api.url(`/tracks/${TRACK_ID}`), { method: 'DELETE' })).status).toBe(204)
     await expect_error(await fetch(api.url(`/tracks/${'0'.repeat(64)}`), { method: 'DELETE' }), 404, 'NOT_FOUND')
@@ -63,6 +78,35 @@ describe('api: tags', () => {
   test('GET /tags lists counts', async () => {
     const response = await fetch(api.url('/tags'))
     expect(await response.json()).toEqual([{ tag: 'test', count: 1 }])
+  })
+
+  test('GET /tags passes a prefix', async () => {
+    expect((await fetch(api.url('/tags?prefix=view%2F'))).status).toBe(200)
+    expect(last_call('list_tags')).toEqual([{ prefix: 'view/' }])
+    await expect_error(await fetch(api.url('/tags?prefix=')), 400, 'VALIDATION_ERROR')
+  })
+
+  test('PATCH /tracks/{id}/tags hands the label change to the peer and returns the track', async () => {
+    const patch = async (body: unknown) => await fetch(api.url(`/tracks/${TRACK_ID}/tags`), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const response = await patch({ add: ['view/a'], remove: ['view/b'], library_address: OWN_ADDRESS })
+    expect(response.status).toBe(200)
+    expect((await response.json() as { tags: Array<{ tag: string }> }).tags.map(({ tag }) => tag)).toContain('view/a')
+    expect(last_call('change_labels')).toEqual([expect.objectContaining({ track_id: TRACK_ID, add: ['view/a'], remove: ['view/b'], library_address: OWN_ADDRESS })])
+    await expect_error(await patch({ set: [''] }), 400, 'VALIDATION_ERROR')
+  })
+
+  test('POST /tags/batch answers a result per item, and bounds the batch', async () => {
+    const response = await post_json(api.url('/tags/batch'), { items: [{ track_id: TRACK_ID, add: ['view/a'] }, { track_id: '0'.repeat(64), add: ['view/a'] }] })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      results: [
+        { track_id: TRACK_ID, status: 'updated', tags: expect.any(Array) },
+        { track_id: '0'.repeat(64), status: 'failed', error: { code: 'NOT_FOUND', message: expect.any(String) } }
+      ]
+    })
+    await expect_error(await post_json(api.url('/tags/batch'), { items: [] }), 400, 'VALIDATION_ERROR')
+    await expect_error(await post_json(api.url('/tags/batch'), { items: Array.from({ length: 201 }, () => ({ track_id: TRACK_ID, add: ['x'] })) }), 400, 'VALIDATION_ERROR')
+    await expect_error(await post_json(api.url('/tags/batch'), { items: [{ track_id: 'not-hex', add: ['x'] }] }), 400, 'VALIDATION_ERROR')
   })
 
   test('POST /tags attaches, and a repeat is a 409', async () => {

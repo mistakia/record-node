@@ -35,6 +35,8 @@ import { open_peer_store } from "./store.js";
 import { resolve_write_target } from "./write-target.js";
 export { OWN_LIBRARY_NAME };
 const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+// Runs job under a batcher's hold, or as it is for a store with no batching.
+const held = async (batcher, job) => batcher === undefined ? await job() : await batcher.hold(job);
 export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network } = {}) => {
     const config = resolve_peer_config(overrides);
     const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir, config.index_dir);
@@ -64,6 +66,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
         state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
         pin_record: store.pin_record,
+        hold_commits: async (job) => await held(store.pin_commit, async () => await held(index_commit, job)),
         keeps_blobs: (chain) => keeps_blobs(context)(chain),
         retained: () => context.blobs.retained(),
         on_entries: (input) => {

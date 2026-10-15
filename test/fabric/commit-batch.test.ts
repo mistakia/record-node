@@ -60,6 +60,25 @@ test('auto-commits once max_transactions runs accumulate', async () => {
   }
 })
 
+test('a hold defers every commit until the last hold ends, then commits once', async () => {
+  const { writer, read, cleanup } = pair()
+  try {
+    const batch = create_commit_batcher(writer, { window_ms: 10, max_transactions: 2 })
+    const insert = (x: string) => { batch.run(() => writer.prepare('INSERT INTO t (x) VALUES (?)').run(x)) }
+    await batch.hold(async () => {
+      for (const x of ['a', 'b', 'c']) insert(x)
+      await batch.hold(async () => { insert('d') })
+      await settle()
+      expect(read()).toBe(0)
+    })
+    expect(read()).toBe(4)
+    await expect(batch.hold(async () => { insert('e'); throw new Error('job failed') })).rejects.toThrow('job failed')
+    expect(read()).toBe(5)
+  } finally {
+    cleanup()
+  }
+})
+
 test('window timer drains a low-traffic batch on its own', async () => {
   const { writer, read, cleanup } = pair()
   try {

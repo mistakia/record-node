@@ -50,6 +50,23 @@ export interface TagCount {
     tag: string;
     count: number;
 }
+export interface LabelChange {
+    add?: readonly string[] | undefined;
+    remove?: readonly string[] | undefined;
+    set?: readonly string[] | undefined;
+}
+export type LabelBatchResult = {
+    track_id: string;
+    status: 'updated' | 'unchanged';
+    tags: string[];
+} | {
+    track_id: string;
+    status: 'failed';
+    error: {
+        code: 'NOT_FOUND' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR';
+        message: string;
+    };
+};
 export interface ReplicationStatus {
     progress: number;
     total: number;
@@ -193,6 +210,7 @@ export interface TrackQuery {
     limit: number;
     library_addresses?: string[];
     tags?: string[];
+    tag_groups?: string[][];
     query?: string;
     shuffle: boolean;
     sort: TrackSort;
@@ -244,6 +262,7 @@ export interface ApiPeer {
     list_tracks: (query: TrackQuery) => Promise<TrackList>;
     add_track: (input: {
         content_cid: string;
+        tags?: readonly string[] | undefined;
     } & WriteTargetInput) => Promise<Track>;
     update_track: (input: {
         track_id: string;
@@ -260,7 +279,8 @@ export interface ApiPeer {
     unpin_track: (cid: string) => Promise<void>;
     list_tags: (filter: {
         library_addresses?: string[];
-    }) => Promise<TagCount[]>;
+        prefix?: string;
+    }) => Promise<readonly TagCount[]>;
     add_tag: (label: {
         track_id: string;
         tag: string;
@@ -269,6 +289,14 @@ export interface ApiPeer {
         track_id: string;
         tag: string;
     } & WriteTargetInput) => Promise<Track>;
+    change_labels: (input: {
+        track_id: string;
+    } & LabelChange & WriteTargetInput) => Promise<Track>;
+    change_labels_batch: (input: {
+        items: ReadonlyArray<{
+            track_id: string;
+        } & LabelChange>;
+    } & WriteTargetInput) => Promise<LabelBatchResult[]>;
     list_libraries: () => Promise<Library[]>;
     get_library: (address: string) => Promise<Library | undefined>;
     link_library: (link: {

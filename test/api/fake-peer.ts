@@ -188,6 +188,19 @@ export const create_fake_peer = (): FakePeer => {
       track = { ...current, tags: current.tags.filter((label) => label.tag !== tag) }
       return track
     },
+    change_labels: async (input) => {
+      record('change_labels', input)
+      const current = known_track(input.track_id)
+      const labels = input.set ?? [...current.tags.map(({ tag }) => tag).filter((tag) => !(input.remove ?? []).includes(tag)), ...(input.add ?? [])]
+      track = { ...current, tags: [...new Set(labels)].map((tag) => ({ library_address: OWN_ADDRESS, tag })) }
+      return track
+    },
+    change_labels_batch: async (input) => {
+      record('change_labels_batch', input)
+      return input.items.map(({ track_id }) => track_id === track.id
+        ? { track_id, status: 'updated' as const, tags: track.tags.map(({ tag }) => tag) }
+        : { track_id, status: 'failed' as const, error: { code: 'NOT_FOUND' as const, message: `unknown track: ${track_id}` } })
+    },
 
     list_libraries: async () => [...libraries.values()],
     get_library: async (address) => libraries.get(address),

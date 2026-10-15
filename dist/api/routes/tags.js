@@ -4,7 +4,15 @@ export const tags_router = (peer) => {
     const router = Router();
     router.get('/', async (req, res) => {
         const library_addresses = query_list(req, 'library_addresses');
-        res.json(await peer.list_tags(library_addresses === undefined ? {} : { library_addresses }));
+        const prefix = query_value(req, 'prefix');
+        res.json(await peer.list_tags({
+            ...(library_addresses === undefined ? {} : { library_addresses }),
+            ...(prefix === undefined ? {} : { prefix })
+        }));
+    });
+    router.post('/batch', async (req, res) => {
+        const { items, library_address, capability_id } = req.body;
+        res.json({ results: await peer.change_labels_batch({ items, library_address, capability_id }) });
     });
     router.post('/', async (req, res) => {
         const { track_id, tag, library_address, capability_id } = req.body;

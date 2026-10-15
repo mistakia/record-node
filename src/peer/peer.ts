@@ -12,7 +12,7 @@ import { verify_toolchain } from '#ingest/toolchain.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { create_entry_block_cache } from '#query-db/entry-blocks.ts'
 import { create_projector } from '#query-db/projector.ts'
-import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts'
+import { create_commit_batcher, DEFAULT_COMMIT_POLICY, type CommitBatcher } from '#fabric/commit-batch.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
@@ -77,6 +77,10 @@ export interface CreatePeerOptions {
   network?: (input: { content_store: ContentStore }) => Network
 }
 
+// Runs job under a batcher's hold, or as it is for a store with no batching.
+const held = async <T>(batcher: CommitBatcher | undefined, job: () => Promise<T>): Promise<T> =>
+  batcher === undefined ? await job() : await batcher.hold(job)
+
 export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network }: CreatePeerOptions = {}): Promise<Peer> => {
   const config = resolve_peer_config(overrides)
   const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir, config.index_dir)
@@ -105,6 +109,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
     state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
     pin_record: store.pin_record,
+    hold_commits: async (job) => await held(store.pin_commit, async () => await held(index_commit, job)),
     keeps_blobs: (chain) => keeps_blobs(context)(chain),
     retained: () => context.blobs.retained(),
     on_entries: (input) => {

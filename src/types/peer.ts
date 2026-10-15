@@ -65,6 +65,19 @@ export interface TagCount {
   count: number
 }
 
+// One track's envelope label change (§2.4.3): add and remove change the
+// current labels, and set replaces them.
+export interface LabelChange {
+  add?: readonly string[] | undefined
+  remove?: readonly string[] | undefined
+  set?: readonly string[] | undefined
+}
+
+// One POST /tags/batch result. code is the API error code of a failed item.
+export type LabelBatchResult =
+  | { track_id: string, status: 'updated' | 'unchanged', tags: string[] }
+  | { track_id: string, status: 'failed', error: { code: 'NOT_FOUND' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR', message: string } }
+
 export interface ReplicationStatus {
   progress: number
   total: number
@@ -234,6 +247,8 @@ export interface TrackQuery {
   limit: number
   library_addresses?: string[]
   tags?: string[]
+  // Any label within a group, every group across groups.
+  tag_groups?: string[][]
   query?: string
   shuffle: boolean
   sort: TrackSort
@@ -290,7 +305,8 @@ export class PeerError extends Error {
 export interface ApiPeer {
   list_tracks: (query: TrackQuery) => Promise<TrackList>
   // Adopts a track known by its content CID into the target library (§6.4.3).
-  add_track: (input: { content_cid: string } & WriteTargetInput) => Promise<Track>
+  // tags, when given, are the entry's labels: a held track is relabelled to them.
+  add_track: (input: { content_cid: string, tags?: readonly string[] | undefined } & WriteTargetInput) => Promise<Track>
   // A DEL needs an own library: no capability action authorises one (§3.5.6).
   // Corrects content.tags with a superseding PUT (§2.4.3); null removes a tag.
   update_track: (input: { track_id: string, tags: Readonly<Record<string, unknown>> } & WriteTargetInput) => Promise<Track>
@@ -301,9 +317,13 @@ export interface ApiPeer {
   pin_track: (cid: string) => Promise<void>
   unpin_track: (cid: string) => Promise<void>
 
-  list_tags: (filter: { library_addresses?: string[] }) => Promise<TagCount[]>
+  list_tags: (filter: { library_addresses?: string[], prefix?: string }) => Promise<readonly TagCount[]>
   add_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track>
   remove_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track>
+  // A label change that leaves the labels equal as a set appends nothing.
+  change_labels: (input: { track_id: string } & LabelChange & WriteTargetInput) => Promise<Track>
+  // Many label changes to one library, appended as one batch.
+  change_labels_batch: (input: { items: ReadonlyArray<{ track_id: string } & LabelChange> } & WriteTargetInput) => Promise<LabelBatchResult[]>
 
   list_libraries: () => Promise<Library[]>
   get_library: (address: string) => Promise<Library | undefined>

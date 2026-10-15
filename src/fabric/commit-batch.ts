@@ -29,6 +29,10 @@ export const DEFAULT_COMMIT_POLICY: CommitPolicy = { window_ms: 100, max_transac
 export interface CommitBatcher {
   // Applies fn under the open batch, auto-committing at the policy limits.
   run: (fn: () => void) => void
+  // Runs job with commits held: the runs it makes, and any others meanwhile,
+  // join one batch that commits as the last hold ends, so a write of many
+  // entries pays one commit stall instead of one per max_transactions runs.
+  hold: <T>(job: () => Promise<T>) => Promise<T>
   // Commits an open batch now; no-op when none is open.
   flush: () => void
   // Flushes and stops the window timer. Call before the connection closes.
@@ -38,6 +42,7 @@ export interface CommitBatcher {
 export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): CommitBatcher => {
   let open = false
   let count = 0
+  let holds = 0
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const stop_timer = () => {
@@ -80,8 +85,18 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy): C
         throw error
       }
       count += 1
+      if (holds > 0) return
       if (count >= policy.max_transactions) commit()
       else schedule()
+    },
+    async hold (job) {
+      holds += 1
+      try {
+        return await job()
+      } finally {
+        holds -= 1
+        if (holds === 0) commit()
+      }
     },
     flush: commit,
     close: commit

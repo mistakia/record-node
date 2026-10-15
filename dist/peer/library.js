@@ -2,6 +2,7 @@
 // write path every entry takes on its way into an open library. The manager
 // holds the per-library pin sets, so unlink can release exactly what no other
 // library still holds; the store's pins themselves do not count references.
+import { setImmediate as next_turn } from 'node:timers/promises';
 import { create_ac_chain } from '#access-control/create.ts';
 import { resolve_ac_chain } from '#access-control/resolve.ts';
 import { is_put } from '#entry/operations.ts';
@@ -27,7 +28,7 @@ const canonical_or_self = (cid) => {
 // serves far faster side by side than one after another.
 const PIN_CONCURRENCY = 16;
 const same_heads = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
-export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }) => {
+export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set(), hold_commits = async (job) => await job() }) => {
     const libraries = new Map();
     let indexing = Promise.resolve();
     // Item 6 holds and releases apply one at a time, so a release made after a
@@ -102,17 +103,57 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
                 pin_record?.delete(library_address, [cid]);
         }
     };
-    const register = async ({ library_address, entries, access }) => {
+    // Pins, persists heads for, and indexes entries whose blocks are stored.
+    const index_stored = async ({ library_address, entries, access, batched = false }) => {
         const handle = require_library(library_address);
-        for (const entry of entries)
-            await content_store.put(entry.hash, entry.bytes);
         entry_blocks.save({ library_address, entries, heads: handle.oplog.heads });
         await changing_pins(handle, async () => { await pin_entries(handle, entries); });
         await state_store.save_heads({ library_address, heads: [...handle.oplog.heads] });
         const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] });
         indexing = projected.catch(() => { });
         await projected;
-        on_entries?.({ library_address, entries, inert: access?.inert ?? [] });
+        on_entries?.({ library_address, entries, inert: access?.inert ?? [], ...(batched ? { batched } : {}) });
+    };
+    const register = async ({ library_address, entries, access }) => {
+        require_library(library_address);
+        for (const entry of entries)
+            await content_store.put(entry.hash, entry.bytes);
+        await index_stored({ library_address, entries, access });
+    };
+    // Each block is stored before the next turn, since any register in that
+    // turn persists heads that already name it.
+    const append_many = async ({ library_address, builds, key_pair }) => {
+        const { oplog } = require_library(library_address);
+        const outcomes = [];
+        const entries = [];
+        const inert = [];
+        const keys = new Set();
+        for (const build of builds) {
+            let appended;
+            try {
+                const payload = build();
+                appended = payload === undefined ? undefined : append_entry_with_access({ oplog, payload, key_pair });
+            }
+            catch (error) {
+                outcomes.push({ ok: false, error });
+                await next_turn();
+                continue;
+            }
+            outcomes.push({ ok: true, entry: appended?.entry });
+            if (appended !== undefined) {
+                const { entry, access } = appended;
+                entries.push(entry);
+                inert.push(...access.inert);
+                for (const key of access.keys)
+                    keys.add(key);
+                // A store failure is the batch's, not the item's.
+                await content_store.put(entry.hash, entry.bytes);
+            }
+            await next_turn();
+        }
+        if (entries.length > 0)
+            await hold_commits(async () => { await index_stored({ library_address, entries, access: { inert, keys }, batched: true }); });
+        return outcomes;
     };
     // The oplog at the persisted heads, from the entry block cache when it
     // reproduces them. A cache last written at those heads under the current
@@ -261,6 +302,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
             await register({ library_address, entries: [entry], access });
             return entry;
         },
+        append_many,
         register,
         merge: async ({ library_address, blocks }) => {
             const { oplog } = require_library(library_address);

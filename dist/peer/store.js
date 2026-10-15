@@ -94,6 +94,7 @@ export const open_peer_store = async ({ data_dir, index_dir, network }) => {
         helia,
         content_store: create_helia_content_store({ helia, blockstore, pin_db, commit: pin_commit }),
         pin_record: create_library_pin_record({ db: pin_db, commit: pin_commit }),
+        pin_commit,
         network: opened.network,
         stop: async () => {
             retiring.abort();

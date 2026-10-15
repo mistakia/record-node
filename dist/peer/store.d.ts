@@ -3,10 +3,12 @@ import type { NetworkConfig } from '#adapter/libp2p/config.ts';
 import type { ContentStore } from '#fabric/content-store.ts';
 import type { Network } from '#fabric/network.ts';
 import { type LibraryPinRecord } from '#fabric/pin-index.ts';
+import { type CommitBatcher } from '#fabric/commit-batch.ts';
 export interface PeerStore {
     readonly helia: Helia;
     readonly content_store: ContentStore;
     readonly pin_record: LibraryPinRecord;
+    readonly pin_commit: CommitBatcher | undefined;
     readonly network: Network | undefined;
     readonly stop: () => Promise<void>;
 }
