@@ -194,17 +194,25 @@ export const list_tracks = ({ db, ...input }) => {
       SELECT 1 FROM tracks INDEXED BY tracks_by_track_id ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
       GROUP BY track_id HAVING count(*) > 1
     ) AS duplicates`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).duplicates)) === 1;
-    const filters = [
+    // A label group as a filter: by default the set of track ids carrying a
+    // label in it, read once; correlated, a probe of each walked row's own
+    // labels, which only holds without duplicates, where a track id's labels
+    // all sit on its one row's library.
+    const group_filter = (index, correlated) => correlated
+        ? `EXISTS (SELECT 1 FROM tags AS g WHERE g.library_address = t.library_address AND g.track_id = t.track_id
+          AND g.tag IN (SELECT value FROM json_each(:tag_group_${index})))`
+        : `t.track_id IN (
+          SELECT track_id FROM tags
+          WHERE ${scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses)) AND ' : ''}tag IN (SELECT value FROM json_each(:tag_group_${index}))
+        )`;
+    const where_for = (correlated) => [
         representative_sql({ scoped, duplicates }),
         searching && !indexed
             ? "(t.title LIKE :pattern ESCAPE '\\' OR t.artist LIKE :pattern ESCAPE '\\' OR t.album LIKE :pattern ESCAPE '\\' OR t.remixer LIKE :pattern ESCAPE '\\')"
             : '',
-        ...groups.map((_, index) => `t.track_id IN (
-          SELECT track_id FROM tags
-          WHERE ${scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses)) AND ' : ''}tag IN (SELECT value FROM json_each(:tag_group_${index}))
-        )`)
-    ].filter((filter) => filter.length > 0);
-    const where = filters.join(' AND ');
+        ...groups.map((_, index) => group_filter(index, correlated))
+    ].filter((filter) => filter.length > 0).join(' AND ');
+    const where = where_for(false);
     const parameters = {
         ...(duplicates ? { own_library_addresses: JSON.stringify(own_library_addresses) } : {}),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
@@ -215,17 +223,35 @@ export const list_tracks = ({ db, ...input }) => {
         const { from, filter } = track_source(!indexed ? 'tracks' : condition === '' ? 'match_keys' : 'match_rows');
         return Number(db.prepare(`SELECT count(*) AS total FROM ${from} WHERE ${filter}${where} ${condition}`).get(parameters).total);
     });
+    // Every scoped row, from the trigger-kept totals without reading the rows.
+    const scope_total = () => Number(db.prepare(`SELECT coalesce(sum(track_count), 0) AS total FROM library_totals
+        ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).total);
+    // Label-filtered without a search or duplicates, every tags row belongs to
+    // its library's track row and each track id to one row, so the total is the
+    // size of the groups' intersection, read from the (library, tag, track id)
+    // index rather than from every track row. Unscoped, the libraries come from
+    // library_totals, which every library with a track row has a row in.
+    const labelled = groups.length > 0 && !searching && !duplicates;
+    const label_count = () => cached_count(db, JSON.stringify(['labels', parameters]), () => {
+        const libraries = scoped ? 'SELECT value FROM json_each(:library_addresses)' : 'SELECT library_address FROM library_totals';
+        const sets = groups.map((_, index) => `SELECT DISTINCT track_id FROM tags WHERE library_address IN (${libraries}) AND tag IN (SELECT value FROM json_each(:tag_group_${index}))`);
+        return Number(db.prepare(`SELECT count(*) AS total FROM (${sets.join(' INTERSECT ')})`).get(parameters).total);
+    });
+    const total = labelled ? label_count() : searching || groups.length > 0 || duplicates ? count('') : scope_total();
+    // A labelled page either sorts every match, or walks the sort's index
+    // probing each row's labels until the page fills: about (offset + limit)
+    // times scope / total rows. A probe costs about twice a sorted match
+    // (measured on 206k tracks), so the walk wins while it reads under half as
+    // many rows as there are matches: a broad filter's first pages. The
+    // estimate assumes labels spread evenly along the sort, and a shuffled page
+    // cannot stop early, so it always sorts.
+    const walked = labelled && !shuffle && total > 0 && 2 * (offset + limit) * scope_total() / total < total;
+    const page_where = walked ? where_for(true) : where;
     const keys = (condition, order_by, page) => {
         const { from, filter } = track_source(!indexed ? 'tracks' : total <= SORTED_MATCHES_MAX ? 'match_rows' : 'tested_rows');
-        return db.prepare(`SELECT t.library_address, t.track_id FROM ${from} WHERE ${filter}${where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
+        return db.prepare(`SELECT t.library_address, t.track_id FROM ${from} WHERE ${filter}${page_where} ${condition} ORDER BY ${order_by} LIMIT :limit OFFSET :offset`)
             .all({ ...parameters, ...page });
     };
-    // Unfiltered and without duplicates, every scoped row counts: the
-    // trigger-kept totals answer without reading them.
-    const total = searching || groups.length > 0 || duplicates
-        ? count('')
-        : Number(db.prepare(`SELECT coalesce(sum(track_count), 0) AS total FROM library_totals
-        ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).total);
     const direction = order.toUpperCase();
     const { key, nullable_column } = SORT_KEYS[sort];
     let page_keys;
