@@ -11,6 +11,9 @@ export interface NetworkObservations {
   on_connection_open: (listener: (peer_id: string) => void) => () => void
   on_peer_identify: (listener: (peer_id: string, agent: string | undefined) => void) => () => void
   connected_peer_count: () => number
+  // The distinct peer ids connected right now, for seeding a day/week that
+  // rolls over while a connection is still held.
+  connected_peer_ids: () => string[]
   count_rendezvous_addresses: () => Promise<number | null>
 }
 

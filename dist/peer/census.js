@@ -119,6 +119,13 @@ export const create_census = ({ dir, observations, timers = SYSTEM_CENSUS_TIMERS
         day = new_day(today);
         if (week_ended)
             week = new_week(week_start(now));
+        // A connection held across the rollover never fires connection:open or
+        // identify again, so the new day/week would otherwise undercount it.
+        for (const peer_id of observations.connected_peer_ids()) {
+            const peer = hash(peer_id);
+            day.peers.add(peer);
+            week.peers.add(peer);
+        }
         const base = row_of(ended, true);
         queue_write(async () => {
             // A lookup that never answers must not hold every later write.

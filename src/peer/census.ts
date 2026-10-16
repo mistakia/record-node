@@ -23,6 +23,9 @@ export interface CensusObservations {
   on_peer_identify: (listener: (peer_id: string, agent: string | undefined) => void) => () => void
   on_library_announced: (listener: (library_address: string) => void) => () => void
   connected_peer_count: () => number
+  // The distinct peer ids connected right now, for seeding a day/week that
+  // rolls over while a connection is still held.
+  connected_peer_ids: () => string[]
   // One rendezvous lookup's distinct addresses, or null without a rendezvous.
   count_rendezvous_addresses: () => Promise<number | null>
 }
@@ -176,6 +179,13 @@ export const create_census = ({ dir, observations, timers = SYSTEM_CENSUS_TIMERS
     const weekly = week_ended ? week.peers.size : undefined
     day = new_day(today)
     if (week_ended) week = new_week(week_start(now))
+    // A connection held across the rollover never fires connection:open or
+    // identify again, so the new day/week would otherwise undercount it.
+    for (const peer_id of observations.connected_peer_ids()) {
+      const peer = hash(peer_id)
+      day.peers.add(peer)
+      week.peers.add(peer)
+    }
     const base = row_of(ended, true)
     queue_write(async () => {
       // A lookup that never answers must not hold every later write.

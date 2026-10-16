@@ -26,6 +26,7 @@ const fake_census = () => {
   const dir = mkdtempSync(join(tmpdir(), 'record-census-'))
   let now = SATURDAY_NOON
   let connected = 0
+  let connected_ids: string[] = []
   const listeners = { open: [] as Array<(peer_id: string) => void>, identify: [] as Array<(peer_id: string, agent: string | undefined) => void>, library: [] as Array<(address: string) => void> }
   const subscribe = <T>(list: T[], listener: T) => {
     list.push(listener)
@@ -40,6 +41,7 @@ const fake_census = () => {
       on_peer_identify: (listener) => subscribe(listeners.identify, listener),
       on_library_announced: (listener) => subscribe(listeners.library, listener),
       connected_peer_count: () => connected,
+      connected_peer_ids: () => connected_ids,
       count_rendezvous_addresses: async () => 7
     }
   })
@@ -48,6 +50,9 @@ const fake_census = () => {
     census,
     advance: (ms: number) => { now += ms },
     set_connected: (count: number) => { connected = count },
+    // The peers actually held open right now, independent of the connect()
+    // events already fired -- what a census rollover should see live.
+    set_connected_peers: (peer_ids: string[]) => { connected_ids = peer_ids },
     connect: (peer_id: string, agent?: string) => {
       for (const listener of listeners.open) listener(peer_id)
       if (agent !== undefined) for (const listener of listeners.identify) listener(peer_id, agent)
@@ -117,6 +122,26 @@ describe('census', () => {
     expect(readdirSync(dir).sort()).toEqual(['2026-10-10.jsonl', '2026-10-11.jsonl', '2026-10-12.jsonl'])
     // The stop row is partial; a complete row for the same day would win.
     expect(await census.read_row('2026-10-12')).toBeDefined()
+  })
+
+  test('a connection held across midnight still counts in the new day', async () => {
+    const { census, advance, set_connected, set_connected_peers, connect } = fake_census()
+    await census.start()
+
+    connect(PEER_A, 'record-node/1.2 (public)')
+    set_connected(1)
+    set_connected_peers([PEER_A])
+    await census.tick()
+
+    // PEER_A's connection stays open; no connection:open or identify fires on
+    // the new day, only the rollover itself.
+    advance(DAY_MS)
+    await census.tick()
+
+    const today = await census.read_row('2026-10-11')
+    expect(today?.distinct_peer_count).toBe(today?.peak_connection_count)
+    expect(today?.distinct_peer_count).toBeGreaterThan(0)
+    await census.stop()
   })
 
   test('a restart starts the week again: no key or peer outlives the process', async () => {
