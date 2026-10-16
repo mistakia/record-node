@@ -44,6 +44,8 @@ export interface ApiServerOptions {
   // default when unset), and a bearer-token verifier (hosted mode).
   cors_origins?: readonly string[] | undefined
   authenticate?: Authenticate
+  // Serve the interactive spec at /api/docs (default on).
+  docs?: boolean
   // Request logging (default on).
   log?: boolean
   // Validate responses against the spec too (the tests turn this on).
@@ -63,6 +65,7 @@ export const create_api_server = async ({
   host = '127.0.0.1',
   cors_origins = KNOWN_CLIENT_ORIGINS,
   authenticate,
+  docs = true,
   log = true,
   validate_responses = false
 }: ApiServerOptions): Promise<ApiServer> => {
@@ -70,7 +73,7 @@ export const create_api_server = async ({
   await mkdir(UPLOAD_DIR, { recursive: true })
 
   const api = Router()
-  api.use('/docs', create_docs_router(spec))
+  if (docs) api.use('/docs', create_docs_router(spec))
   api.use(authenticate_requests(authenticate))
   api.use(express.json())
   api.post('/import/file', parse_uploads(UPLOAD_DIR))

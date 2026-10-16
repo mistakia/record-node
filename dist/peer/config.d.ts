@@ -33,6 +33,7 @@ export declare const data_paths: (data_dir: string, index_dir?: string) => {
     pins: string;
     identity: string;
     libraries: string;
+    access_tokens: string;
     index: string;
     census: string;
 };

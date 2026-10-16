@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { Ajv } from 'ajv'
 import WebSocket from 'ws'
 
+import { ApiError } from '#api/middleware.ts'
 import { load_api_spec } from '#api/openapi.ts'
 import type { PeerEvent } from '#types/peer.ts'
 import { make_track, OWN_ADDRESS, TRACK_ID } from './fake-peer.ts'
@@ -94,6 +95,17 @@ describe('api: websocket', () => {
       socket.close()
     } finally {
       await hosted.stop()
+    }
+  })
+
+  test('a verifier fault refuses the upgrade with its status, never 401', async () => {
+    const faulty = await start_test_server({ authenticate: () => { throw new ApiError({ status: 503, code: 'INTERNAL_ERROR', message: 'store unavailable' }) } })
+    try {
+      const socket = new WebSocket(`ws://127.0.0.1:${faulty.server.port}/api/ws`, ['record', 'bearer.good'])
+      const status = await new Promise((resolve) => { socket.once('unexpected-response', (_req, res) => { resolve(res.statusCode) }).once('error', () => { resolve('error') }) })
+      expect(status).toBe(503)
+    } finally {
+      await faulty.stop()
     }
   })
 

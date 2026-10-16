@@ -114,6 +114,8 @@ export const data_paths = (data_dir: string, index_dir: string = data_dir) => ({
   pins: join(index_dir, 'pins.sqlite'),
   identity: join(data_dir, 'identity.key'),
   libraries: join(data_dir, 'libraries.json'),
+  // Hashed bearer tokens for the remote listener (#api/access-tokens.ts).
+  access_tokens: join(data_dir, 'access-tokens.json'),
   // The persisted query index (§4.7): reopened across restarts so the library
   // is not re-projected from blocks every time.
   index: join(index_dir, 'index.sqlite'),

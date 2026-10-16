@@ -49,6 +49,16 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ cors_origins: ['null'] }) })).rejects.toThrow('origin null')
   })
 
+  test('reads remote_listener, and refuses a missing port or an unknown sub-key', async () => {
+    expect((await load_config({ env: {} })).remote_listener).toBeUndefined()
+    expect((await load_config({ config_path: config_file({ remote_listener: { host: '127.0.0.1', port: 8130 } }) })).remote_listener).toEqual({ host: '127.0.0.1', port: 8130 })
+    await expect(load_config({ config_path: config_file({ remote_listener: { host: '127.0.0.1' } }) })).rejects.toThrow('remote_listener.port')
+    await expect(load_config({ config_path: config_file({ remote_listener: { port: 8130 } }) })).rejects.toThrow('remote_listener.host')
+    await expect(load_config({ config_path: config_file({ remote_listener: { host: '127.0.0.1', port: 8130, tls: true } }) })).rejects.toThrow('remote_listener has unknown keys: tls')
+    await expect(load_config({ config_path: config_file({ remote_listener: { host: '127.0.0.1', port: 70000 } }) })).rejects.toThrow('port must be')
+    await expect(load_config({ config_path: config_file({ remote_listener: '127.0.0.1:8130' }) })).rejects.toThrow('remote_listener must be')
+  })
+
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
     await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
     await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')

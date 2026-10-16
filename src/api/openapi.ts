@@ -1,5 +1,5 @@
 // The contract: record-docs spec/7-http-api.yaml, vendored byte-identical
-// beside this file (record-docs v1.2.6, 6563ce0). It is served as the docs and
+// beside this file (record-docs v1.2.7, e3c4d35). It is served as the docs and
 // validates every request, and responses too when asked (the tests ask).
 // No schema is restated in code; a contract change lands in record-docs first.
 

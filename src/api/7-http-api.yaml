@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.8.0
+  version: 1.8.1
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -25,9 +25,15 @@ info:
       WebSocket presents the same token as a subprotocol (see
       `x-websocket-events`); a token is never accepted as a query
       parameter. Tokens are opaque and issued out of band (spec §8.7.3).
-    - A node bound to loopback only MAY accept requests without a token
-      (spec §8.7.3, bundled mode).
-    - A missing or invalid token yields 401 `UNAUTHORIZED`.
+    - A listener MAY accept requests without a token only when every
+      client that can reach it is already authenticated by the transport:
+      a loopback-only bind (spec §8.7.3, bundled mode), or an
+      authenticated tunnel such as SSH. A listener reachable by clients
+      the transport does not authenticate, such as one behind a reverse
+      proxy, MUST require a token. One node MAY serve both.
+    - A missing or invalid token yields 401 `UNAUTHORIZED`, and nothing
+      else does: a node that cannot read its token store answers 503
+      (spec §8.7.3, token-management surface).
 
     Write targets (v1.1):
     - Every endpoint that appends to a library takes `library_address`,
