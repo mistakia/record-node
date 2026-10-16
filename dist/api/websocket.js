@@ -6,13 +6,16 @@
 // first, so the token is never echoed back. An offer without record is
 // refused, since the node would otherwise select no subprotocol; a client
 // offering none, as a loopback client without a token may, is accepted.
+import { STATUS_CODES } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { origin_allowed } from "./middleware.js";
+import { ApiError, origin_allowed } from "./middleware.js";
 export const WS_PATH = '/api/ws';
 export const WS_SUBPROTOCOL = 'record';
 const TOKEN_SUBPROTOCOL_PREFIX = 'bearer.';
 const offered_subprotocols = (req) => (req.headers['sec-websocket-protocol'] ?? '').split(',').map((protocol) => protocol.trim()).filter((protocol) => protocol !== '');
 export const subprotocol_token = (req) => offered_subprotocols(req).find((protocol) => protocol.startsWith(TOKEN_SUBPROTOCOL_PREFIX))?.slice(TOKEN_SUBPROTOCOL_PREFIX.length);
+// Policy violation (RFC 6455 §7.4.1): the client's token no longer verifies.
+const CLOSE_TOKEN_REVOKED = 1008;
 const refuse_upgrade = (socket, status) => {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 };
@@ -22,6 +25,7 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
         handleProtocols: (protocols) => protocols.has(WS_SUBPROTOCOL) ? WS_SUBPROTOCOL : false
     });
     const clients = new Set();
+    const client_tokens = new Map();
     const on_upgrade = async (req, socket, head) => {
         const url = new URL(req.url ?? '/', 'http://localhost');
         if (url.pathname !== WS_PATH) {
@@ -38,14 +42,37 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
             refuse_upgrade(socket, '400 Bad Request');
             return;
         }
-        if (authenticate !== undefined && !(await authenticate(subprotocol_token(req)))) {
+        const token = subprotocol_token(req);
+        let authenticated;
+        try {
+            authenticated = authenticate === undefined || await authenticate(token);
+        }
+        catch (error) {
+            // A verifier fault, such as an unreadable token store, is never a 401.
+            if (!(error instanceof ApiError))
+                throw error;
+            refuse_upgrade(socket, `${error.status} ${STATUS_CODES[error.status] ?? 'Error'}`);
+            return;
+        }
+        if (!authenticated) {
             refuse_upgrade(socket, '401 Unauthorized');
             return;
         }
         wss.handleUpgrade(req, socket, head, (client) => {
+            const remove = () => {
+                clients.delete(client);
+                client_tokens.delete(client);
+            };
             clients.add(client);
-            client.on('close', () => { clients.delete(client); });
-            client.on('error', () => { clients.delete(client); });
+            client_tokens.set(client, token);
+            client.on('close', remove);
+            client.on('error', remove);
+            // A revalidation that ran between the check above and this callback
+            // did not see this client, so check its token once more.
+            if (authenticate !== undefined) {
+                Promise.resolve(authenticate(token)).then((still) => { if (!still)
+                    client.close(CLOSE_TOKEN_REVOKED, 'token revoked'); }, () => { });
+            }
         });
     };
     const upgrade_listener = (req, socket, head) => {
@@ -61,6 +88,14 @@ export const attach_event_bridge = ({ http_server, peer, authenticate, cors_orig
     });
     return {
         clients,
+        revalidate: async () => {
+            if (authenticate === undefined)
+                return;
+            for (const [client, token] of [...client_tokens]) {
+                if (!(await authenticate(token)))
+                    client.close(CLOSE_TOKEN_REVOKED, 'token revoked');
+            }
+        },
         close: async () => {
             unsubscribe();
             http_server.off('upgrade', upgrade_listener);

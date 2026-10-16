@@ -9,6 +9,7 @@ export interface ApiServerOptions {
     host?: string;
     cors_origins?: readonly string[] | undefined;
     authenticate?: Authenticate;
+    docs?: boolean;
     log?: boolean;
     validate_responses?: boolean;
 }
@@ -17,5 +18,5 @@ export interface ApiServer {
     port: number;
     bridge: EventBridge;
 }
-export declare const create_api_server: ({ peer, resolve: resolver, port, host, cors_origins, authenticate, log, validate_responses }: ApiServerOptions) => Promise<ApiServer>;
+export declare const create_api_server: ({ peer, resolve: resolver, port, host, cors_origins, authenticate, docs, log, validate_responses }: ApiServerOptions) => Promise<ApiServer>;
 export declare const stop_api_server: ({ http_server, bridge }: ApiServer) => Promise<void>;

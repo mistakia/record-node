@@ -11,16 +11,25 @@ export const DEFAULT_PORT = 3000
 export const DEFAULT_HOST = '127.0.0.1'
 export const default_data_dir = (): string => join(homedir(), '.record')
 
+export interface RemoteListener {
+  readonly host: string
+  readonly port: number
+}
+
 export interface NodeConfig {
   readonly port: number
   readonly host: string
   // The origins a browser page may call the API from; unset means the
   // known-client default, which admits none.
   readonly cors_origins?: readonly string[] | undefined
+  // A second address serving the same API that always requires a bearer
+  // token from the token store, for a reverse proxy to expose; unset means
+  // the node serves only the tokenless loopback listener.
+  readonly remote_listener?: RemoteListener | undefined
   readonly peer: PeerConfig
 }
 
-const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'remote_listener', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)])
 
 const read_config_file = async (path: string): Promise<Record<string, unknown>> => {
   const value: unknown = JSON.parse(await readFile(path, 'utf8'))
@@ -43,6 +52,17 @@ const cors_origins_of = (value: unknown): readonly string[] | undefined => {
   return Object.freeze([...value as string[]])
 }
 
+const remote_listener_of = (value: unknown): RemoteListener | undefined => {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('remote_listener must be an object of host and port')
+  const { host, port, ...rest } = value as Record<string, unknown>
+  const unknown = Object.keys(rest)
+  if (unknown.length > 0) throw new TypeError(`remote_listener has unknown keys: ${unknown.join(', ')}`)
+  if (typeof host !== 'string' || host === '') throw new TypeError('remote_listener.host must be a host string')
+  if (typeof port !== 'number') throw new TypeError('remote_listener.port must be a number')
+  return Object.freeze({ host, port: port_of(port) })
+}
+
 export const load_config = async ({ config_path, port, data_dir, env = process.env }: {
   config_path?: string | undefined
   port?: string | number | undefined
@@ -50,11 +70,12 @@ export const load_config = async ({ config_path, port, data_dir, env = process.e
   env?: Record<string, string | undefined>
 } = {}): Promise<NodeConfig> => {
   const path = config_path ?? env.RECORD_CONFIG
-  const { port: file_port, host, cors_origins, ...peer } = path === undefined ? {} : await read_config_file(path)
+  const { port: file_port, host, cors_origins, remote_listener, ...peer } = path === undefined ? {} : await read_config_file(path)
   return {
     port: port_of(port ?? file_port ?? DEFAULT_PORT),
     host: typeof host === 'string' ? host : DEFAULT_HOST,
     cors_origins: cors_origins_of(cors_origins),
+    remote_listener: remote_listener_of(remote_listener),
     peer: resolve_peer_config({ ...peer, data_dir: data_dir ?? (peer.data_dir as string | undefined) ?? default_data_dir() } as Partial<PeerConfig>)
   }
 }
