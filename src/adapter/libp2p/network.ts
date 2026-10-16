@@ -51,6 +51,7 @@ export const create_libp2p_network = ({ helia }: { helia: NetworkedHelia }): Net
         return () => { libp2p.removeEventListener('peer:identify', handler) }
       },
       connected_peer_count: () => new Set(libp2p.getConnections().map(({ remotePeer }) => remotePeer.toString())).size,
+      connected_peer_ids: () => [...new Set(libp2p.getConnections().map(({ remotePeer }) => remotePeer.toString()))],
       count_rendezvous_addresses: async () => await libp2p.services.mainline_rendezvous?.count_addresses() ?? null
     },
     // Stopping libp2p aborts every dial still queued, and an aborted TCP dial

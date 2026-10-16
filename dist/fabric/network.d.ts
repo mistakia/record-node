@@ -3,6 +3,7 @@ export interface NetworkObservations {
     on_connection_open: (listener: (peer_id: string) => void) => () => void;
     on_peer_identify: (listener: (peer_id: string, agent: string | undefined) => void) => () => void;
     connected_peer_count: () => number;
+    connected_peer_ids: () => string[];
     count_rendezvous_addresses: () => Promise<number | null>;
 }
 export interface NetworkPeer {

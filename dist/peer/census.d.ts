@@ -4,6 +4,7 @@ export interface CensusObservations {
     on_peer_identify: (listener: (peer_id: string, agent: string | undefined) => void) => () => void;
     on_library_announced: (listener: (library_address: string) => void) => () => void;
     connected_peer_count: () => number;
+    connected_peer_ids: () => string[];
     count_rendezvous_addresses: () => Promise<number | null>;
 }
 export interface CensusTimers {
