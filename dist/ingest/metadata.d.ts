@@ -11,3 +11,4 @@ export declare const extract_metadata: ({ file_path, fingerprint }: {
     file_path: string;
     fingerprint: string;
 }) => Promise<ExtractedMetadata>;
+export declare const with_resolver_tags: (tags: Record<string, unknown>, resolver: readonly Record<string, unknown>[]) => Record<string, unknown>;

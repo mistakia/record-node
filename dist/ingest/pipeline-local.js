@@ -15,7 +15,7 @@ import { IngestError } from '#types/ingest.ts';
 import { upload_artwork } from "./artwork.js";
 import { decode_audio, decoded_fields, decoded_seconds } from "./duration.js";
 import { compute_fingerprint, is_degenerate_fingerprint } from "./fingerprint.js";
-import { extract_metadata } from "./metadata.js";
+import { extract_metadata, with_resolver_tags } from "./metadata.js";
 import { find_existing_track, put_track, stored_track_duration } from "./put-track.js";
 import { strip_tags } from "./tag-strip.js";
 // Durations within this many seconds count as one recording (§6.4.1 step 3).
@@ -72,7 +72,7 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
         // 9-10: measure the blob and assemble track.content.
         const { size } = await stat(stripped_path);
         const audio = { ...metadata.audio, ...decoded_fields(audio_decoded, size) };
-        const content = { hash: audio_cid, size, tags: content_tags, audio, artwork, resolver: [...resolver] };
+        const content = { hash: audio_cid, size, tags: with_resolver_tags(content_tags, resolver), audio, artwork, resolver: [...resolver] };
         // 11: the audio blob and artwork are UnixFS DAGs, so pinned recursively.
         const blobs = [audio_cid, ...artwork];
         for (const cid of blobs)

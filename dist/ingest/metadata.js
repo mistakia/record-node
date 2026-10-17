@@ -55,3 +55,32 @@ export const extract_metadata = async ({ file_path, fingerprint }) => {
     const pictures = (common.picture ?? []).map(({ format: picture_format, data }) => ({ format: picture_format, data }));
     return { tags: map_tags({ common, fingerprint }), audio: map_audio(format), pictures };
 };
+const resolver_text = (value) => typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+// `Artist - Title`, the convention of most uploaded music titles.
+const ARTIST_TITLE = /^(.+?)\s+[-\u2013\u2014]\s+(.+)$/;
+// The title and artist a resolver record names. A record's artist is often
+// the uploader's channel, so an `Artist - Title` full title outranks it.
+const resolver_title_artist = (source) => {
+    const artist = resolver_text(source['artist']);
+    const alt_title = resolver_text(source['alt_title']);
+    if (alt_title !== undefined)
+        return { title: alt_title, ...(artist === undefined ? {} : { artist }) };
+    const full_title = resolver_text(source['fulltitle']);
+    const split = full_title === undefined ? null : ARTIST_TITLE.exec(full_title);
+    if (split !== null)
+        return { artist: split[1].trim(), title: split[2].trim() };
+    return { ...(full_title === undefined ? {} : { title: full_title }), ...(artist === undefined ? {} : { artist }) };
+};
+// §6.4.2 step 4: a downloaded stream often carries no tags, so the first
+// resolver record fills a missing title and artist. The file's tags win.
+export const with_resolver_tags = (tags, resolver) => {
+    const [source] = resolver;
+    if (source === undefined)
+        return tags;
+    const { title, artist } = resolver_title_artist(source);
+    return {
+        ...tags,
+        ...(tags['title'] === undefined && title !== undefined ? { title } : {}),
+        ...(tags['artist'] === undefined && artist !== undefined ? { artist } : {})
+    };
+};

@@ -316,6 +316,8 @@ describe('content-processing', () => {
     const content = await stored_content({ target, cid: track.content_cid })
     expect(content.resolver).toEqual([{ extractor: 'youtube', id: 'iODdvJGpfIA', ...pick_resolver_fields(entry) }])
     for (const field of ['url', 'ext', 'http_headers']) expect(content.resolver[0]).not.toHaveProperty(field)
+    // The downloaded stream carries no tags, so the record names the track.
+    expect(content.tags).toMatchObject({ title: 'Mars (Original Mix)', artist: 'Fake Blood' })
     // Neither the content payload nor the signed entry carries the stream url.
     const entry_bytes = target.oplog.entries.get(track.entry_hash)?.bytes as Uint8Array
     const content_bytes = await target.content_store.get(track.content_cid) as Uint8Array

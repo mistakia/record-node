@@ -17,7 +17,7 @@ import { IngestError, type IngestedTrack } from '#types/ingest.ts'
 import { upload_artwork } from './artwork.ts'
 import { decode_audio, decoded_fields, decoded_seconds, type DecodedAudio } from './duration.ts'
 import { compute_fingerprint, is_degenerate_fingerprint } from './fingerprint.ts'
-import { extract_metadata } from './metadata.ts'
+import { extract_metadata, with_resolver_tags } from './metadata.ts'
 import { find_existing_track, put_track, stored_track_duration, type TrackTarget } from './put-track.ts'
 import { strip_tags } from './tag-strip.ts'
 import type { Toolchain } from './toolchain.ts'
@@ -104,7 +104,7 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
     // 9-10: measure the blob and assemble track.content.
     const { size } = await stat(stripped_path)
     const audio = { ...metadata.audio, ...decoded_fields(audio_decoded, size) }
-    const content = { hash: audio_cid, size, tags: content_tags, audio, artwork, resolver: [...resolver] }
+    const content = { hash: audio_cid, size, tags: with_resolver_tags(content_tags, resolver), audio, artwork, resolver: [...resolver] }
     // 11: the audio blob and artwork are UnixFS DAGs, so pinned recursively.
     const blobs = [audio_cid, ...artwork]
     for (const cid of blobs) await content_store.pin(cid, { recursive: true })
