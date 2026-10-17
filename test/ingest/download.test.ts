@@ -5,6 +5,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import type { LookupFunction } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -115,5 +117,65 @@ describe('download_to_file', () => {
   test('a refused or broken download is download_failed', async () => {
     await expect(download({ url: media_url('/gone'), output_path: output_path() })).rejects.toMatchObject({ code: 'download_failed', message: expect.stringContaining('410') })
     await expect(download({ url: 'http://closed.test:1/a.m4a', output_path: output_path() })).rejects.toMatchObject({ code: 'download_failed' })
+  })
+})
+
+// A media host that cuts each response after `cut` bytes, as YouTube's cut a
+// long stream, and answers a Range request with 206 unless told not to.
+describe('download_to_file resumes a cut response', () => {
+  const BODY = Buffer.from(Array.from({ length: 5000 }, (_, index) => index % 251))
+  const requests: Array<string | undefined> = []
+  let server: Server
+  let port = 0
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      const { pathname, searchParams } = new URL(request.url ?? '/', 'http://media.test')
+      const cut = Number(searchParams.get('cut'))
+      requests.push(request.headers.range)
+      const start = Number(/^bytes=(\d+)-$/.exec(request.headers.range ?? '')?.[1] ?? 0)
+      const ranged = start > 0 && pathname !== '/no-range'
+      const body = ranged ? BODY.subarray(start) : BODY
+      response.writeHead(ranged ? 206 : 200, {
+        'Content-Length': body.length,
+        ...(ranged ? { 'Content-Range': `bytes ${start}-${BODY.length - 1}/${BODY.length}` } : {})
+      })
+      const always = pathname === '/always-cut'
+      if (body.length <= cut || (!always && start > 0 && pathname !== '/no-range')) {
+        response.end(body)
+        return
+      }
+      // The pause lets the client write what it received before the cut.
+      response.write(body.subarray(0, cut), () => { setTimeout(() => response.socket?.destroy(), 50) })
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    port = (server.address() as AddressInfo).port
+  })
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve))
+  })
+
+  const url = (path: string): string => `http://media.test:${port}${path}`
+
+  test('a cut response resumes at the byte the file ends on', async () => {
+    const path = output_path()
+    requests.length = 0
+    await download({ url: url('/flaky?cut=1200'), output_path: path })
+    expect(readFileSync(path).equals(BODY)).toBe(true)
+    expect(requests[0]).toBeUndefined()
+    expect(requests.slice(1).every((range) => /^bytes=\d+-$/.test(range ?? ''))).toBe(true)
+  })
+
+  test('a source that ignores Range fails rather than corrupt the file', async () => {
+    await expect(download({ url: url('/no-range?cut=1200'), output_path: output_path() }))
+      .rejects.toMatchObject({ code: 'download_failed', message: expect.stringContaining('did not resume') })
+  })
+
+  test('a source that keeps cutting gives up after the resume limit', async () => {
+    requests.length = 0
+    await expect(download({ url: url('/always-cut?cut=100'), output_path: output_path() }))
+      .rejects.toMatchObject({ code: 'download_failed', message: expect.stringContaining('broke off') })
+    expect(requests).toHaveLength(9)
   })
 })

@@ -6,6 +6,7 @@
 // guarded_lookup, so the address checked is the address connected to.
 
 import { createWriteStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { request as http_request, type IncomingMessage } from 'node:http'
 import { request as https_request } from 'node:https'
 import { isIP, type LookupFunction } from 'node:net'
@@ -16,6 +17,9 @@ import { IngestError } from '#types/ingest.ts'
 
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_REDIRECTS = 10
+// Media hosts cut long responses (YouTube's after a minute or two), so a
+// download that breaks off resumes with a Range request where it stopped.
+const MAX_RESUMES = 8
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 // Credentials yt-dlp gathered for one origin are not sent to another.
 const ORIGIN_BOUND_HEADERS = new Set(['authorization', 'cookie'])
@@ -48,15 +52,14 @@ const get = async ({ url, headers, lookup, signal }: {
   })
 }
 
-// lookup is a seam for tests, which serve from loopback under a public name.
-export const create_download = ({ lookup = guarded_lookup }: { lookup?: LookupFunction } = {}): Download => async ({ url, headers = {}, output_path }) => {
-  const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
-  let current: URL
-  try {
-    current = new URL(url)
-  } catch {
-    throw failed(`has an invalid url: ${url}`)
-  }
+// The final 2xx response for url, following redirects by hand.
+const follow = async ({ url, headers, lookup, signal }: {
+  url: URL
+  headers: Readonly<Record<string, string>>
+  lookup: LookupFunction
+  signal: AbortSignal
+}): Promise<IncomingMessage> => {
+  let current = url
   let hop_headers = headers
   for (let hops = 0; ; hops++) {
     const response = await get({ url: current, headers: hop_headers, lookup, signal })
@@ -75,12 +78,46 @@ export const create_download = ({ lookup = guarded_lookup }: { lookup?: LookupFu
       response.resume()
       throw failed(`answered ${status}`)
     }
-    try {
-      await pipeline(response, createWriteStream(output_path))
-    } catch (error) {
-      throw failed(`broke off: ${(error as Error).message}`)
+    return response
+  }
+}
+
+// A resumed response must continue at exactly the byte the file ends on.
+const resumes_at = (response: IncomingMessage, offset: number): boolean =>
+  response.statusCode === 206 && Number(/^bytes (\d+)-/.exec(response.headers['content-range'] ?? '')?.[1]) === offset
+
+const file_size = async (path: string): Promise<number> => {
+  try {
+    return (await stat(path)).size
+  } catch {
+    return 0
+  }
+}
+
+// lookup is a seam for tests, which serve from loopback under a public name.
+export const create_download = ({ lookup = guarded_lookup }: { lookup?: LookupFunction } = {}): Download => async ({ url, headers = {}, output_path }) => {
+  const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+  let source: URL
+  try {
+    source = new URL(url)
+  } catch {
+    throw failed(`has an invalid url: ${url}`)
+  }
+  let written = 0
+  for (let resumes = 0; ; resumes++) {
+    const range: Record<string, string> = written > 0 ? { Range: `bytes=${written}-` } : {}
+    const response = await follow({ url: source, headers: { ...headers, ...range }, lookup, signal })
+    if (written > 0 && !resumes_at(response, written)) {
+      response.resume()
+      throw failed(`broke off at byte ${written}, and the source did not resume there`)
     }
-    return
+    try {
+      await pipeline(response, createWriteStream(output_path, { flags: written > 0 ? 'a' : 'w' }))
+      return
+    } catch (error) {
+      if (signal.aborted || resumes === MAX_RESUMES) throw failed(`broke off: ${(error as Error).message}`)
+      written = await file_size(output_path)
+    }
   }
 }
 
