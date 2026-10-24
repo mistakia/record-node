@@ -146,10 +146,23 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     };
     // Resolving the chain is the gate (§3.5.1): a library that fails it never
     // gets an oplog. Its objects are pinned before any entry is loaded.
+    // Concurrent opens of one library share a single load. Without it, two
+    // callers that reach the open before either sets the handle both load and
+    // project the library: on base-storage's 2.0.0 rehearsal the 800,000-entry
+    // archive was projected twice, doubling the start.
+    const opening = new Map();
     const open_library = async (library_address) => {
         const existing = libraries.get(library_address);
         if (existing !== undefined)
             return existing;
+        const pending = opening.get(library_address);
+        if (pending !== undefined)
+            return await pending;
+        const load = load_library(library_address).finally(() => { opening.delete(library_address); });
+        opening.set(library_address, load);
+        return await load;
+    };
+    const load_library = async (library_address) => {
         const phases = open_phases();
         const chain = await phases.time_async('resolve_chain', async () => await resolve_ac_chain({ library_address, block_store: content_store }));
         const pins = new Map();
