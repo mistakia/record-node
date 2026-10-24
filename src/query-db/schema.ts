@@ -38,6 +38,16 @@ const ENTRY_BLOCKS_SCHEMA = `
     UNIQUE (library_address, entry_hash)
   );
   CREATE INDEX IF NOT EXISTS entry_blocks_by_library ON entry_blocks (library_address);
+
+  -- Per library, the heads of the oplog its cached blocks were last written
+  -- from and the verification rules version that oplog was verified under, so
+  -- an open restores a matching cache without verifying each entry again
+  -- (entry-blocks.ts). A missing row means verify in full.
+  CREATE TABLE IF NOT EXISTS entry_blocks_verified (
+    library_address TEXT PRIMARY KEY,
+    heads TEXT NOT NULL,
+    rules_version INTEGER NOT NULL
+  ) WITHOUT ROWID;
 `
 
 // Each library's summary counts, kept by triggers on every row change, so
@@ -251,15 +261,6 @@ ${LISTEN_COUNT_SCHEMA}
 
 ${ENTRY_BLOCKS_SCHEMA}
 
-  -- Per library, the heads of the oplog its cached blocks were last written
-  -- from and the verification rules version that oplog was verified under, so
-  -- an open restores a matching cache without verifying each entry again
-  -- (entry-blocks.ts). A missing row means verify in full.
-  CREATE TABLE IF NOT EXISTS entry_blocks_verified (
-    library_address TEXT PRIMARY KEY,
-    heads TEXT NOT NULL,
-    rules_version INTEGER NOT NULL
-  ) WITHOUT ROWID;
 
 ${LIBRARY_TOTALS_SCHEMA}
 
@@ -281,8 +282,33 @@ export const apply_schema = (db: DatabaseSync): void => {
   })
 }
 
+// The entry-block cache is not a projection: it holds signed blocks by hash,
+// and entry-blocks.ts re-verifies it in full when the rules version moved. So
+// a schema change keeps it whenever its tables still have the shape this
+// version creates, and the next open reads each library's oplog from it instead
+// of walking the blockstore, which on base-storage's disk took hours.
+const table_shape = (db: DatabaseSync, table: string): string =>
+  JSON.stringify(db.prepare(`PRAGMA table_info(${table})`).all())
+
+const entry_block_tables_current = (db: DatabaseSync): boolean => {
+  const reference = new DatabaseSync(':memory:')
+  try {
+    reference.exec(ENTRY_BLOCKS_SCHEMA)
+    return ENTRY_BLOCK_TABLES.every((table) => table_shape(db, table) === table_shape(reference, table))
+  } finally {
+    reference.close()
+  }
+}
+
 export const drop_schema = (db: DatabaseSync): void => {
   for (const table of [...SEARCH_TABLES, ...QUERY_TABLES, ...ENTRY_BLOCK_TABLES]) db.exec(`DROP TABLE IF EXISTS ${table}`)
+}
+
+// An index of an older schema version: drop the projections, and the entry-
+// block cache only when its tables changed shape.
+const drop_stale_schema = (db: DatabaseSync): void => {
+  if (!entry_block_tables_current(db)) return drop_schema(db)
+  for (const table of [...SEARCH_TABLES, ...QUERY_TABLES]) db.exec(`DROP TABLE IF EXISTS ${table}`)
 }
 
 // The written schema version, or undefined when the version cannot be read
@@ -311,9 +337,10 @@ const open = (path: string): DatabaseSync => {
   db.exec('PRAGMA cache_size = -131072')
   db.exec('PRAGMA mmap_size = 2147483648')
   db.exec('PRAGMA temp_store = MEMORY')
-  // An older or unreadable schema: drop every table and start over. The
-  // next library open finds no marker and rebuilds the index by replay.
-  if (stored_version(db) !== String(SCHEMA_VERSION)) drop_schema(db)
+  // An older or unreadable schema: drop the projections and start over. The
+  // next library open finds no marker and rebuilds the index by replay, from
+  // the entry-block cache when drop_stale_schema kept it.
+  if (stored_version(db) !== String(SCHEMA_VERSION)) drop_stale_schema(db)
   apply_schema(db)
   return db
 }

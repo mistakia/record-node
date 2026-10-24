@@ -227,9 +227,12 @@ describe('query-db projector', () => {
       await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-1' })] })
       expect(await projector.projection_state({ library_address: address })).toBeDefined()
       db.exec("UPDATE meta SET value = '1' WHERE key = 'schema_version'")
+      db.prepare("INSERT INTO entry_blocks (library_address, entry_hash, bytes) VALUES (?, 'h', x'00')").run(address)
       db.close()
       const reopened = open_query_db({ path })
       expect(reopened.prepare('SELECT count(*) AS count FROM tracks').get()?.count).toBe(0)
+      // The entry-block cache is not a projection, and its shape did not change, so it is kept.
+      expect(reopened.prepare('SELECT count(*) AS count FROM entry_blocks').get()?.count).toBe(1)
       expect(await create_projector({ db: reopened, read_content: library.block_store.get }).projection_state({ library_address: address })).toBeUndefined()
       reopened.close()
     } finally {
