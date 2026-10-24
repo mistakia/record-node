@@ -242,8 +242,9 @@ export const library_address_vector = {
   manifests: [
     { type: 'recordstore', discriminator: 'library', manifest_cid: 'zBwWX6eaeb5ZhToR5AL62215fMiLTZYAtYpnDcBCebF4PJiLWK2n8MnGCArMMZc3nbLvaCGsg51etXpMrdVH5rgd9DUf8' },
     { type: 'listens', discriminator: 'listens', manifest_cid: 'zBwWX67a7mbUHRB8maxG6K3CdGyfRLnTv2bFGhvmmpw1SA4Aqku6qy8y6FUar8S9SXrTrkokZH9jTjtQBDRZ6HpELshLu' },
-    { type: 'recordstore', discriminator: 'mixes', manifest_cid: 'zBwWX7ayGQu2GevKxpfRiHbcuNjtqkbRghTqUtCPRKbeRGLdtphXDbHThj9HcnMwMXQhF9GZY9rhYt7Yaibr4Z5Bsed4o' },
-    { type: 'identity', discriminator: 'identity', manifest_cid: 'zBwWX5yfKGoxN42dyykh9tRxq4CjbydSPBpNkVzLe5bmjCRib33F7AiUsRGchrTCgvjDvRVJsC89Rv7Wfk17n8sqMkEFx' }
+    { type: 'recordstore', discriminator: 'q4ht7nxk2mzv6wrd3pjc5bfgya', manifest_cid: 'zBwWX9z7TWUE6xdpijU6cLpby3exmcRCZVoZPsdoLRaKHjUUhzzrU3b96mRnof7oiUUwsGasZfr5gtJ8fuCdrv4Wk8Dtm' },
+    { type: 'identity', discriminator: 'identity', manifest_cid: 'zBwWX5yfKGoxN42dyykh9tRxq4CjbydSPBpNkVzLe5bmjCRib33F7AiUsRGchrTCgvjDvRVJsC89Rv7Wfk17n8sqMkEFx' },
+    { type: 'labels', discriminator: 'labels', manifest_cid: 'zBwWX8NMGhVpD5UkPV6zKreKiHBNEUdK7FfgN3fpYn3aJiKxVFytYouYKFEiLvv3VqZCpTRhxcU7ekjWjJki9tXbfwm8U' }
   ],
   identity_library_address:
     '/record/zBwWX5yfKGoxN42dyykh9tRxq4CjbydSPBpNkVzLe5bmjCRib33F7AiUsRGchrTCgvjDvRVJsC89Rv7Wfk17n8sqMkEFx/identity'
@@ -259,18 +260,19 @@ export const meta_log_vector = [
   { label: 'link PUT of k = 2\'s library, alias friend', signed_bytes: 785, entry_hash: 'zBwWX6tGPpW4hsRc5AhPJJhFVopAeJXmjzj9zm1aXrvnoUo9XdGZ2gRiAcmSFdovBmfHnC8rc4ny59uWSrJGAz93gdT1J' },
   { label: 'pin PUT of the §6.2.4 audio CID', signed_bytes: 719, entry_hash: 'zBwWX7isyhFyCGzkHqmj5XZ4Auq7rss84UsPqtb4LCXsJmJwschU9Nnpn9PkBkFnSNFX2dA8t55QbMFfmyNZUu1HmFkuB' },
   { label: 'link DEL of the friend library', signed_bytes: 650, entry_hash: 'zBwWX94oXV3jxM3ZchvB6FVBDJ6va4BhRvLinaHkaMGKcTrmV5fJDYtJXFGXMxB4Sra39YT1ugrBTrWjAzKtYdTV2RRSE' },
-  { label: 'library PUT of the own mixes library', signed_bytes: 775, entry_hash: 'zBwWX8emvUUZidkjMXTqY1FkrL8Z3byJyh3Pvb3GJg613EknTdmNFM2C2yDePJ9q6biMELLiS1bwnirGC1i2NSDctnxit' },
-  { label: 'link PUT of mixes', signed_bytes: 772, entry_hash: 'zBwWX8sz9N4cENbiU15tWb1kQUeWuAM1ocugdCCh1kYjjv7r2VVP8pMXXoiKW4YEff8Vkr6LW6Vv1cJ1QHVdH7NfwKQ6n' },
-  { label: 'link DEL of mixes', signed_bytes: 652, entry_hash: 'zBwWX9zPbVPvWVdLmxxX3JfEi9iXGsuoP9Q1SnebpU6JKU2SAjMCputjt3DPiNzsE6TAmUYAf7Kh57rJvSbKdHJd5ebGa' },
-  { label: 'library DEL of mixes (retire)', signed_bytes: 655, entry_hash: 'zBwWX9m9dkzAdkitjJUAvBDd3zt4n9W2Y2ziGtzU5qnhRJUvNYVBjfggvBV6ZnJfHFPYmKhbh8X8QoiJJKtGx1kvD1qrf' },
-  { label: 'a stray library PUT of mixes', signed_bytes: 773, entry_hash: 'zBwWX8M4t6XTCqyoP198pk8KUbJj3N4vWmJ6J5ST4uqsQMCCQmy9RB6p2b1ejNXbSNoVTyvMK42TpSbVMWnSGm4HApgKY' }
+  { label: 'library PUT of a second own library, random discriminator', signed_bytes: 796, entry_hash: 'zBwWX6nT9Emb12f1Rxneu5RsNzeydWpBKjKeyyzrZ15CWZK1TxUEsLYh86ViLDkdXQVJRGpzhggZr3xMRF32LMHgt1Xfa' },
+  { label: 'link PUT of the second library', signed_bytes: 791, entry_hash: 'zBwWX5fV5s75PvpNVUkMnDLLyPZa6ZjX7Bn3muUZXojLYrMMyZTZNRhdkeePDfnfNLGvUiQSh91vmHfSfoF3gHPKQG3zH' },
+  { label: 'link DEL of the second library', signed_bytes: 652, entry_hash: 'zBwWX7oAf1DHnFTE7QYm6qkeuAeBjEU3D8JUGz3DjKoK5psbmpFBa2AZvBtb5TLMAhDEvtN3P1cbEzPx1Rufey7i9CFk7' },
+  { label: 'library DEL of the second library (retire)', signed_bytes: 653, entry_hash: 'zBwWX9yYbHJniPuFXdbbF2SUbXMwzr8Y5LeCCx2bd95XXerVaG48aLmv7EdPFoq8LqGSdLqHqY3TbbBKFmh5cktm6kFut' },
+  { label: 'a stray library PUT of the second library', signed_bytes: 794, entry_hash: 'zBwWX59zuffDARffT9ABnjKm5xPUgtPqQtvFbz8Ev9drgkjkymfcPaeEueMaCXpcHSF717C9hZUzYfUwtLKSv3Dxa16nk' },
+  { label: 'profile PUT with a name, a bio and the pin CID as avatar', signed_bytes: 758, entry_hash: 'zBwWX9CDL9zdEjBGKyj9XoXktTPNQSegzptAUZhajZWFGSXYQy6D91RKguCdt2rvdW9bzbP8M98C4SkZDr2YHA4kqv4eb' }
 ] as const
 
 // F10 — §3.5.5 to §3.5.10: capability C, a label write W under it, and the
 // owner's revocation R, in the F3 library. capability-vector.ts rebuilds
 // every case.
 export const capability_vector = {
-  case_count: 341,
+  case_count: 345,
   C: 'zBwWX9ifGJ2hJUEXcWfBa8XPPXJeTVmueycsBVhJgF1LcXtKDhTDfXfGZJ6ThHMLSY55bdcN4kayr367jCXkmTj1X8kXo',
   W: 'zBwWX9PQytHs1BvwyY41t41aqM2eG5qDyHJBcF4whar1Txj1iH2VpRDoPiuVDhpg18JTpahPFkhtJ6BCjfm9i8nKtMsXe',
   R: 'zBwWX5Pjot9No4iFvojbv2EpRP4up8DzUgpwuH8TmiKrEpGBgxJxZ7CvbTBt7cmfN1DH9pZQE3Bm7NCKTToPMoT91Frd6'

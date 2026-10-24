@@ -44,11 +44,12 @@ export interface CheckedEntry {
 export const check_entry = ({ hashed, chain }: { hashed: HashedEntry, chain: ResolvedAcChain }): CheckedEntry => {
   assert_signed_entry_size(hashed.bytes)
   assert_signed_entry_shape(hashed.entry)
-  const operation = validate_operation({ payload: hashed.entry.payload, library_type: chain.type })
+  const write_list_signer = chain.write_list.includes(hashed.entry.key)
+  const operation = validate_operation({ payload: hashed.entry.payload, library_type: chain.type, write_list_signer })
   if (!verify_entry_signature({ entry: hashed.entry })) {
     throw new ProtocolError('invalid_signature', `entry ${hashed.hash} failed append verification: invalid signature`)
   }
-  if (chain.type !== 'recordstore' && !chain.write_list.includes(hashed.entry.key)) {
+  if (chain.type !== 'recordstore' && !write_list_signer) {
     throw new ProtocolError('unauthorised_writer', `entry ${hashed.hash} failed append verification: ${hashed.entry.key} is not in the write list`)
   }
   return { hashed, operation }
@@ -101,7 +102,8 @@ export const verify_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEn
 // key, and the clock check still rejects an entry whose next are missing, so
 // a cache with a gap never restores. The hash was computed from the bytes.
 export const restore_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEntry }): VerifiedEntry => {
-  const operation = validate_operation({ payload: hashed.entry.payload, library_type: oplog.chain.type })
+  const write_list_signer = oplog.chain.write_list.includes(hashed.entry.key)
+  const operation = validate_operation({ payload: hashed.entry.payload, library_type: oplog.chain.type, write_list_signer })
   assert_clock(oplog, hashed)
   return as_verified(hashed, operation)
 }

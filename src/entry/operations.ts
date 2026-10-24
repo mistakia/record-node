@@ -79,12 +79,24 @@ const validate_del_value = (value: unknown): DelOperation['value'] => {
 export const build_del_operation = ({ key, timestamp = Date.now() }: { key: string, timestamp?: number }): DelOperation =>
   Object.freeze({ op: 'DEL', key, value: validate_del_value({ type: 'track', timestamp }) })
 
-const validate_record_put = ({ key, value, library_type }: {
+// §2.8.4: the Log and About envelopes version 1 wrote, `{id, timestamp, v,
+// type, content}` with unknown extras allowed as on any envelope.
+const V1_ENVELOPE_TYPES: readonly unknown[] = ['log', 'about']
+const is_v1_envelope = (value: Record<string, unknown>): boolean =>
+  V1_ENVELOPE_TYPES.includes(value.type) && typeof value.id === 'string' && typeof value.content === 'string' &&
+  value.v === 1 && Number.isSafeInteger(value.timestamp) && (value.timestamp as number) >= 0
+
+const validate_record_put = ({ key, value, library_type, write_list_signer }: {
   key: string
   value: Record<string, unknown>
   library_type: 'recordstore' | 'labels'
+  write_list_signer: boolean
 }): PutOperation | LabelsPut | AboutPut | AccessRecordPut | OpaqueOperation => {
   const type = value.type
+  // A version 1 Log or About envelope from a write-list signer merges with no
+  // effect, so the history after it still merges (§2.8.4). From anyone else
+  // it is a malformed About record, or an undefined type no action authorises.
+  if (library_type === 'recordstore' && write_list_signer && is_v1_envelope(value)) return { op: 'PUT', key, value, opaque: true as const }
   // A recordstore merges a PUT of a type this version does not define with
   // no effect, but only from a write-list signer, which authorisation checks
   // (§4.4.1). A labels library admits its two record types and nothing else.
@@ -104,7 +116,7 @@ const validate_record_put = ({ key, value, library_type }: {
   return { op: 'PUT', key, value: envelope }
 }
 
-const validate_record_operation = (payload: unknown, library_type: 'recordstore' | 'labels'): EntryPayload => {
+const validate_record_operation = (payload: unknown, library_type: 'recordstore' | 'labels', write_list_signer: boolean): EntryPayload => {
   if (!is_record(payload)) throw invalid('an operation must be a map')
   if (typeof payload.key !== 'string') throw invalid('operation key must be a string')
   // Capabilities exist only in a recordstore (§3.5.5).
@@ -113,10 +125,12 @@ const validate_record_operation = (payload: unknown, library_type: 'recordstore'
   const { key, value } = payload
   if (payload.op === 'PUT') {
     if (!is_record(value)) throw new ProtocolError('invalid_shape', 'a PUT value must be a map')
-    return with_capability(validate_record_put({ key, value, library_type }), capability_id)
+    return with_capability(validate_record_put({ key, value, library_type, write_list_signer }), capability_id)
   }
   if (payload.op === 'DEL') {
     if (library_type === 'labels') throw invalid('a labels library admits no DEL')
+    // A version 1 Log DEL from a write-list signer merges with no effect (§2.8.4).
+    if (write_list_signer && is_record(value) && value.type === 'log') return { op: 'DEL', key, value, opaque: true as const }
     // The key is the id of the track it tombstones (§2.2, §2.8.2), so a DEL
     // never names a label pair's state.
     if (!TRACK_ID_PATTERN.test(key)) throw invalid('a DEL key is a track id, 64 lowercase hex chars')
@@ -126,12 +140,15 @@ const validate_record_operation = (payload: unknown, library_type: 'recordstore'
 }
 
 // The operation check of append verification (§2.8.2, §3.5.4, §4.5).
-export const validate_operation = ({ payload, library_type }: {
+// write_list_signer admits the §2.8.4 version 1 entries, which only a
+// write-list key's entry may carry; a local write never does.
+export const validate_operation = ({ payload, library_type, write_list_signer = false }: {
   payload: unknown
   library_type: LibraryType
+  write_list_signer?: boolean
 }): EntryPayload => {
   if (library_type === 'identity') return validate_identity_operation(payload)
-  if (library_type === 'recordstore' || library_type === 'labels') return validate_record_operation(payload, library_type)
+  if (library_type === 'recordstore' || library_type === 'labels') return validate_record_operation(payload, library_type, write_list_signer)
   if (is_record(payload) && 'capability_id' in payload) throw invalid('a listens library entry never carries capability_id')
   return validate_listen_payload(payload)
 }

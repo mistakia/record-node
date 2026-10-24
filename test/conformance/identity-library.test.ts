@@ -23,7 +23,9 @@ const K = test_key(1)
 const address_of = (key: KeyPair, discriminator: string) => derive_library_address({ key: key.public_key, type: 'recordstore', discriminator })
 const OWN = address_of(K, 'library')
 const FRIEND = address_of(test_key(2), 'library')
-const MIXES = address_of(K, 'mixes')
+// The second own library, under a §3.6.1 random discriminator.
+const SECOND = address_of(K, 'q4ht7nxk2mzv6wrd3pjc5bfgya')
+const PROFILE_KEY = sha256_hex('profile')
 
 const open_identity_library = async (key: KeyPair = K): Promise<Oplog> => {
   const block_store = create_memory_block_store()
@@ -48,12 +50,16 @@ const F9_OPERATIONS = [
   { op: 'PUT', key: sha256_hex(FRIEND), value: { type: 'link', v: 1, timestamp: META_LOG_T0 + 1, address: FRIEND, alias: 'friend' } },
   { op: 'PUT', key: sha256_hex(META_LOG_PIN_CID), value: { type: 'pin', v: 1, timestamp: META_LOG_T0 + 2, cid: META_LOG_PIN_CID } },
   { op: 'DEL', key: sha256_hex(FRIEND), value: { type: 'link', timestamp: META_LOG_T0 + 3 } },
-  { op: 'PUT', key: sha256_hex(MIXES), value: { type: 'library', v: 1, timestamp: META_LOG_T0 + 4, address: MIXES } },
-  { op: 'PUT', key: sha256_hex(MIXES), value: { type: 'link', v: 1, timestamp: META_LOG_T0 + 5, address: MIXES } },
-  { op: 'DEL', key: sha256_hex(MIXES), value: { type: 'link', timestamp: META_LOG_T0 + 6 } },
-  { op: 'DEL', key: sha256_hex(MIXES), value: { type: 'library', timestamp: META_LOG_T0 + 7 } },
-  { op: 'PUT', key: sha256_hex(MIXES), value: { type: 'library', v: 1, timestamp: META_LOG_T0 + 8, address: MIXES } }
+  { op: 'PUT', key: sha256_hex(SECOND), value: { type: 'library', v: 1, timestamp: META_LOG_T0 + 4, address: SECOND } },
+  { op: 'PUT', key: sha256_hex(SECOND), value: { type: 'link', v: 1, timestamp: META_LOG_T0 + 5, address: SECOND } },
+  { op: 'DEL', key: sha256_hex(SECOND), value: { type: 'link', timestamp: META_LOG_T0 + 6 } },
+  { op: 'DEL', key: sha256_hex(SECOND), value: { type: 'library', timestamp: META_LOG_T0 + 7 } },
+  { op: 'PUT', key: sha256_hex(SECOND), value: { type: 'library', v: 1, timestamp: META_LOG_T0 + 8, address: SECOND } },
+  { op: 'PUT', key: PROFILE_KEY, value: { type: 'profile', v: 1, timestamp: META_LOG_T0 + 9, name: 'Test', bio: 'A fixture identity.', avatar: META_LOG_PIN_CID } }
 ]
+
+const retirement = (state: ReturnType<typeof identity_library_state>) =>
+  new Map([...state.libraries].map(([address, { retired }]) => [address, retired]))
 
 const f9_chain = (oplog: Oplog): HashedEntry[] => F9_OPERATIONS.reduce<HashedEntry[]>((chain, payload, index) => {
   const previous = chain[chain.length - 1]
@@ -61,7 +67,7 @@ const f9_chain = (oplog: Oplog): HashedEntry[] => F9_OPERATIONS.reduce<HashedEnt
 }, [])
 
 describe('identity-library', () => {
-  test('§4.8.2 [vector] F9 nine identity-library entries sign to the spec hashes and sizes', async () => {
+  test('§4.8.2 [vector] F9 ten identity-library entries sign to the spec hashes and sizes', async () => {
     const chain = f9_chain(await open_identity_library())
     expect(chain.map(({ hash, bytes }) => ({ hash, size: bytes.length })))
       .toEqual(meta_log_vector.map(({ entry_hash, signed_bytes }) => ({ hash: entry_hash, size: signed_bytes })))
@@ -79,14 +85,16 @@ describe('identity-library', () => {
     expect(before_retirement.rejected).toEqual([])
     const early = identity_library_state(oplog)
     // The mixes library and link records share a key and resolve apart.
-    expect(early.libraries.get(MIXES)).toEqual({ retired: false })
-    expect(early.links.has(MIXES)).toBe(false)
+    expect(early.libraries.get(SECOND)?.retired).toBe(false)
+    expect(early.links.has(SECOND)).toBe(false)
     merge_entries({ oplog, blocks: chain.slice(7).map(({ bytes }) => bytes) })
     const state = identity_library_state(oplog)
-    expect(state.libraries).toEqual(new Map([[OWN, { retired: false }], [MIXES, { retired: true }]]))
+    expect(retirement(state)).toEqual(new Map([[OWN, false], [SECOND, true]]))
+    // The second library's least PUT is entry 5, not the stray entry 9.
+    expect(state.libraries.get(SECOND)?.first_put.hash).toBe(chain[4]?.hash as string)
     expect(state.links).toEqual(new Map())
-    expect(state.link_keys).toEqual(new Set([sha256_hex(FRIEND), sha256_hex(MIXES)]))
     expect(state.pins).toEqual(new Set([META_LOG_PIN_CID]))
+    expect(state.profile).toEqual({ type: 'profile', v: 1, timestamp: META_LOG_T0 + 9, name: 'Test', bio: 'A fixture identity.', avatar: META_LOG_PIN_CID })
   })
 
   test('§4.8.2 [MUST] a record of a defined type that breaks its shape is rejected', async () => {
@@ -97,7 +105,12 @@ describe('identity-library', () => {
       { op: 'PUT', key: sha256_hex(FRIEND), value: { type: 'link', v: 1, timestamp: META_LOG_T0, address: 'not-an-address' } },
       { op: 'PUT', key: sha256_hex(OWN), value: { type: 'library', v: 1, timestamp: META_LOG_T0, address: OWN, extra: true } },
       { op: 'PUT', key: sha256_hex(FRIEND), value: { type: 'library', v: 1, timestamp: META_LOG_T0, address: OWN } },
-      { op: 'DEL', key: sha256_hex(OWN), value: { type: 'library', timestamp: META_LOG_T0, address: OWN } }
+      { op: 'DEL', key: sha256_hex(OWN), value: { type: 'library', timestamp: META_LOG_T0, address: OWN } },
+      // F9's profile rejects: a DEL, a URL avatar, a name over 128 bytes; and a mismatched key.
+      { op: 'DEL', key: PROFILE_KEY, value: { type: 'profile', timestamp: META_LOG_T0 } },
+      { op: 'PUT', key: PROFILE_KEY, value: { type: 'profile', v: 1, timestamp: META_LOG_T0, avatar: 'https://example.com/a.png' } },
+      { op: 'PUT', key: PROFILE_KEY, value: { type: 'profile', v: 1, timestamp: META_LOG_T0, name: 'x'.repeat(129) } },
+      { op: 'PUT', key: sha256_hex(OWN), value: { type: 'profile', v: 1, timestamp: META_LOG_T0, name: 'Test' } }
     ]
     const { merged, rejected } = merge_entries({ oplog, blocks: malformed.map((payload) => sign({ oplog, payload, next: [], time: 1 }).bytes) })
     expect(merged).toEqual([])
@@ -123,6 +136,21 @@ describe('identity-library', () => {
     const { merged } = merge_entries({ oplog, blocks: [unknown.bytes] })
     expect(merged.map(({ hash }) => hash)).toEqual([unknown.hash])
     expect(oplog.current.size).toBe(0)
-    expect(identity_library_state(oplog)).toEqual({ libraries: new Map(), links: new Map(), link_keys: new Set(), pins: new Set() })
+    expect(identity_library_state(oplog)).toEqual({ libraries: new Map(), links: new Map(), pins: new Set(), profile: undefined })
+  })
+
+  test('§4.8.2 [vector] F9 a profile ignores fields it does not define, and a later version is an unknown record', async () => {
+    const oplog = await open_identity_library()
+    const undefined_field = sign({
+      oplog, next: [], time: 1, payload: { op: 'PUT', key: PROFILE_KEY, value: { type: 'profile', v: 1, timestamp: META_LOG_T0, name: 'Test', pronouns: 'they' } }
+    })
+    const later = sign({
+      oplog, next: [undefined_field.hash], time: 2, payload: { op: 'PUT', key: PROFILE_KEY, value: { type: 'profile', v: 2, timestamp: META_LOG_T0 + 1, display: { name: 'Test' } } }
+    })
+    const { merged, rejected } = merge_entries({ oplog, blocks: [undefined_field.bytes, later.bytes] })
+    expect(rejected).toEqual([])
+    expect(merged.map(({ hash }) => hash)).toEqual([undefined_field.hash, later.hash])
+    // The later version leaves the v 1 profile current, its undefined field dropped.
+    expect(identity_library_state(oplog).profile).toEqual({ type: 'profile', v: 1, timestamp: META_LOG_T0, name: 'Test' })
   })
 })

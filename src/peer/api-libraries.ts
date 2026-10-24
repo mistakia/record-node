@@ -42,7 +42,7 @@ const write_about = async (context: PeerContext, { address, fields, capability_i
   capability_id?: string | undefined
 }): Promise<void> => {
   await serialise_write(context, async () => {
-    const target = resolve_write_target(context, { library_address: address, capability_id })
+    const target = resolve_write_target(context, { library_address: address, capability_id, kind: 'about' })
     const current = get_about({ db: context.db, library_address: address })?.name ?? undefined
     const name = fields.name === undefined ? current : fields.name ?? undefined
     if (name === undefined) throw new PeerError('invalid', 'an About record always carries a name, so it is never absent or cleared')

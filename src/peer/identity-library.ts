@@ -3,21 +3,23 @@
 // open libraries in line with it whenever it changes, here or on another
 // device of the identity.
 
-import { randomBytes } from 'node:crypto'
+import { randomInt } from 'node:crypto'
 
 import { derive_library_address, IDENTITY_LIBRARY_NAME, validate_discriminator } from '#encoding/library-address.ts'
 import { compute_log_id } from '#entry/id.ts'
-import { build_identity_del, build_identity_put } from '#entry/identity-record.ts'
+import { build_identity_del, build_identity_put, canonical_cid } from '#entry/identity-record.ts'
 import { is_identity_operation } from '#entry/operations.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
+import type { ProfileRecord } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import type { LibraryType } from '#types/library.ts'
 import { PeerError, type MetaLogPage, type MetaLogRecord } from '#types/peer.ts'
 import { require_identity, serialise_write, type PeerContext } from './context.ts'
 import { describe_library } from './describe.ts'
 import {
-  find_own_library, identity_state, link_set, linked_addresses, LISTENS_LIBRARY_NAME, listens_library, own_libraries, OWN_LIBRARY_NAME
+  find_own_library, identity_state, LABELS_LIBRARY_NAME, labels_library, link_set, linked_addresses, LISTENS_LIBRARY_NAME, listens_library,
+  own_libraries
 } from './ownership.ts'
 
 // A linked or claimed library opens once its AC chain is in the local store;
@@ -97,13 +99,24 @@ export const unlink_library = async (context: PeerContext, address: string): Pro
   })
 }
 
-// A discriminator not yet recorded for the type, active or retired (§3.6.1).
-const fresh_discriminator = (context: PeerContext, type: LibraryType, prefix: string): string => {
+// §3.6.1: 26 characters drawn uniformly from the lowercase RFC 4648 base32
+// alphabet, 130 bits, so a discriminator carries no meaning.
+const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
+const DISCRIMINATOR_LENGTH = 26
+
+const random_discriminator = (): string =>
+  Array.from({ length: DISCRIMINATOR_LENGTH }, () => BASE32_ALPHABET[randomInt(BASE32_ALPHABET.length)]).join('')
+
+// A discriminator not yet recorded for the type, active or retired (§3.6.1):
+// the initial one when given and free, otherwise a random one.
+const fresh_discriminator = (context: PeerContext, type: LibraryType, initial?: string): string => {
   const { key_pair } = require_identity(context)
   const recorded = identity_state(context).libraries
+  const free = (discriminator: string) => !recorded.has(derive_library_address({ key: key_pair.public_key, type, discriminator }))
+  if (initial !== undefined && free(initial)) return initial
   for (;;) {
-    const discriminator = `${prefix}-${randomBytes(4).toString('hex')}`
-    if (!recorded.has(derive_library_address({ key: key_pair.public_key, type, discriminator }))) return discriminator
+    const discriminator = random_discriminator()
+    if (free(discriminator)) return discriminator
   }
 }
 
@@ -122,27 +135,56 @@ const create_recorded_library = async (context: PeerContext, { type, discriminat
 }
 
 export const create_own_library = async (context: PeerContext, { discriminator }: { discriminator?: string | undefined }): Promise<string> =>
+  await serialise_write(context, async () =>
+    await create_recorded_library(context, { type: 'recordstore', discriminator: discriminator ?? fresh_discriminator(context, 'recordstore') }))
+
+// The identity's current profile (§4.8.2), if it has written one.
+export const read_profile = (context: PeerContext): ProfileRecord | undefined => identity_state(context).profile
+
+// Writes the whole profile (§4.8.2): a later PUT replaces it, so an absent
+// field is cleared. The avatar is stored in canonical form. An unchanged
+// profile appends nothing.
+export const write_profile = async (context: PeerContext, fields: { name?: string, bio?: string, avatar?: string }): Promise<ProfileRecord | undefined> =>
   await serialise_write(context, async () => {
-    const name = discriminator ?? fresh_discriminator(context, 'recordstore', 'library')
-    return await create_recorded_library(context, { type: 'recordstore', discriminator: name })
+    try {
+      const wanted = {
+        ...(fields.name === undefined ? {} : { name: fields.name }),
+        ...(fields.bio === undefined ? {} : { bio: fields.bio }),
+        ...(fields.avatar === undefined ? {} : { avatar: canonical_cid(fields.avatar) })
+      }
+      const current = read_profile(context)
+      const same = (field: 'name' | 'bio' | 'avatar') => current?.[field] === wanted[field]
+      if (current !== undefined && same('name') && same('bio') && same('avatar')) return current
+      await append_identity_record(context, build_identity_put({ type: 'profile', v: 1, timestamp: Date.now(), ...wanted }))
+      return read_profile(context)
+    } catch (error) {
+      if (error instanceof ProtocolError && (error.code === 'invalid_shape' || error.code === 'invalid_cid')) throw new PeerError('invalid', error.message)
+      throw error
+    }
   })
 
-// Retirement is permanent (§4.8.3). The active listens library is never
-// retired, since the identity's listens would have nowhere to go.
+// Retirement is permanent (§4.8.3). The active listens and labels libraries
+// are never retired, since their records would have nowhere to go.
 export const retire_own_library = async (context: PeerContext, address: string): Promise<void> => {
   await serialise_write(context, async () => {
     const own = find_own_library(context, address)
     if (own === undefined) throw new PeerError('not_found', `not an own library: ${address}`)
     if (own.retired) return
-    if (address === listens_library(context)) throw new PeerError('conflict', `the active listens library cannot be retired: ${address}`)
+    if (address === listens_library(context) || address === labels_library(context)) {
+      throw new PeerError('conflict', `the active ${own.type} library cannot be retired: ${address}`)
+    }
     await append_identity_record(context, build_identity_del({ type: 'library', key: compute_log_id(address) }))
   })
 }
 
-// The listens library, created anew should a non-conforming writer have
-// retired it (§4.8.3). Runs inside serialise_write.
+// The listens and labels libraries, each created anew under a random
+// discriminator should a non-conforming writer have retired it (§4.8.3).
+// Run inside serialise_write.
 export const ensure_listens_library = async (context: PeerContext): Promise<string> =>
   listens_library(context) ?? await create_recorded_library(context, { type: 'listens', discriminator: fresh_discriminator(context, 'listens', LISTENS_LIBRARY_NAME) })
+
+export const ensure_labels_library = async (context: PeerContext): Promise<string> =>
+  labels_library(context) ?? await create_recorded_library(context, { type: 'labels', discriminator: fresh_discriminator(context, 'labels', LABELS_LIBRARY_NAME) })
 
 // What the identity library says, applied to the open libraries: every
 // recorded and linked library opens and replicates, a link removed on another
@@ -188,21 +230,29 @@ export const queue_identity_sync = (context: PeerContext): void => {
     .catch((error: unknown) => { process.emitWarning(`identity library sync failed: ${(error as Error).message}`) })
 }
 
-// Opens the identity library for a key, records the own libraries record-node
-// v1.0 created for every identity (§4.8.3), and syncs. A new identity gets
-// both: a recordstore to write to and a listens library.
-export const open_identity = async (context: PeerContext, key_pair: KeyPair): Promise<void> => {
+// Opens the identity library for a key and syncs. Every identity has a
+// listens and a labels library (§4.8.3): one under its initial discriminator
+// that the identity library does not record yet is created and recorded, so
+// an identity from before the labels library gains one on open. A new
+// identity also gets a first recordstore, under a random discriminator
+// (§3.6.1); a reopened or imported one creates none, since its recordstores
+// are in its identity library.
+export const open_identity = async (context: PeerContext, key_pair: KeyPair, { created }: { created: boolean }): Promise<void> => {
   const write_keys = [key_pair.public_key]
   const identity = await context.libraries.create_library({ name: IDENTITY_LIBRARY_NAME, type: 'identity', write_keys })
   context.identity = { key_pair, identity_address: identity.chain.address }
   context.known = { ready: false, links: new Set(), libraries: new Map() }
   const recorded = identity_state(context).libraries
-  for (const [name, type] of [[OWN_LIBRARY_NAME, 'recordstore'], [LISTENS_LIBRARY_NAME, 'listens']] as const) {
-    const { chain } = await context.libraries.create_library({ name, type, write_keys })
-    if (!recorded.has(chain.address)) {
-      await append_identity_record(context, build_identity_put({ type: 'library', v: 1, timestamp: Date.now(), address: chain.address }))
+  for (const [name, type] of [[LISTENS_LIBRARY_NAME, 'listens'], [LABELS_LIBRARY_NAME, 'labels']] as const) {
+    const address = derive_library_address({ key: key_pair.public_key, type, discriminator: name })
+    if (recorded.has(address)) {
+      // Opened here so the library counts as own before the sync below.
+      await context.libraries.create_library({ name, type, write_keys })
+    } else {
+      await create_recorded_library(context, { type, discriminator: name })
     }
   }
+  if (created) await create_recorded_library(context, { type: 'recordstore', discriminator: fresh_discriminator(context, 'recordstore') })
   await context.libraries.settled()
   await sync_identity(context)
 }

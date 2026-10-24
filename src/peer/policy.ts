@@ -1,7 +1,7 @@
 // Replication policy (§4.6.1): node-local configuration deciding item 6, the
-// audio and artwork of each live Track entry, for a linked library. An own
-// library is always full. A link recorded in the identity library defaults to
-// full, and one carried over from a v1.0 Log entry to index_only.
+// audio and artwork of each live Track entry and the avatar of the owner's
+// announced profile, for a linked library. An own library is always full, and
+// a link with no configured policy is full.
 
 import { filter_matches, filter_shape } from '#access-control/filter.ts'
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
@@ -28,7 +28,7 @@ export const effective_policy = (context: PeerContext, address: string, scope?: 
   if (link === undefined) return undefined
   const stored = context.policies.get(address)
   if (stored !== undefined) return { mode: stored.mode, filter: stored.mode === 'selective' ? (stored.filter ?? null) as SpecNode | null : null }
-  return { mode: link.source === 'identity' ? 'full' : 'index_only', filter: null }
+  return { mode: 'full', filter: null }
 }
 
 const is_track = (entry: VerifiedEntry): boolean => is_put(entry.operation) && entry.operation.value.type === 'track'

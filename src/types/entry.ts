@@ -76,8 +76,9 @@ export interface AccessRecordPut {
   readonly capability_id?: string
 }
 
-// A write-list operation whose record type this version does not define:
-// merged, with no state effect (§4.4.1, §4.8.2).
+// A write-list operation whose record type this version does not define, or
+// a version 1 Log or About entry: merged, with no state effect (§2.8.4,
+// §4.4.1, §4.8.2).
 export interface OpaqueOperation {
   readonly op: 'PUT' | 'DEL'
   readonly key: string
@@ -85,16 +86,28 @@ export interface OpaqueOperation {
   readonly opaque: true
 }
 
-export type IdentityRecordType = 'library' | 'link' | 'pin'
+export type IdentityRecordType = 'library' | 'link' | 'pin' | 'profile'
+
+// The identity's profile (§4.8.2): every field optional, avatar a canonical CID.
+export interface ProfileRecord {
+  readonly type: 'profile'
+  readonly v: 1
+  readonly timestamp: number
+  readonly name?: string
+  readonly bio?: string
+  readonly avatar?: string
+}
 
 export type IdentityRecord =
   | { readonly type: 'library', readonly v: 1, readonly timestamp: number, readonly address: string }
   | { readonly type: 'link', readonly v: 1, readonly timestamp: number, readonly address: string, readonly alias?: string }
   | { readonly type: 'pin', readonly v: 1, readonly timestamp: number, readonly cid: string }
+  | ProfileRecord
 
+// A profile is never deleted (§4.8.2).
 export type IdentityOperation =
   | { readonly op: 'PUT', readonly key: string, readonly value: IdentityRecord }
-  | { readonly op: 'DEL', readonly key: string, readonly value: { readonly type: IdentityRecordType, readonly timestamp: number } }
+  | { readonly op: 'DEL', readonly key: string, readonly value: { readonly type: Exclude<IdentityRecordType, 'profile'>, readonly timestamp: number } }
 
 // A listens-library payload is the bare listen object, with no envelope (§2.7, §6.5).
 export interface ListenPayload {

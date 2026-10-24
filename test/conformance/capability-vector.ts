@@ -176,6 +176,14 @@ export const build_capability_vector = () => {
     k: OWNER, library: 'labels', op: 'DEL', key: TRACK_A, value: { type: 'track', timestamp: T0 + 34 }
   })
   append('owner DEL of an About record', 'invalid_operation', { k: OWNER, op: 'DEL', key: ABOUT_KEY, value: { type: 'about', timestamp: T0 + 35 } })
+  // §2.8.4 version 1 entries, and §4.4.1 undefined types: merged, no effect.
+  const v1_about = { id: sha256_hex(LIBRARY_ADDRESSES.recordstore), timestamp: T0 + 37, v: 1, type: 'about', content: TRACK_CONTENT }
+  append('owner version 1 About envelope', 'accept', { k: OWNER, key: v1_about.id, value: v1_about })
+  append('owner version 1 Log DEL', 'accept', { k: OWNER, op: 'DEL', key: sha256_hex('linked'), value: { type: 'log', timestamp: T0 + 38 } })
+  append('owner PUT of an undefined record type', 'accept', { k: OWNER, value: { type: 'playlist', v: 1, timestamp: T0 + 39 } })
+  append('k=2 version 1 About envelope under T', 'invalid_shape', {
+    k: K2, next: [T], key: v1_about.id, capability_id: T, value: { ...v1_about, timestamp: T0 + 40 }
+  })
   append('label record by k=2, labels library', 'unauthorised_writer', { k: K2, library: 'labels', value: labels(T0 + 36, [[TRACK_A, 'a']]) })
 
   // Delegation.

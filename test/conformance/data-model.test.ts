@@ -216,12 +216,27 @@ describe('data-model', () => {
 
   test('§2.8.2 [MUST] a received DEL of any other type is rejected at append verification and never reaches the oplog', async () => {
     const { oplog } = await open_test_library({ writers: [writer] })
-    const blocks = ['log', 'about', 'listen'].map((type) =>
+    const blocks = ['about', 'listen', 'labels'].map((type) =>
       forged_block(oplog.chain.address, { op: 'DEL', key: ID, value: { type, timestamp: 1 } }))
     const { merged, rejected } = merge_entries({ oplog, blocks })
     expect(merged).toEqual([])
     expect(rejected.map(({ error }) => error.code)).toEqual(['invalid_operation', 'invalid_operation', 'invalid_operation'])
     expect(oplog.entries.size).toBe(0)
+  })
+
+  test('§2.8.4 [MUST] a version 1 Log DEL and Log or About envelope from a write-list key merge with no state effect', async () => {
+    const { oplog } = await open_test_library({ writers: [writer] })
+    const v1 = (type: string) => ({ id: ID, timestamp: 1, v: 1, type, content: 'zb2rhWrAP3dch4trZWGArAEEN8mqFPhsQ2Jojbedxdq8MtCgH' })
+    const blocks = [
+      forged_block(oplog.chain.address, { op: 'DEL', key: ID, value: { type: 'log', timestamp: 1 } }),
+      forged_block(oplog.chain.address, { op: 'PUT', key: ID, value: v1('log') }),
+      forged_block(oplog.chain.address, { op: 'PUT', key: ID, value: v1('about') })
+    ]
+    const { merged, rejected } = merge_entries({ oplog, blocks })
+    expect(rejected).toEqual([])
+    expect(merged.length).toBe(3)
+    expect(merged.every(({ state_keys }) => state_keys.length === 0)).toBe(true)
+    expect(oplog.current.size).toBe(0)
   })
 
   test('§2.8.2 [MUST] a listens-library DEL is rejected on local append', async () => {

@@ -11,6 +11,7 @@ import { encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import { data_paths } from '#peer/config.ts'
+import { write_profile } from '#peer/identity-library.ts'
 import { DataDirectoryLocked } from '#peer/lock.ts'
 import { create_peer, start_peer, stop_peer, type Peer } from '#peer/peer.ts'
 import { create_resolver, refuse_input_errors } from '#peer/resolver.ts'
@@ -85,13 +86,12 @@ describe('peer', () => {
     await wait_until(async () => ['pin', 'pinned-block'].every((name) => !existsSync(join(datastore, name))))
   })
 
-  test('§4.6 an own library\'s avatar is re-pinned when the pin index is rebuilt; an uploaded image no entry names is not', async () => {
+  test('§4.6 the profile avatar is re-pinned when the pin index is rebuilt; an uploaded image no entry names is not', async () => {
     const data_dir = mkdtempSync(join(tmpdir(), 'record-peer-test-'))
     const first = await start(data_dir)
-    const { own_address } = first.identity()
     const avatar = await first.put_image(new TextEncoder().encode('avatar image'))
     const unused = await first.put_image(new TextEncoder().encode('unused image'))
-    await first.set_about({ address: own_address, fields: { avatar } })
+    await write_profile(first.context, { avatar })
     await stop(first)
     for (const suffix of ['', '-wal', '-shm']) rmSync(data_paths(data_dir).pins + suffix, { force: true })
 
@@ -183,14 +183,19 @@ describe('peer', () => {
     await expect(peer.remove_track({ track_id: f7.track_id })).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  test('the About entry is stamped with the own address and merges updates', async () => {
+  test('§2.6 an About record carries a name only, and an unchanged name appends nothing', async () => {
     const peer = await start()
     const address = peer.identity().own_address
-    await peer.set_about({ address, fields: { name: 'mine', bio: 'first' } })
-    expect(await peer.set_about({ address, fields: { bio: null, location: 'here' } }))
-      .toEqual({ library_address: address, name: 'mine', bio: null, location: 'here', avatar: null })
-    expect(await peer.set_about({ address, fields: {} })).toMatchObject({ name: 'mine', location: 'here' })
-    expect((await peer.get_library(address))?.name).toBe('mine')
+    const entries = () => peer.context.libraries.get(address)?.oplog.entries.size ?? 0
+    expect(await peer.set_about({ address, fields: { name: 'mine' } })).toEqual({ library_address: address, name: 'mine' })
+    const written = entries()
+    expect(await peer.set_about({ address, fields: { bio: 'ignored' } })).toEqual({ library_address: address, name: 'mine' })
+    expect(entries()).toBe(written)
+    expect(await peer.get_library(address)).toMatchObject({ name: 'mine' })
+    // The labels library takes an About record; the listens library does not (§4.9).
+    const { labels_address, listens_address } = peer.identity()
+    expect(await peer.set_about({ address: labels_address, fields: { name: 'Labels' } })).toEqual({ library_address: labels_address, name: 'Labels' })
+    await expect(peer.set_about({ address: listens_address, fields: { name: 'Listens' } })).rejects.toMatchObject({ code: 'invalid' })
   })
 
   test('linking an unknown library records it as loading; unlinking ends the link', async () => {
@@ -199,9 +204,9 @@ describe('peer', () => {
     const address = other.identity().own_address
     const library = await peer.link_library({ address, alias: 'friend' })
     expect(library).toMatchObject({ address, alias: 'friend', is_linked: true, is_loading_index: true })
-    // Every own library is listed, the listens library included (§4.8.3).
+    // Every own library is listed, the listens and labels libraries included (§4.8.3).
     expect((await peer.list_libraries()).map(({ address }) => address).sort())
-      .toEqual([peer.identity().own_address, peer.identity().listens_address, address].sort())
+      .toEqual([peer.identity().own_address, peer.identity().listens_address, peer.identity().labels_address, address].sort())
     await peer.unlink_library(address)
     expect(await peer.get_library(address)).toBeUndefined()
     // An own library is retired, never unlinked.

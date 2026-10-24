@@ -2,7 +2,7 @@
 // replication over the §5.5.1 network, wired together behind the ApiPeer
 // surface.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 
 import type { ContentStore } from '#fabric/content-store.ts'
@@ -33,7 +33,7 @@ import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_
 import { import_files, import_url, local_file_phases } from './imports.ts'
 import { create_library_manager } from './library.ts'
 import { project_entry_events } from './notify.ts'
-import { default_own_library, listens_library, OWN_LIBRARY_NAME } from './ownership.ts'
+import { default_own_library, labels_library, listens_library } from './ownership.ts'
 import { keeps_blobs } from './policy.ts'
 import { create_peer_replication } from './replication.ts'
 import { create_resolver, refuse_input_errors, type ResolveUrl } from './resolver.ts'
@@ -42,12 +42,10 @@ import { lock_data_dir } from './lock.ts'
 import { open_peer_store, type PeerStore } from './store.ts'
 import { resolve_write_target } from './write-target.ts'
 
-export { OWN_LIBRARY_NAME }
-
 const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 
 // The identity as tests and hosts see it: the key, its identity library, and
-// the own libraries a v1.0 caller would have named.
+// its default own libraries.
 export interface IdentityView {
   readonly key_pair: KeyPair
   readonly identity_address: string
@@ -55,6 +53,8 @@ export interface IdentityView {
   readonly own_address: string
   // The active listens library.
   readonly listens_address: string
+  // The active labels library (§4.9).
+  readonly labels_address: string
 }
 
 export interface Peer extends ApiPeer {
@@ -123,7 +123,9 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
           context.events.emit({ type: 'identity:meta-log-appended', payload: { record: meta_log_record(context, entry) } })
         }
         queue_identity_sync(context)
-      } else if (context.identity !== undefined) {
+      }
+      // Item 6: a track's audio and artwork, or the profile's avatar (§4.6).
+      if (context.identity !== undefined) {
         context.blobs.entries(input.library_address, input.entries)
           .catch((error: unknown) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${(error as Error).message}`) })
       }
@@ -187,7 +189,13 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     context,
     identity: () => {
       const { key_pair, identity_address } = require_identity(context)
-      return { key_pair, identity_address, own_address: default_own_library(context) ?? '', listens_address: listens_library(context) ?? '' }
+      return {
+        key_pair,
+        identity_address,
+        own_address: default_own_library(context) ?? '',
+        listens_address: listens_library(context) ?? '',
+        labels_address: labels_library(context) ?? ''
+      }
     },
     ingest_file: async (file_path) => {
       refuse_when_stopping(context)
@@ -219,7 +227,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     import_identity: async ({ private_key }) => await serialise_write(context, async () => {
       const key_pair = private_key === undefined ? generate_key_pair() : unmarshal_private_key(private_key)
       if (paths !== undefined) await save_key_pair({ path: paths.identity, key_pair })
-      await open_identity(context, key_pair)
+      await open_identity(context, key_pair, { created: private_key === undefined })
       await context.replication?.sync()
       return {
         id: identity_id_of(key_pair),
@@ -246,8 +254,11 @@ export const start_peer = async (peer: Peer): Promise<void> => {
   const { ffmpeg_path, fpcalc_path, allow_toolchain_mismatch, data_dir } = context.config
   context.toolchain = verify_toolchain({ ffmpeg_path, fpcalc_path, allow_version_mismatch: allow_toolchain_mismatch })
   context.toolchain.catch(() => {})
-  const key_pair = await load_key_pair({ path: data_dir === undefined ? undefined : data_paths(data_dir).identity })
-  await open_identity(context, key_pair)
+  // A key load_key_pair generates is a new identity (§4.8.3).
+  const key_path = data_dir === undefined ? undefined : data_paths(data_dir).identity
+  const created = key_path === undefined || !existsSync(key_path)
+  const key_pair = await load_key_pair({ path: key_path })
+  await open_identity(context, key_pair, { created })
   await serialise_write(context, async () => { await finish_pending_unlinks(context) })
   await context.replication?.start()
   await context.census?.start()

@@ -23,7 +23,8 @@ export const to_api_track = (row: TrackRow, pins: ReadonlySet<string>): Track | 
 export const to_api_tracks = (rows: readonly TrackRow[], pins: ReadonlySet<string>): Track[] =>
   rows.flatMap((row) => to_api_track(row, pins) ?? [])
 
-export const to_api_about = (row: AboutRow): About => ({ ...row })
+// An About record carries a name only (§2.6).
+export const to_api_about = ({ library_address, name }: AboutRow): About => ({ library_address, name })
 
 export interface LibraryReplication {
   readonly status: ReplicationStatus
@@ -54,9 +55,6 @@ export const to_api_library = ({ address, library_type, heads, summary, about, a
   address,
   library_type,
   name: about?.name ?? null,
-  bio: about?.bio ?? null,
-  location: about?.location ?? null,
-  avatar: about?.avatar ?? null,
   alias,
   ...summary,
   heads: [...heads],

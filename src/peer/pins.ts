@@ -1,12 +1,12 @@
 // What a library pins (§3.5.1, §4.6): the three AC chain objects, and per
 // entry the signed entry block, the envelope content payload, and item 6
 // when the library's replication policy keeps it (§4.6.1): a track's audio
-// blob and artwork. Items 1-5 are
-// dag-cbor leaves and pinned directly; item 6 is a UnixFS DAG and pinned
-// recursively.
+// blob and artwork, or in an identity library the avatar of a profile.
+// Items 1-5 are dag-cbor leaves and pinned directly; item 6 is a UnixFS DAG
+// and pinned recursively.
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
-import { is_put } from '#entry/operations.ts'
+import { is_identity_operation, is_put } from '#entry/operations.ts'
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
@@ -47,17 +47,25 @@ export const stored_track_content = async ({ content_store, content_cid }: {
 export const track_blobs = (content: Record<string, unknown>): string[] =>
   [content.hash as string, ...(content.artwork as string[])]
 
-// Whether an entry can carry item 6: a track PUT.
-export const has_item_6 = (entry: VerifiedEntry): boolean => is_put(entry.operation)
+// The avatar a profile PUT names (§4.6 item 6, §4.8.2).
+const profile_avatar = (entry: VerifiedEntry): string | undefined => {
+  const { operation } = entry
+  return is_identity_operation(operation) && operation.op === 'PUT' && operation.value.type === 'profile' ? operation.value.avatar : undefined
+}
 
-// An entry's item 6 with the validated content that names it, or undefined
-// when the entry carries none or its payload is not stored or does not
-// validate.
+// Whether an entry can carry item 6: a track PUT, or a profile PUT with an avatar.
+export const has_item_6 = (entry: VerifiedEntry): boolean => is_put(entry.operation) || profile_avatar(entry) !== undefined
+
+// An entry's item 6 with what names it, the validated track content or the
+// profile record, or undefined when the entry carries none or its payload
+// is not stored or does not validate.
 export const stored_item_6 = async ({ content_store, entry }: {
   content_store: ContentStore
   library_address: string
   entry: VerifiedEntry
 }): Promise<{ content: Record<string, unknown>, blobs: string[] } | undefined> => {
+  const avatar = profile_avatar(entry)
+  if (avatar !== undefined) return { content: (entry.operation as { value: Record<string, unknown> }).value, blobs: [avatar] }
   if (!is_put(entry.operation)) return undefined
   const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content })
   return content === undefined ? undefined : { content, blobs: track_blobs(content) }
@@ -72,8 +80,8 @@ export const entry_pins = async ({ content_store, library_address, entry, keeps_
   keeps_blobs: KeepsBlobs
 }): Promise<Array<[string, boolean]>> => {
   const pins: Array<[string, boolean]> = [[entry.hash, false]]
-  if (!is_put(entry.operation)) return pins
-  pins.push([entry.operation.value.content, false])
+  if (is_put(entry.operation)) pins.push([entry.operation.value.content, false])
+  else if (!has_item_6(entry)) return pins
   const item = await stored_item_6({ content_store, library_address, entry })
   if (item !== undefined && keeps_blobs({ entry, content: item.content })) pins.push(...item.blobs.map((cid): [string, boolean] => [cid, true]))
   return pins

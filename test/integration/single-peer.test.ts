@@ -69,8 +69,9 @@ afterAll(async () => {
 describe('single peer', () => {
   test('creates its own library on start', async () => {
     const libraries = await get_json<Array<{ address: string, is_own: boolean, track_count: number }>>('/libraries')
-    // The own recordstore and listens libraries (§4.8.3); never the identity library.
-    expect(libraries.map(({ address }) => address).sort()).toEqual([peer.identity().own_address, peer.identity().listens_address].sort())
+    // The own recordstore, listens and labels libraries (§4.8.3); never the identity library.
+    expect(libraries.map(({ address }) => address).sort())
+      .toEqual([peer.identity().own_address, peer.identity().listens_address, peer.identity().labels_address].sort())
     expect(libraries).toContainEqual(expect.objectContaining({ address: peer.identity().own_address, is_own: true, track_count: 0 }))
   })
 
