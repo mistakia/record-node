@@ -7,9 +7,10 @@ import { filter_matches, filter_shape } from '#access-control/filter.ts'
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { is_put } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
+import { track_labels } from '#query-db/queries.ts'
 import { PeerError, type ReplicationMode, type ReplicationPolicy, type SpecNode } from '#types/peer.ts'
 import type { PeerContext } from './context.ts'
-import { find_own_library, link_set, type LibraryScope } from './ownership.ts'
+import { find_own_library, link_set, own_label_addresses, type LibraryScope } from './ownership.ts'
 import type { KeepsBlobs } from './pins.ts'
 import type { StoredPolicy } from './state.ts'
 
@@ -75,8 +76,15 @@ export const keeps_blobs = (context: PeerContext) => (chain: ResolvedAcChain): K
   const policy = effective_policy(context, library_address)
   if (policy === undefined || policy.mode === 'index_only') return () => false
   if (policy.mode === 'full') return () => true
-  // No label index feeds the view yet, so a selective filter sees no labels.
-  return ({ entry, content }) => !is_track(entry) || filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content, labels: [] }))
+  // The view's labels are the indexed ones of the holding library and every
+  // own library (§4.6.1).
+  const labels = (entry: VerifiedEntry): string[] => track_labels({
+    db: context.db,
+    track_id: (entry.operation as { key: string }).key,
+    label_libraries: [library_address, ...own_label_addresses(context)]
+  })
+  return ({ entry, content }) => !is_track(entry) ||
+    filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content, labels: labels(entry) }))
 }
 
 const connected = (context: PeerContext, address: string): boolean =>

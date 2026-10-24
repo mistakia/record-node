@@ -13,17 +13,19 @@ import { list_tracks } from '#query-db/queries.ts'
 import { rebuild_query_db } from '#query-db/rebuild.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { blocks_of, open_test_library } from '#test/helpers/library.ts'
-import { add_track, delete_track, dump_query_db, in_batches, jittered_reader } from './fixtures.ts'
+import { add_labels, add_track, delete_track, dump_query_db, in_batches, jittered_reader, track_id_of } from './fixtures.ts'
 
 const [alice, bob] = [generate_key_pair(), generate_key_pair()]
 const { chain, block_store } = await open_test_library({ writers: [alice, bob] })
 const alice_log = create_oplog({ chain })
 const bob_log = create_oplog({ chain })
 for (const fingerprint of ['AQAA-1', 'AQAA-2', 'AQAA-3']) {
-  await add_track({ oplog: alice_log, key_pair: alice, block_store, fingerprint, title: `alice ${fingerprint}`, tags: ['a'] })
-  await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint, title: `bob ${fingerprint}`, tags: ['b'] })
+  await add_track({ oplog: alice_log, key_pair: alice, block_store, fingerprint, title: `alice ${fingerprint}` })
+  add_labels({ oplog: alice_log, key_pair: alice, track_id: track_id_of(fingerprint), set: ['a'] })
+  await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint, title: `bob ${fingerprint}` })
+  add_labels({ oplog: bob_log, key_pair: bob, track_id: track_id_of(fingerprint), set: ['b'] })
 }
-delete_track({ oplog: alice_log, key_pair: alice, key: [...alice_log.current.keys()][0] as string })
+delete_track({ oplog: alice_log, key_pair: alice, key: track_id_of('AQAA-1') })
 const blocks = [...blocks_of(alice_log), ...blocks_of(bob_log)]
 
 const oplog = create_oplog({ chain })

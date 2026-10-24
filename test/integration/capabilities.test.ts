@@ -34,7 +34,7 @@ describe('capabilities', () => {
     const capability = await owner.issue_capability({
       library_address: address,
       grantee: { type: 'key', key: grantee.identity().key_pair.public_key },
-      actions: ['library.append_track', 'library.append_tag']
+      actions: ['library.append_track', 'library.write_label']
     })
     expect(capability).toMatchObject({ status: 'active', issuer: owner.identity().key_pair.public_key, via_capability_id: null })
     await wait_until(held_active(grantee, capability.capability_id))
@@ -45,7 +45,7 @@ describe('capabilities', () => {
     await expect(grantee.add_track({ content_cid, library_address: address })).rejects.toMatchObject({ code: 'forbidden' })
     const track = await grantee.add_track({ content_cid, library_address: address, capability_id: capability.capability_id })
     const tagged = await grantee.add_tag({ track_id: track.id, tag: 'from-friend', library_address: address, capability_id: capability.capability_id })
-    expect(tagged.tags).toContainEqual({ library_address: address, tag: 'from-friend' })
+    expect('id' in tagged ? tagged.tags : []).toContainEqual({ library_address: address, tag: 'from-friend' })
 
     // A DEL needs an owner: no action authorises one (§3.5.6).
     await expect(grantee.remove_track({ track_id: track.id, library_address: address })).rejects.toMatchObject({ code: 'forbidden' })
@@ -65,8 +65,8 @@ describe('capabilities', () => {
     const capability = await owner.issue_capability({
       library_address: address,
       grantee: { type: 'key', key: grantee.identity().key_pair.public_key },
-      actions: ['library.append_tag'],
-      filter: { type: 'match', fields: { tags: 'friends-mix' } }
+      actions: ['library.write_label'],
+      filter: { type: 'match', fields: { label: 'friends-mix' } }
     })
     const { entry } = await append_track({ peer: owner, fingerprint: 'AQADfiltered' })
     const track_id = (entry.operation as { key: string }).key
@@ -76,7 +76,11 @@ describe('capabilities', () => {
       .items.some(({ id }) => id === track_id))
     const target = { library_address: address, capability_id: capability.capability_id }
     await expect(grantee.add_tag({ track_id, tag: 'other', ...target })).rejects.toMatchObject({ code: 'forbidden' })
-    expect((await grantee.add_tag({ track_id, tag: 'friends-mix', ...target })).tags).toContainEqual({ library_address: address, tag: 'friends-mix' })
+    const tagged = await grantee.add_tag({ track_id, tag: 'friends-mix', ...target })
+    expect('id' in tagged ? tagged.tags : []).toContainEqual({ library_address: address, tag: 'friends-mix' })
+    // The filter sees each pair with its op, so an unset of the label it names holds too.
+    const untagged = await grantee.remove_tag({ track_id, tag: 'friends-mix', ...target })
+    expect('id' in untagged ? untagged.tags : []).toEqual([])
   })
 
   test('§3.5.10 [MUST] once a grantee has merged a revocation, its writes under the capability are refused', async () => {

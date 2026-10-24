@@ -6,12 +6,13 @@ import { compute_cid_string } from '#encoding/cid.ts'
 import { assert_payload_size } from '#encoding/size-bounds.ts'
 import { build_track_envelope } from '#entry/envelope.ts'
 import { compute_track_id } from '#entry/id.ts'
-import { build_put_operation, is_put } from '#entry/operations.ts'
+import { build_labels_put, build_put_operation, is_put } from '#entry/operations.ts'
 import { decode_payload, resolver_key, validate_track_content } from '#entry/payload.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
-import { append_entry, get_live_entry, type Oplog } from '#oplog/dag.ts'
+import { append_entry, get_live_entry, sign_local_entry, type Oplog } from '#oplog/dag.ts'
+import type { LabelPair } from '#types/entry.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
 
 // The library a track goes into, with the writer key, the store behind it,
@@ -27,6 +28,36 @@ const describe_entry = ({ entry, existing }: { entry: VerifiedEntry, existing: b
   is_put(entry.operation)
     ? { track_id: entry.operation.key, content_cid: entry.operation.value.content, entry_hash: entry.hash, existing }
     : undefined
+
+// The pairs one label record sets and unsets (§2.5), each already checked
+// against the library's state, so neither holds a no-op pair.
+export interface LabelDiff {
+  readonly set: readonly LabelPair[]
+  readonly unset: readonly LabelPair[]
+}
+
+export const is_empty_diff = ({ set, unset }: LabelDiff): boolean => set.length + unset.length === 0
+
+// A track appended with the label record that follows its PUT in one batch.
+export type LabelledTrack = IngestedTrack & { readonly label_entry_hash?: string | undefined }
+
+// The label record of a diff as the target writes it, under its capability.
+export const labels_payload = (target: TrackTarget, diff: LabelDiff): unknown =>
+  build_labels_put({ set: diff.set, unset: diff.unset, capability_id: target.capability_id })
+
+// Signs and verifies a payload without appending it, so a refusal surfaces
+// before anything it would follow is appended.
+export const check_payload = (target: TrackTarget, payload: unknown): void => {
+  sign_local_entry({ oplog: target.oplog, payload, key_pair: target.key_pair })
+}
+
+// Appends one label record and pins its entry block, as put_track does a PUT.
+export const put_labels = async ({ target, payload }: { target: TrackTarget, payload: unknown }): Promise<string> => {
+  const entry = append_entry({ oplog: target.oplog, key_pair: target.key_pair, payload })
+  await target.content_store.put(entry.hash, entry.bytes)
+  await target.content_store.pin(entry.hash)
+  return entry.hash
+}
 
 // The library's live entry for a track id, if any (§6.4.1 step 3).
 export const find_existing_track = ({ oplog, track_id }: { oplog: Oplog, track_id: string }): IngestedTrack | undefined => {

@@ -24,7 +24,8 @@ import {
   in_batches,
   jittered_reader,
   set_about,
-  shuffled
+  shuffled,
+  track_id_of
 } from '#test/query-db/fixtures.ts'
 
 const current_rows = (db: ReturnType<typeof open_query_db>) =>
@@ -145,8 +146,10 @@ describe('library-structure', () => {
 
     const first = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One', timestamp: 100 })
     await project(first)
-    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-two', title: 'Two', tags: ['dub'] }))
-    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One again', tags: ['late'] }))
+    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-two', title: 'Two' }))
+    await project(add_labels({ oplog, key_pair: writer, track_id: track_id_of('AQAA-two'), set: ['dub'] }))
+    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One again' }))
+    await project(add_labels({ oplog, key_pair: writer, track_id: track_id_of('AQAA-one'), set: ['late'] }))
     await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-gone' }))
     const gone = oplog.entries.get([...oplog.heads][0] as string)
     await project(delete_track({ oplog, key_pair: writer, key: (gone?.operation as { key: string }).key }))
@@ -185,12 +188,15 @@ describe('library-structure', () => {
     const bob_log = create_oplog({ chain })
     const fingerprints = ['AQAA-a', 'AQAA-b', 'AQAA-c', 'AQAA-d', 'AQAA-e', 'AQAA-f']
     for (const [index, fingerprint] of fingerprints.entries()) {
-      await add_track({ oplog: alice_log, key_pair: alice, block_store, fingerprint, title: `alice ${index}`, timestamp: 1000 + index, tags: ['alice'] })
-      await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint, title: `bob ${index}`, timestamp: 1000 + (index % 2) * 5, tags: ['bob'] })
+      await add_track({ oplog: alice_log, key_pair: alice, block_store, fingerprint, title: `alice ${index}`, timestamp: 1000 + index })
+      add_labels({ oplog: alice_log, key_pair: alice, track_id: track_id_of(fingerprint), set: ['alice'], timestamp: 1000 + index })
+      await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint, title: `bob ${index}`, timestamp: 1000 + (index % 2) * 5 })
+      add_labels({ oplog: bob_log, key_pair: bob, track_id: track_id_of(fingerprint), set: ['bob'], timestamp: 1000 + (index % 2) * 5 })
     }
     const alice_tracks = [...alice_log.current].flatMap(([key, entry]) => is_put(entry.operation) ? [key] : [])
     for (const key of alice_tracks.slice(0, 2)) delete_track({ oplog: alice_log, key_pair: alice, key, timestamp: 2000 })
-    await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-a', title: 'bob retitle', tags: ['again'], timestamp: 2000 })
+    await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-a', title: 'bob retitle', timestamp: 2000 })
+    add_labels({ oplog: bob_log, key_pair: bob, track_id: track_id_of('AQAA-a'), set: ['again'], timestamp: 2000 })
     add_labels({ oplog: alice_log, key_pair: alice, track_id: alice_tracks[0] as string, unset: ['alice'], timestamp: 2001 })
     await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-z', title: 'not stored', store: false })
     const blocks = [...blocks_of(alice_log), ...blocks_of(bob_log)]

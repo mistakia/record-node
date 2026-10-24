@@ -65,8 +65,27 @@ export interface TagCount {
   count: number
 }
 
-// One track's envelope label change (§2.4.3): add and remove change the
-// current labels, and set replaces them.
+// A track id and the labels the target applies to it, for a label write to a
+// track no library the node shows holds.
+export interface TrackLabels {
+  track_id: string
+  tags: string[]
+}
+
+// One track id's labels in a library (§2.5), and a page of them.
+export interface LabelState {
+  track_id: string
+  tags: string[]
+}
+
+export interface LabelStatePage {
+  library_address: string
+  items: LabelState[]
+  total: number
+}
+
+// One track's label change in the target library (§2.5): add sets labels,
+// remove unsets them, and set makes the target's labels exactly the given ones.
 export interface LabelChange {
   add?: readonly string[] | undefined
   remove?: readonly string[] | undefined
@@ -246,6 +265,9 @@ export interface TrackQuery {
   offset: number
   limit: number
   library_addresses?: string[]
+  // Whose labels count for tags, tag_groups and Track.tags; the default is
+  // default_label_libraries (src/peer/ownership.ts).
+  label_libraries?: string[]
   tags?: string[]
   // Any label within a group, every group across groups.
   tag_groups?: string[][]
@@ -305,7 +327,7 @@ export class PeerError extends Error {
 export interface ApiPeer {
   list_tracks: (query: TrackQuery) => Promise<TrackList>
   // Adopts a track known by its content CID into the target library (§6.4.3).
-  // tags, when given, are the entry's labels: a held track is relabelled to them.
+  // tags, when given, set the target's labels on the track, in one batch with its PUT.
   add_track: (input: { content_cid: string, tags?: readonly string[] | undefined } & WriteTargetInput) => Promise<Track>
   // A DEL needs an own library: no capability action authorises one (§3.5.6).
   // Corrects content.tags with a superseding PUT (§2.4.3); null removes a tag.
@@ -317,12 +339,14 @@ export interface ApiPeer {
   pin_track: (cid: string) => Promise<void>
   unpin_track: (cid: string) => Promise<void>
 
-  list_tags: (filter: { library_addresses?: string[], prefix?: string }) => Promise<readonly TagCount[]>
-  add_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track>
-  remove_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track>
-  // A label change that leaves the labels equal as a set appends nothing.
-  change_labels: (input: { track_id: string } & LabelChange & WriteTargetInput) => Promise<Track>
-  // Many label changes to one library, appended as one batch.
+  list_tags: (filter: { library_addresses?: string[], label_libraries?: string[], prefix?: string }) => Promise<readonly TagCount[]>
+  // Label writes take any track id, held or not, append at most one label
+  // record, and append nothing when every pair is already in the requested
+  // state. A write to a track no shown library holds answers TrackLabels.
+  add_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track | TrackLabels>
+  remove_tag: (label: { track_id: string, tag: string } & WriteTargetInput) => Promise<Track | TrackLabels>
+  change_labels: (input: { track_id: string } & LabelChange & WriteTargetInput) => Promise<Track | TrackLabels>
+  // Many label changes to one library, appended as one label record.
   change_labels_batch: (input: { items: ReadonlyArray<{ track_id: string } & LabelChange> } & WriteTargetInput) => Promise<LabelBatchResult[]>
 
   list_libraries: () => Promise<Library[]>

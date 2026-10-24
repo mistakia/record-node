@@ -92,6 +92,17 @@ export const visible_addresses = (context: PeerContext): string[] => [
 export const own_recordstore_addresses = (context: PeerContext): string[] =>
   own_libraries(context).filter(({ type }) => type === 'recordstore').map(({ address }) => address)
 
+// Own libraries that can carry labels (§2.5): recordstores and the labels
+// library, active and retired.
+export const own_label_addresses = (context: PeerContext): string[] =>
+  own_libraries(context).filter(({ type }) => type === 'recordstore' || type === 'labels').map(({ address }) => address)
+
+// The default label_libraries of a read (chapter 7 LabelLibraries): every own
+// recordstore and labels library, plus the request's membership scope, or,
+// with none, every library the node shows.
+export const default_label_libraries = (context: PeerContext, library_addresses?: readonly string[] | undefined): string[] =>
+  [...new Set([...own_label_addresses(context), ...(library_addresses ?? linked_addresses(context))])]
+
 // Ownership and links derived once, for a caller that describes many libraries.
 export interface LibraryScope {
   readonly own: ReadonlyMap<string, OwnLibrary>

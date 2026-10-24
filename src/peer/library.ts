@@ -3,8 +3,6 @@
 // holds the per-library pin sets, so unlink can release exactly what no other
 // library still holds; the store's pins themselves do not count references.
 
-import { setImmediate as next_turn } from 'node:timers/promises'
-
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain, type ResolvedAcChain } from '#access-control/resolve.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
@@ -24,9 +22,6 @@ import { open_phases, type OpenPhases } from './open-phases.ts'
 import { canonical_cid } from '#entry/identity-record.ts'
 import { chain_pins, entry_pins, pin_into, stored_item_6, type KeepsBlobs, type PinSet } from './pins.ts'
 import type { LibraryStateStore, StoredPolicy } from './state.ts'
-
-// One append_many build: its entry, none when it built no payload, or why it failed.
-export type AppendOutcome = { ok: true, entry: VerifiedEntry | undefined } | { ok: false, error: unknown }
 
 export interface LibraryHandle {
   readonly chain: ResolvedAcChain
@@ -51,12 +46,6 @@ export interface LibraryManager {
   list: () => LibraryHandle[]
   // Signs, stores, pins, and indexes one local entry.
   append: (input: { library_address: string, payload: unknown, key_pair: KeyPair }) => Promise<VerifiedEntry>
-  // Signs and appends local entries one at a time, yielding between them, and
-  // indexes them as one batch: one heads write, one projection, one
-  // on_entries. Each build runs just before its append, against the oplog the
-  // earlier ones left, and returns the payload or undefined to append
-  // nothing; a build or append that throws fails alone.
-  append_many: (input: { library_address: string, builds: ReadonlyArray<() => unknown>, key_pair: KeyPair }) => Promise<AppendOutcome[]>
   // Stores, pins, and indexes entries already in the oplog (an ingest PUT),
   // and re-indexes the keys a revocation among them moved.
   register: (input: { library_address: string, entries: readonly VerifiedEntry[], access?: AccessChange }) => Promise<void>
@@ -100,7 +89,7 @@ const PIN_CONCURRENCY = 16
 const same_heads = (a: Iterable<string>, b: Iterable<string>): boolean =>
   JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
 
-export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set(), hold_commits = async (job) => await job() }: {
+export const create_library_manager = ({ content_store, projector, entry_blocks, state_store, pin_record, on_entries, keeps_blobs = () => () => true, retained = () => new Set() }: {
   content_store: ContentStore
   projector: Projector
   entry_blocks: EntryBlockCache
@@ -115,12 +104,9 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   keeps_blobs?: (chain: ResolvedAcChain) => KeepsBlobs
   // Canonical CIDs the identity library pins (§4.6.2): never released here.
   retained?: () => ReadonlySet<string>
-  // Holds the index and pin stores' commits while job runs, so a batch's
-  // pins, entry blocks and projection commit once (CommitBatcher.hold).
-  hold_commits?: <T>(job: () => Promise<T>) => Promise<T>
   // After entries are indexed, with the entries a revocation among them made
-  // inert; batched for an append_many batch, which reports as one change.
-  on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[], inert: readonly VerifiedEntry[], batched?: boolean }) => void
+  // inert.
+  on_entries?: (input: { library_address: string, entries: readonly VerifiedEntry[], inert: readonly VerifiedEntry[] }) => void
 }): LibraryManager => {
   const libraries = new Map<string, LibraryHandle>()
   let indexing: Promise<unknown> = Promise.resolve()
@@ -195,11 +181,10 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
   }
 
   // Pins, persists heads for, and indexes entries whose blocks are stored.
-  const index_stored = async ({ library_address, entries, access, batched = false }: {
+  const index_stored = async ({ library_address, entries, access }: {
     library_address: string
     entries: readonly VerifiedEntry[]
     access?: AccessChange | undefined
-    batched?: boolean
   }) => {
     const handle = require_library(library_address)
     entry_blocks.save({ library_address, entries, heads: handle.oplog.heads })
@@ -208,7 +193,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     const projected = projector.project_entries({ oplog: handle.oplog, entries, keys: access?.keys ?? [] })
     indexing = projected.catch(() => {})
     await projected
-    on_entries?.({ library_address, entries, inert: access?.inert ?? [], ...(batched ? { batched } : {}) })
+    on_entries?.({ library_address, entries, inert: access?.inert ?? [] })
   }
 
   const register = async ({ library_address, entries, access }: {
@@ -223,41 +208,6 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
 
   // Each block is stored before the next turn, since any register in that
   // turn persists heads that already name it.
-  const append_many = async ({ library_address, builds, key_pair }: {
-    library_address: string
-    builds: ReadonlyArray<() => unknown>
-    key_pair: KeyPair
-  }): Promise<AppendOutcome[]> => {
-    const { oplog } = require_library(library_address)
-    const outcomes: AppendOutcome[] = []
-    const entries: VerifiedEntry[] = []
-    const inert: VerifiedEntry[] = []
-    const keys = new Set<string>()
-    for (const build of builds) {
-      let appended
-      try {
-        const payload = build()
-        appended = payload === undefined ? undefined : append_entry_with_access({ oplog, payload, key_pair })
-      } catch (error) {
-        outcomes.push({ ok: false, error })
-        await next_turn()
-        continue
-      }
-      outcomes.push({ ok: true, entry: appended?.entry })
-      if (appended !== undefined) {
-        const { entry, access } = appended
-        entries.push(entry)
-        inert.push(...access.inert)
-        for (const key of access.keys) keys.add(key)
-        // A store failure is the batch's, not the item's.
-        await content_store.put(entry.hash, entry.bytes)
-      }
-      await next_turn()
-    }
-    if (entries.length > 0) await hold_commits(async () => { await index_stored({ library_address, entries, access: { inert, keys }, batched: true }) })
-    return outcomes
-  }
-
   // The oplog at the persisted heads, from the entry block cache when it
   // reproduces them. A cache last written at those heads under the current
   // verification rules is restored without verifying each entry again; any
@@ -396,7 +346,6 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
       await register({ library_address, entries: [entry], access })
       return entry
     },
-    append_many,
     register,
     merge: async ({ library_address, blocks }) => {
       const { oplog } = require_library(library_address)

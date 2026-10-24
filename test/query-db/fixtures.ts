@@ -41,21 +41,21 @@ export const track_content = ({ fingerprint, audio = {}, resolver = [], ...tags 
   resolver
 })
 
-// The track PUT, and a label record setting tags on it when any are given.
-export const add_track = async ({ oplog, key_pair, block_store, timestamp, tags, store = true, ...content }: {
+// The track PUT. Labels are a separate label record (add_labels).
+export const add_track = async ({ oplog, key_pair, block_store, timestamp, store = true, ...content }: {
   oplog: Oplog
   key_pair: KeyPair
   block_store: BlockStore
   timestamp?: number
-  tags?: readonly string[]
   store?: boolean
 } & Parameters<typeof track_content>[0]) => {
   const value = track_content(content)
   if (store) await store_content({ block_store, value })
-  const entry = append_track({ oplog, key_pair, fingerprint: content.fingerprint, content: value, ...(timestamp === undefined ? {} : { timestamp }) })
-  if (tags !== undefined && tags.length > 0) add_labels({ oplog, key_pair, track_id: compute_track_id(content.fingerprint), set: tags })
-  return entry
+  return append_track({ oplog, key_pair, fingerprint: content.fingerprint, content: value, ...(timestamp === undefined ? {} : { timestamp }) })
 }
+
+// The track id a fixture fingerprint derives.
+export const track_id_of = (fingerprint: string): string => compute_track_id(fingerprint)
 
 export const add_labels = ({ oplog, key_pair, track_id, set = [], unset = [], timestamp }: {
   oplog: Oplog

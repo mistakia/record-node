@@ -11,7 +11,7 @@ import {
   connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library
 } from './identity-library.ts'
 import { record_listen } from './listens.ts'
-import { default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from './ownership.ts'
+import { default_label_libraries, default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from './ownership.ts'
 import { effective_policy, get_replication_policy, validate_policy } from './policy.ts'
 import { to_api_about, to_api_track } from './views.ts'
 import { append_write, resolve_write_target } from './write-target.ts'
@@ -131,7 +131,7 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
   list_listens: async ({ offset, limit }) => {
     const pins = identity_state(context).pins
     const { items, total } = list_listens({
-      db: context.db, own_library_addresses: own_recordstore_addresses(context), listens_addresses: listens_addresses(context), offset, limit
+      db: context.db, own_library_addresses: own_recordstore_addresses(context), listens_addresses: listens_addresses(context), label_libraries: default_label_libraries(context), offset, limit
     })
     const tracks = items.flatMap(({ track, count, timestamps_ms }) => {
       const api_track = track === undefined ? undefined : to_api_track(track, pins)

@@ -12,12 +12,12 @@ import { verify_toolchain } from '#ingest/toolchain.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { create_entry_block_cache } from '#query-db/entry-blocks.ts'
 import { create_projector } from '#query-db/projector.ts'
-import { create_commit_batcher, DEFAULT_COMMIT_POLICY, type CommitBatcher } from '#fabric/commit-batch.ts'
+import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts'
 import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
-import type { ApiPeer } from '#types/peer.ts'
+import type { ApiPeer, LabelStatePage } from '#types/peer.ts'
 import { create_library_methods } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
 import { create_audio_source } from './audio.ts'
@@ -65,6 +65,9 @@ export interface Peer extends ApiPeer {
   // Ingests one local file into the default write target (§6.4.1) and leaves
   // the file in place, unlike import_files.
   readonly ingest_file: (file_path: string) => Promise<IngestedTrack>
+  // A library's applied label state by track id, whatever holds the tracks
+  // (chapter 7 GET /libraries/{address}/labels).
+  readonly list_library_labels: (input: { address: string, offset?: number, limit?: number }) => Promise<LabelStatePage>
   readonly context: PeerContext
 }
 
@@ -77,10 +80,6 @@ export interface CreatePeerOptions {
   // in-memory test network.
   network?: (input: { content_store: ContentStore }) => Network
 }
-
-// Runs job under a batcher's hold, or as it is for a store with no batching.
-const held = async <T>(batcher: CommitBatcher | undefined, job: () => Promise<T>): Promise<T> =>
-  batcher === undefined ? await job() : await batcher.hold(job)
 
 export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network }: CreatePeerOptions = {}): Promise<Peer> => {
   const config = resolve_peer_config(overrides)
@@ -112,7 +111,6 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
     state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
     pin_record: store.pin_record,
-    hold_commits: async (job) => await held(store.pin_commit, async () => await held(index_commit, job)),
     keeps_blobs: (chain) => keeps_blobs(context)(chain),
     retained: () => context.blobs.retained(),
     on_entries: (input) => {

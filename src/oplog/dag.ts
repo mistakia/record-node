@@ -160,18 +160,29 @@ const select_next = (oplog: Oplog, capability_id: string | undefined): string[] 
 // Signs and appends a local operation: next follows §4.2, and the entry passes
 // the same verification as a remote one. A duplicate PUT (§2.10) is rejected
 // before anything is appended. Also reports what a revocation changed.
-export const append_entry_with_access = ({ oplog, payload, key_pair }: {
+// Signs a local operation against the oplog's current heads and verifies it
+// as append would, without appending: the entry append_entry would add now,
+// or the refusal it would meet.
+export const sign_local_entry = ({ oplog, payload, key_pair }: {
   oplog: Oplog
   payload: unknown
   key_pair: KeyPair
-}): { entry: VerifiedEntry, access: AccessChange } => {
+}): VerifiedEntry => {
   assert_not_duplicate({ oplog, payload })
   const capability_id = is_record(payload) && typeof payload.capability_id === 'string' ? payload.capability_id : undefined
   const next = select_next(oplog, capability_id)
   const time = next.reduce((max, hash) => Math.max(max, clock_of(oplog, hash)), 0) + 1
   const unsigned_entry = build_unsigned_entry({ id: oplog.chain.address, payload, next, refs: [], clock: { id: key_pair.public_key, time } })
   const hashed = hash_signed_entry(sign_entry({ unsigned_entry, private_key: key_pair.private_key }))
-  const entry = verify_entry({ oplog, hashed })
+  return verify_entry({ oplog, hashed })
+}
+
+export const append_entry_with_access = ({ oplog, payload, key_pair }: {
+  oplog: Oplog
+  payload: unknown
+  key_pair: KeyPair
+}): { entry: VerifiedEntry, access: AccessChange } => {
+  const entry = sign_local_entry({ oplog, payload, key_pair })
   insert_entry({ oplog, entry })
   const access = refresh_access_state({ oplog, added: [entry] })
   refresh_current_state({ oplog, keys: new Set([...access.keys, ...entry.state_keys]) })

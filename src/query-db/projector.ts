@@ -5,7 +5,8 @@
 
 import type { DatabaseSync } from 'node:sqlite'
 
-import { is_about_put, is_envelope_operation, is_put } from '#entry/operations.ts'
+import { is_about_put, is_envelope_operation, is_labels_put, is_put } from '#entry/operations.ts'
+import { applies_label, is_label_key, label_pair_of } from '#entry/records.ts'
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import type { Oplog } from '#oplog/dag.ts'
@@ -46,11 +47,11 @@ const record = (value: unknown): Content => is_record(value) ? value : {}
 // Single-valued artists come through as a plain string.
 const artists_of = (value: unknown): string[] => typeof value === 'string' ? [value] : strings(value)
 
+// The tables a track or About key projects to. Labels are keyed per pair,
+// apart from the track (write_labels).
 const KEYED_TABLES = [
   ['tracks', 'track_id'],
-  ['tags', 'track_id'],
   ['resolvers', 'track_id'],
-  ['logs', 'log_id'],
   ['about', 'about_id']
 ] as const
 
@@ -58,9 +59,8 @@ const create_statements = (db: DatabaseSync) => ({
   clear_key: KEYED_TABLES.map(([table, column]) =>
     db.prepare(`DELETE FROM ${table} WHERE library_address = ? AND ${column} = ?`)),
   delete_entry: db.prepare('DELETE FROM entries WHERE library_address = ? AND key = ?'),
-  read_track_content: db.prepare('SELECT content_cid FROM tracks WHERE library_address = ? AND track_id = ?'),
-  update_entry: db.prepare('UPDATE entries SET entry_hash = ?, clock_time = ?, timestamp = ? WHERE library_address = ? AND key = ?'),
-  update_track_entry: db.prepare('UPDATE tracks SET entry_hash = ?, added_at_ms = ? WHERE library_address = ? AND track_id = ?'),
+  delete_label: db.prepare('DELETE FROM tags WHERE library_address = ? AND track_id = ? AND tag = ?'),
+  insert_label: db.prepare('INSERT INTO tags (library_address, track_id, tag, entry_hash) VALUES (?, ?, ?, ?)'),
   insert_entry: db.prepare(`
     INSERT INTO entries (library_address, key, entry_hash, op, type, clock_time, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
@@ -81,7 +81,7 @@ const create_statements = (db: DatabaseSync) => ({
   insert_listen: db.prepare(`
     INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
     VALUES (?, ?, ?, ?, ?)`),
-  remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens', 'library_totals'].map((table) =>
+  remove_library: [...KEYED_TABLES.map(([table]) => table), 'tags', 'entries', 'listens', 'library_totals'].map((table) =>
     db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
   read_marker: db.prepare('SELECT heads, pending FROM library_heads WHERE library_address = ?'),
   upsert_marker: db.prepare(`
@@ -122,7 +122,7 @@ const touch_marker = ({ statements, oplog, stable }: {
 }
 
 // First sight of a track in this library: the earliest envelope timestamp over
-// every known PUT for the key, so a relabel does not move it and a replay
+// every known PUT for the key, so a correction does not move it and a replay
 // reproduces it.
 const added_at_of = ({ oplog, key }: { oplog: Oplog, key: string }): number => {
   let earliest = Number.POSITIVE_INFINITY
@@ -198,35 +198,16 @@ const write_key = ({ statements, oplog, key, entry, content }: {
   if (is_put(operation)) write_put({ statements, oplog, entry, envelope: operation.value, content })
 }
 
-// The current entry of a key whose track row it only relabels: a track PUT of
-// the content the row already projects, whose payload was stored at that
-// write. Undefined when the key needs a full write.
-const relabel_entry = ({ statements, oplog, key, unfilled }: {
-  statements: Statements
-  oplog: Oplog
-  key: string
-  unfilled: ReadonlySet<string>
-}): VerifiedEntry | undefined => {
-  if (unfilled.has(key)) return undefined
-  const entry = oplog.current.get(key)
-  if (entry === undefined || !is_put(entry.operation) || entry.operation.value.type !== 'track') return undefined
-  const row = statements.read_track_content.get(oplog.chain.address, key) as { content_cid?: string } | undefined
-  return row?.content_cid === entry.operation.value.content ? entry : undefined
-}
-
-// A relabel in place: only the entry changes, and nothing derived
-// from the content does, so the row keeps its content columns and search
-// index entry, and the content is never read.
-const write_relabel = ({ statements, oplog, key, entry }: {
-  statements: Statements
-  oplog: Oplog
-  key: string
-  entry: VerifiedEntry
-}) => {
+// One label pair's row (§2.5): present while the pair's current entry under
+// §4.4.2, inert ones excluded (oplog.current), is a label record setting it.
+const write_label = ({ statements, oplog, key }: { statements: Statements, oplog: Oplog, key: string }) => {
   const library_address = oplog.chain.address
-  const envelope = (entry.operation as { value: Envelope }).value
-  statements.update_entry.run(entry.hash, entry.entry.clock.time, envelope.timestamp, library_address, key)
-  statements.update_track_entry.run(entry.hash, added_at_of({ oplog, key }), library_address, key)
+  const [track_id, label] = label_pair_of(key)
+  statements.delete_label.run(library_address, track_id, label)
+  const entry = oplog.current.get(key)
+  if (entry !== undefined && is_labels_put(entry.operation) && applies_label(entry.operation.value, key)) {
+    statements.insert_label.run(library_address, track_id, label, entry.hash)
+  }
 }
 
 const write_listen = ({ statements, library_address, entry }: {
@@ -282,28 +263,29 @@ export const create_projector = ({ db, read_content, commit }: {
   // Content loads are async, and the oplog can move on while they run. A key
   // whose current entry changed under a load is loaded again, so a write
   // always carries the current entry at write time (§4.5 concurrent merges).
-  // A relabel loads nothing, and is judged again at write time; one that no
-  // longer holds is loaded in the next round.
+  // A label pair loads nothing, so it is written from the current state.
   const write_keys = async ({ oplog, keys }: { oplog: Oplog, keys: Iterable<string> }) => {
-    let pending = new Set(keys)
-    while (pending.size > 0) {
-      const unfilled = pending_of(statements, oplog.chain.address)
-      const relabels = new Set([...pending].filter((key) => relabel_entry({ statements, oplog, key, unfilled }) !== undefined))
-      const loaded = await Promise.all([...pending].filter((key) => !relabels.has(key)).map(async (key) => {
+    const labels: string[] = []
+    let pending = new Set<string>()
+    for (const key of keys) {
+      if (is_label_key(key)) labels.push(key)
+      else pending.add(key)
+    }
+    let first = true
+    while (first || pending.size > 0) {
+      const loaded = await Promise.all([...pending].map(async (key) => {
         const entry = oplog.current.get(key)
         return { key, entry, content: await load_content({ read_content, entry }) }
       }))
       const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry)
       const retry = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key))
+      const label_keys = first ? labels : []
       transact(() => {
-        for (const key of relabels) {
-          const entry = relabel_entry({ statements, oplog, key, unfilled })
-          if (entry === undefined) retry.add(key)
-          else write_relabel({ statements, oplog, key, entry })
-        }
+        for (const key of label_keys) write_label({ statements, oplog, key })
         for (const { key, entry, content } of stable) write_key({ statements, oplog, key, entry, content })
         touch_marker({ statements, oplog, stable })
       })
+      first = false
       pending = retry
     }
   }
@@ -337,7 +319,7 @@ export const create_projector = ({ db, read_content, commit }: {
   return {
     project_entries,
     project_keys: ({ oplog, keys }) => enqueue(async () => {
-      if (oplog.chain.type === 'recordstore') await write_keys({ oplog, keys })
+      if (oplog.chain.type === 'recordstore' || oplog.chain.type === 'labels') await write_keys({ oplog, keys })
     }),
     project_library: ({ oplog }) => enqueue(async () => {
       if (oplog.chain.type === 'listens') write_listens(oplog, oplog.entries.values())

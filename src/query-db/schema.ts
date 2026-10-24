@@ -7,7 +7,7 @@ import { rmSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 // Dependents first, so a drop never trips over an index or a view.
-export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'logs', 'about', 'listens', 'library_heads', 'library_totals', 'meta'] as const
+export const QUERY_TABLES = ['entries', 'tracks', 'tags', 'resolvers', 'about', 'listens', 'library_heads', 'library_totals', 'meta'] as const
 // Not projections, so a rebuild by replay leaves them empty and each library's
 // next open refills them.
 const ENTRY_BLOCK_TABLES = ['entry_blocks', 'entry_blocks_verified'] as const
@@ -18,8 +18,9 @@ const SEARCH_TABLES = ['track_search', 'track_search_keys'] as const
 // Bump when the schema changes, so an index written by an older version is
 // dropped and rebuilt by replay at the next open instead of being misread. A
 // table added empty, whose absence nothing misreads, needs no bump: every
-// open applies the schema.
-export const SCHEMA_VERSION = 1
+// open applies the schema. Version 2 keys labels by track id from label
+// records (§2.5), so an index of envelope tags never survives.
+export const SCHEMA_VERSION = 2
 
 export type QueryTable = typeof QUERY_TABLES[number]
 
@@ -48,8 +49,7 @@ const ENTRY_BLOCKS_SCHEMA = `
 const counted = ({ table, row, sign }: { table: string, row: 'NEW' | 'OLD', sign: '+' | '-' }): string => {
   const deltas = {
     tracks: { track_count: '1', audio_size_bytes: `coalesce(${row}.audio_size_bytes, 0)` },
-    entries: { put_count: `${row}.op = 'PUT'` },
-    logs: { linked_library_count: `${row}.linked_address IS NOT NULL` }
+    entries: { put_count: `${row}.op = 'PUT'` }
   }[table] as Record<string, string>
   const columns = Object.keys(deltas)
   const values = Object.values(deltas).map((delta) => `${sign}(${delta})`)
@@ -61,8 +61,7 @@ const counted = ({ table, row, sign }: { table: string, row: 'NEW' | 'OLD', sign
 // such as listen_count, fires no totals trigger.
 const TOTALS_COLUMNS: Record<string, string> = {
   tracks: 'library_address, audio_size_bytes',
-  entries: 'library_address, op',
-  logs: 'library_address, linked_address'
+  entries: 'library_address, op'
 }
 
 const totals_triggers = (table: string): string => `
@@ -82,10 +81,9 @@ const LIBRARY_TOTALS_SCHEMA = `
     library_address TEXT PRIMARY KEY,
     track_count INTEGER NOT NULL DEFAULT 0,
     audio_size_bytes INTEGER NOT NULL DEFAULT 0,
-    put_count INTEGER NOT NULL DEFAULT 0,
-    linked_library_count INTEGER NOT NULL DEFAULT 0
+    put_count INTEGER NOT NULL DEFAULT 0
   ) WITHOUT ROWID;
-  ${['tracks', 'entries', 'logs'].map(totals_triggers).join('\n')}
+  ${['tracks', 'entries'].map(totals_triggers).join('\n')}
 `
 
 // tracks.listen_count follows the listens table; a track row takes its count
@@ -99,13 +97,6 @@ const LISTEN_COUNT_SCHEMA = `
     UPDATE tracks SET listen_count = listen_count - 1 WHERE track_id = OLD.track_id;
   END;
 `
-
-// An index written before tracks.listen_count existed: the column is added
-// and filled for the tracks that have listens, once.
-const ADD_LISTEN_COUNT = `
-  ALTER TABLE tracks ADD COLUMN listen_count INTEGER NOT NULL DEFAULT 0;
-  UPDATE tracks SET listen_count = (SELECT count(*) FROM listens WHERE listens.track_id = tracks.track_id)
-  WHERE track_id IN (SELECT track_id FROM listens);`
 
 // Track search: a trigram index over the four fields a search matches, kept
 // by triggers on tracks, so a query of three or more characters reads its
@@ -139,24 +130,6 @@ const TRACK_SEARCH_SCHEMA = `
   END;
 `
 
-// The search index of tracks written before it existed: one scan, once.
-const FILL_TRACK_SEARCH = `
-  INSERT INTO track_search_keys (library_address, track_id) SELECT library_address, track_id FROM tracks;
-  INSERT INTO track_search (rowid, title, artist, album, remixer)
-  SELECT k.id, t.title, t.artist, t.album, t.remixer FROM track_search_keys AS k JOIN tracks AS t USING (library_address, track_id);`
-
-// The totals of rows written before library_totals existed: one scan, once.
-const FILL_TOTALS = `
-  INSERT INTO library_totals (library_address, track_count, audio_size_bytes, put_count, linked_library_count)
-  SELECT library_address, sum(track_count), sum(audio_size_bytes), sum(put_count), sum(linked_library_count) FROM (
-    SELECT library_address, count(*) AS track_count, coalesce(sum(audio_size_bytes), 0) AS audio_size_bytes,
-      0 AS put_count, 0 AS linked_library_count FROM tracks GROUP BY library_address
-    UNION ALL
-    SELECT library_address, 0, 0, count(*), 0 FROM entries WHERE op = 'PUT' GROUP BY library_address
-    UNION ALL
-    SELECT library_address, 0, 0, 0, count(*) FROM logs WHERE linked_address IS NOT NULL GROUP BY library_address
-  ) GROUP BY library_address`
-
 const SCHEMA = `
   -- The current entry per (library, key) under §4.4.2. A current DEL stays as
   -- a row with op DEL: that is the tombstone.
@@ -165,7 +138,7 @@ const SCHEMA = `
     key TEXT NOT NULL,
     entry_hash TEXT NOT NULL,
     op TEXT NOT NULL CHECK (op IN ('PUT', 'DEL')),
-    type TEXT NOT NULL CHECK (type IN ('track', 'log', 'about')),
+    type TEXT NOT NULL CHECK (type IN ('track', 'about')),
     clock_time INTEGER NOT NULL,
     timestamp INTEGER NOT NULL,
     PRIMARY KEY (library_address, key)
@@ -212,17 +185,21 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS tracks_by_bitrate ON tracks (bitrate, track_id);
   CREATE INDEX IF NOT EXISTS tracks_by_added_at ON tracks (added_at_ms, track_id);
 
-  -- Envelope labels of live tracks (§2.4.3).
+  -- The labels each library applies (§2.5): one row per (library, track id,
+  -- label) pair whose current label record under §4.4.2 sets it, with that
+  -- entry. The track id need not be held by any library, and a pair outlives
+  -- the track's removal.
   CREATE TABLE IF NOT EXISTS tags (
     library_address TEXT NOT NULL,
     track_id TEXT NOT NULL,
     tag TEXT NOT NULL,
+    entry_hash TEXT NOT NULL,
     PRIMARY KEY (library_address, track_id, tag)
   ) WITHOUT ROWID;
-  -- Label filters and counts read one library's labels at a time.
-  DROP INDEX IF EXISTS tags_by_tag;
+  -- Label filters and counts read the label_libraries one label at a time;
+  -- a page's labels and a probe of one track's read by track id.
   CREATE INDEX IF NOT EXISTS tags_by_library_tag ON tags (library_address, tag, track_id);
-  CREATE INDEX IF NOT EXISTS tags_by_track_id ON tags (track_id);
+  CREATE INDEX IF NOT EXISTS tags_by_track_id ON tags (track_id, tag);
 
   -- Source pointers of live tracks (§2.4.2), enumerated fields only.
   CREATE TABLE IF NOT EXISTS resolvers (
@@ -238,17 +215,6 @@ const SCHEMA = `
     webpage_url TEXT,
     duration_seconds REAL,
     PRIMARY KEY (library_address, track_id, extractor, id)
-  ) WITHOUT ROWID;
-
-  -- Live links to other libraries (§2.5). linked_address is null while the
-  -- log payload is not in the local store.
-  CREATE TABLE IF NOT EXISTS logs (
-    library_address TEXT NOT NULL,
-    log_id TEXT NOT NULL,
-    entry_hash TEXT NOT NULL,
-    linked_address TEXT,
-    alias TEXT,
-    PRIMARY KEY (library_address, log_id)
   ) WITHOUT ROWID;
 
   -- Library profiles (§2.6), keyed by about id. Only payloads present in the
@@ -313,16 +279,8 @@ ${TRACK_SEARCH_SCHEMA}
 const STAMP_VERSION = "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
 
 export const apply_schema = (db: DatabaseSync): void => {
-  const has_totals = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_totals'").get() !== undefined
-  const has_tracks = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tracks'").get() !== undefined
-  const has_search = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'track_search_keys'").get() !== undefined
-  const lacks_listen_count = has_tracks &&
-    db.prepare("SELECT 1 FROM pragma_table_info('tracks') WHERE name = 'listen_count'").get() === undefined
   in_transaction(db, () => {
-    if (lacks_listen_count) db.exec(ADD_LISTEN_COUNT)
     db.exec(SCHEMA)
-    if (!has_totals) db.exec(FILL_TOTALS)
-    if (has_tracks && !has_search) db.exec(FILL_TRACK_SEARCH)
     db.prepare(STAMP_VERSION).run(String(SCHEMA_VERSION))
   })
 }

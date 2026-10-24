@@ -32,6 +32,29 @@ const assert_fields = (value: Record<string, unknown>, fields: readonly string[]
 // A track id is 64 hex characters, so the label after it needs no escaping.
 export const label_state_key = ([track_id, label]: LabelPair): string => `label:${track_id}:${label}`
 
+const LABEL_KEY_PREFIX = 'label:'
+const LABEL_KEY_TRACK_END = LABEL_KEY_PREFIX.length + 64
+
+export const is_label_key = (key: string): boolean => key.startsWith(LABEL_KEY_PREFIX)
+
+// The pair a label state key names.
+export const label_pair_of = (key: string): LabelPair =>
+  [key.slice(LABEL_KEY_PREFIX.length, LABEL_KEY_TRACK_END), key.slice(LABEL_KEY_TRACK_END + 1)]
+
+// The state keys a label record sets, built once per record: a record can
+// carry thousands of pairs, and each of them asks.
+const set_keys = new WeakMap<LabelsRecord, ReadonlySet<string>>()
+
+// Whether a label record sets the pair under key, rather than unsetting it.
+export const applies_label = (record: LabelsRecord, key: string): boolean => {
+  let keys = set_keys.get(record)
+  if (keys === undefined) {
+    keys = new Set(record.set.map(label_state_key))
+    set_keys.set(record, keys)
+  }
+  return keys.has(key)
+}
+
 const validate_pair = (pair: unknown): LabelPair => {
   if (!Array.isArray(pair) || pair.length !== 2) throw invalid('a label pair is a [track_id, label] array')
   const [track_id, label] = pair as unknown[]

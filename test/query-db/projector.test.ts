@@ -1,4 +1,4 @@
-// Incremental projection of appends, relabels, DELs, links, profiles, and
+// Incremental projection of appends, label records, DELs, About records, and
 // listens, and late-arriving content.
 
 import { describe, expect, test } from 'bun:test'
@@ -14,7 +14,7 @@ import { get_about, get_library_summary, get_listen_count, get_track, list_track
 import { open_query_db } from '#query-db/schema.ts'
 import type { DatabaseSync } from 'node:sqlite'
 import { open_test_library } from '#test/helpers/library.ts'
-import { add_track, delete_track, set_about, store_content, track_content } from './fixtures.ts'
+import { add_labels, add_track, delete_track, set_about, store_content, track_content } from './fixtures.ts'
 
 // The summary computed from the rows themselves, which library_totals must match.
 const scanned_summary = (db: DatabaseSync, library_address: string) => {
@@ -22,12 +22,11 @@ const scanned_summary = (db: DatabaseSync, library_address: string) => {
     SELECT
       (SELECT count(*) FROM tracks WHERE library_address = :a) AS track_count,
       (SELECT coalesce(sum(audio_size_bytes), 0) FROM tracks WHERE library_address = :a) AS audio_size_bytes,
-      (SELECT count(*) FROM logs WHERE library_address = :a AND linked_address IS NOT NULL) AS linked_library_count,
       (SELECT count(*) FROM entries WHERE library_address = :a AND op = 'PUT') AS length`).get({ a: library_address }) ?? {}
   return {
     track_count: Number(row.track_count),
     audio_size_bytes: Number(row.audio_size_bytes),
-    linked_library_count: Number(row.linked_library_count),
+    linked_library_count: 0,
     length: Number(row.length)
   }
 }
@@ -57,10 +56,10 @@ describe('query-db projector', () => {
       genre: ['house'],
       audio: { duration: 301.5, bitrate: 320000, sampleRate: 44100 },
       resolver: [{ extractor: 'bandcamp', id: '42', fulltitle: 'Full', duration: 301 }],
-      tags: ['deep', 'night'],
       timestamp: 5000
     })
-    await projector.project_entries({ oplog, entries: [entry] })
+    const labels = add_labels({ oplog, key_pair: writer, track_id: compute_track_id('AQAA-track'), set: ['night', 'deep'] })
+    await projector.project_entries({ oplog, entries: [entry, labels] })
     const track = get_track({ db, track_id: compute_track_id('AQAA-track'), own_library_addresses: [oplog.chain.address] })
     expect(track).toMatchObject({
       library_address: oplog.chain.address,
@@ -89,55 +88,61 @@ describe('query-db projector', () => {
     expect(track?.artwork).toHaveLength(1)
   })
 
-  test('a relabel replaces tags and keeps the first-seen time', async () => {
-    const { oplog, writer, block_store, db, projector } = await setup()
-    const track_id = compute_track_id('AQAA-track')
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['old'], timestamp: 10 })] })
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['new'], timestamp: 20 })] })
-    const track = get_track({ db, track_id })
-    expect(track?.tags.map(({ tag }) => tag)).toEqual(['new'])
-    expect(track?.added_at_ms).toBe(10)
-  })
-
-  test('a relabel of the same content rewrites the labels in place without reading the content, unless it is missing', async () => {
+  test('a label record sets and unsets pairs without touching the track row or reading its content', async () => {
     const writer = generate_key_pair()
     const { oplog, block_store } = await open_test_library({ writers: [writer] })
     const db = open_query_db()
     const reads: string[] = []
     const projector = create_projector({ db, read_content: async (cid) => { reads.push(cid); return await block_store.get(cid) } })
-    const track = { oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', title: 'Title' }
     const track_id = compute_track_id('AQAA-track')
-    await projector.project_entries({ oplog, entries: [await add_track({ ...track, tags: ['old'], timestamp: 10 })] })
+    const put = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', title: 'Title', timestamp: 10 })
+    await projector.project_entries({ oplog, entries: [put, add_labels({ oplog, key_pair: writer, track_id, set: ['old', 'kept'], timestamp: 11 })] })
     reads.length = 0
-    const relabel = await add_track({ ...track, tags: ['new', 'other'], timestamp: 20 })
+    const relabel = add_labels({ oplog, key_pair: writer, track_id, set: ['new'], unset: ['old'], timestamp: 20 })
     await projector.project_entries({ oplog, entries: [relabel] })
     expect(reads).toEqual([])
-    expect(get_track({ db, track_id })).toMatchObject({ title: 'Title', added_at_ms: 10, tags: [{ tag: 'new' }, { tag: 'other' }] })
-    for (const table of ['tracks', 'entries']) {
-      const column = table === 'tracks' ? 'track_id' : 'key'
-      expect(db.prepare(`SELECT entry_hash FROM ${table} WHERE ${column} = ?`).get(track_id)?.entry_hash).toBe(relabel.hash)
-    }
-    expect(list_tracks({ db, query: 'Title' }).items.map(({ id }) => id)).toEqual([track_id])
+    expect(get_track({ db, track_id })).toMatchObject({ title: 'Title', added_at_ms: 10, tags: [{ tag: 'kept' }, { tag: 'new' }] })
+    expect(db.prepare('SELECT entry_hash FROM tracks WHERE track_id = ?').get(track_id)?.entry_hash).toBe(put.hash)
+    expect(db.prepare("SELECT entry_hash FROM tags WHERE track_id = ? AND tag = 'new'").get(track_id)?.entry_hash).toBe(relabel.hash)
     expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual(scanned_summary(db, oplog.chain.address))
+  })
 
-    // A row whose content was missing at its write loads it again.
-    const late = { oplog, key_pair: writer, block_store, fingerprint: 'AQAA-late', title: 'Late', store: false }
-    await projector.project_entries({ oplog, entries: [await add_track({ ...late, tags: ['a'] })] })
-    await store_content({ block_store, value: track_content({ fingerprint: 'AQAA-late', title: 'Late' }) })
-    reads.length = 0
-    await projector.project_entries({ oplog, entries: [await add_track({ ...late, tags: ['b'] })] })
-    expect(reads.length).toBe(1)
-    expect(get_track({ db, track_id: compute_track_id('AQAA-late') })).toMatchObject({ title: 'Late', tags: [{ tag: 'b' }] })
+  test('labels name any track id and outlive its DEL, applying again on re-adoption', async () => {
+    const { oplog, writer, block_store, db, projector } = await setup()
+    const track_id = compute_track_id('AQAA-track')
+    // Labelled before any library holds it.
+    await projector.project_entries({ oplog, entries: [add_labels({ oplog, key_pair: writer, track_id, set: ['early'] })] })
+    expect(db.prepare('SELECT tag FROM tags WHERE track_id = ?').all(track_id)).toEqual([{ tag: 'early' }])
+    expect(get_track({ db, track_id })).toBeUndefined()
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', timestamp: 10 })] })
+    expect(get_track({ db, track_id })?.tags.map(({ tag }) => tag)).toEqual(['early'])
+    await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: track_id, timestamp: 20 })] })
+    expect(db.prepare('SELECT tag FROM tags WHERE track_id = ?').all(track_id)).toEqual([{ tag: 'early' }])
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', title: 'Back', timestamp: 30 })] })
+    expect(get_track({ db, track_id })).toMatchObject({ title: 'Back', tags: [{ tag: 'early' }] })
+  })
+
+  test('a labels library projects its label records and nothing else', async () => {
+    const writer = generate_key_pair()
+    const { oplog } = await open_test_library({ name: 'labels', type: 'labels', writers: [writer] })
+    const db = open_query_db()
+    const projector = create_projector({ db, read_content: async () => undefined })
+    const track_id = compute_track_id('AQAA-track')
+    await projector.project_entries({ oplog, entries: [add_labels({ oplog, key_pair: writer, track_id, set: ['mine'] })] })
+    expect(db.prepare('SELECT library_address, tag FROM tags').all()).toEqual([{ library_address: oplog.chain.address, tag: 'mine' }])
+    await projector.project_keys({ oplog, keys: oplog.key_entries.keys() })
+    expect(db.prepare('SELECT count(*) AS count FROM tags').get()?.count).toBe(1)
+    expect(await projector.projection_state({ library_address: oplog.chain.address })).toEqual({ heads: [...oplog.heads], pending: [] })
   })
 
   test('a current DEL tombstones the key and removes its rows', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const track_id = compute_track_id('AQAA-track')
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', tags: ['x'], resolver: [{ extractor: 'y', id: '1' }] })] })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-track', resolver: [{ extractor: 'y', id: '1' }] })] })
     await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: track_id })] })
     expect(get_track({ db, track_id })).toBeUndefined()
     expect(db.prepare('SELECT op FROM entries WHERE key = ?').get(track_id)?.op).toBe('DEL')
-    for (const table of ['tracks', 'tags', 'resolvers']) {
+    for (const table of ['tracks', 'resolvers']) {
       expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count).toBe(0)
     }
     expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
@@ -184,14 +189,15 @@ describe('query-db projector', () => {
   test('remove_library drops every row of one library only', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const other = await open_test_library({ name: 'other', writers: [writer] })
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', tags: ['t'] })] })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1' })] })
+    await projector.project_entries({ oplog, entries: [add_labels({ oplog, key_pair: writer, track_id: compute_track_id('AQAA-1'), set: ['t'] })] })
     await projector.project_entries({ oplog: other.oplog, entries: [await add_track({ oplog: other.oplog, key_pair: writer, block_store, fingerprint: 'AQAA-2' })] })
     await projector.remove_library({ library_address: oplog.chain.address })
     const libraries = db.prepare('SELECT DISTINCT library_address FROM entries UNION SELECT DISTINCT library_address FROM tags').all()
     expect(libraries.map(({ library_address }) => library_address)).toEqual([other.chain.address])
   })
 
-  test('library totals follow adds, relabels, late content, deletes, links, and removal', async () => {
+  test('library totals follow adds, corrections, late content, deletes, and removal', async () => {
     const { oplog, writer, block_store, db, projector } = await setup()
     const address = oplog.chain.address
     const check = () => { expect(get_library_summary({ db, library_address: address })).toEqual(scanned_summary(db, address)) }
@@ -213,8 +219,8 @@ describe('query-db projector', () => {
     expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
   })
 
-  test('an index written before library_totals existed fills the totals once at open', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'record-totals-'))
+  test('an index of an older schema version is dropped at open, so the next library open rebuilds it by replay', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'record-schema-'))
     try {
       const path = join(dir, 'index.sqlite')
       const writer = generate_key_pair()
@@ -222,37 +228,13 @@ describe('query-db projector', () => {
       const address = library.oplog.chain.address
       const db = open_query_db({ path })
       const projector = create_projector({ db, read_content: library.block_store.get })
-      for (const fingerprint of ['AQAA-1', 'AQAA-2']) {
-        await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint })] })
-      }
-      db.exec('DROP TABLE library_totals')
+      await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-1' })] })
+      expect(await projector.projection_state({ library_address: address })).toBeDefined()
+      db.exec("UPDATE meta SET value = '1' WHERE key = 'schema_version'")
       db.close()
       const reopened = open_query_db({ path })
-      expect(get_library_summary({ db: reopened, library_address: address })).toEqual({ track_count: 2, audio_size_bytes: 2 * 4096, linked_library_count: 0, length: 2 })
-      expect(get_library_summary({ db: reopened, library_address: address })).toEqual(scanned_summary(reopened, address))
-      reopened.close()
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  test('an index written before track search existed fills the search index once at open', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'record-track-search-'))
-    try {
-      const path = join(dir, 'index.sqlite')
-      const writer = generate_key_pair()
-      const library = await open_test_library({ writers: [writer] })
-      const db = open_query_db({ path })
-      const projector = create_projector({ db, read_content: library.block_store.get })
-      for (const [fingerprint, title] of [['AQAA-1', 'Morning Song'], ['AQAA-2', 'Evening Song']] as const) {
-        await projector.project_entries({ oplog: library.oplog, entries: [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint, title })] })
-      }
-      expect(list_tracks({ db, query: 'song' }).total).toBe(2)
-      db.exec('DROP TRIGGER tracks_search_insert; DROP TRIGGER tracks_search_delete; DROP TRIGGER tracks_search_update; DROP TABLE track_search; DROP TABLE track_search_keys')
-      db.close()
-      const reopened = open_query_db({ path })
-      expect(list_tracks({ db: reopened, query: 'song' }).total).toBe(2)
-      expect(list_tracks({ db: reopened, query: 'morning' }).total).toBe(1)
+      expect(reopened.prepare('SELECT count(*) AS count FROM tracks').get()?.count).toBe(0)
+      expect(await create_projector({ db: reopened, read_content: library.block_store.get }).projection_state({ library_address: address })).toBeUndefined()
       reopened.close()
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -274,7 +256,7 @@ describe('query-db projector', () => {
     expect(list_tracks({ db, library_addresses: both }).total).toBe(2)
   })
 
-  test('tracks.listen_count follows listens projected before and after the track, and fills on upgrade', async () => {
+  test('tracks.listen_count follows listens projected before and after the track', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'record-listen-count-'))
     try {
       const path = join(dir, 'index.sqlite')
@@ -296,11 +278,7 @@ describe('query-db projector', () => {
       expect(list_tracks({ db, sort: 'listen_count', order: 'desc' }).items[0]).toMatchObject({ id: track_id, listen_count: 2 })
       const plan = db.prepare('EXPLAIN QUERY PLAN SELECT t.track_id FROM tracks AS t ORDER BY t.listen_count DESC, t.track_id DESC LIMIT 10').all()
       expect(JSON.stringify(plan)).toContain('tracks_by_listen_count')
-      db.exec('DROP INDEX tracks_by_listen_count; DROP TRIGGER listens_count_insert; DROP TRIGGER listens_count_delete; ALTER TABLE tracks DROP COLUMN listen_count')
       db.close()
-      const reopened = open_query_db({ path })
-      expect(stored(reopened)).toBe(2)
-      reopened.close()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

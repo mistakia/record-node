@@ -21,7 +21,7 @@ import { create_networked_helia } from '#adapter/libp2p/node.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { Network } from '#fabric/network.ts'
 import { create_library_pin_record, open_pin_db, type LibraryPinRecord } from '#fabric/pin-index.ts'
-import { create_commit_batcher, DEFAULT_COMMIT_POLICY, type CommitBatcher } from '#fabric/commit-batch.ts'
+import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-batch.ts'
 import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts'
 import { data_paths } from './config.ts'
 
@@ -30,8 +30,6 @@ export interface PeerStore {
   readonly content_store: ContentStore
   // Each library's pin set, in the pin index beside the pin counts.
   readonly pin_record: LibraryPinRecord
-  // The pin index's commit batching, when it is on disk.
-  readonly pin_commit: CommitBatcher | undefined
   // Set when the store runs the libp2p network.
   readonly network: Network | undefined
   readonly stop: () => Promise<void>
@@ -114,7 +112,6 @@ export const open_peer_store = async ({ data_dir, index_dir, network }: {
     helia,
     content_store: create_helia_content_store({ helia, blockstore, pin_db, commit: pin_commit }),
     pin_record: create_library_pin_record({ db: pin_db, commit: pin_commit }),
-    pin_commit,
     network: opened.network,
     stop: async () => {
       retiring.abort()

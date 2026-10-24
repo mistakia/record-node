@@ -7,7 +7,7 @@ import type { WalCheckpointer } from '#fabric/wal-checkpointer.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { Download } from '#ingest/download.ts'
-import type { TrackTarget } from '#ingest/put-track.ts'
+import type { LabelledTrack, TrackTarget } from '#ingest/put-track.ts'
 import type { Toolchain } from '#ingest/toolchain.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
 import type { AudioSource } from './audio.ts'
@@ -143,10 +143,11 @@ const run_prepare = async <P>(context: PeerContext, job: () => Promise<P>): Prom
 // commit makes the step 3 decision and appends, one at a time, so its dedup
 // check stays atomic. A prepare accepted before stop still commits. The
 // target is checked again at commit, since a library retired meanwhile
-// refuses new writes (§4.8.3), and a new entry is indexed.
+// refuses new writes (§4.8.3), and a new entry, with any label record the
+// commit appended after it, is indexed.
 export const ingest_into = async <P>(context: PeerContext, target: WriteTarget, { prepare, commit, blobs }: {
   prepare: (target: TrackTarget) => Promise<P>
-  commit: (input: { target: TrackTarget, prepared: P, release: (cids: readonly string[]) => Promise<void> }) => Promise<IngestedTrack>
+  commit: (input: { target: TrackTarget, prepared: P, release: (cids: readonly string[]) => Promise<void> }) => Promise<LabelledTrack>
   // What a prepare pinned, released when its commit is refused before it runs.
   blobs: (prepared: P) => readonly string[]
 }): Promise<IngestedTrack> => {
@@ -162,9 +163,11 @@ export const ingest_into = async <P>(context: PeerContext, target: WriteTarget, 
       await release(blobs(prepared))
       throw error
     }
-    const track = await commit({ target: track_target, prepared, release })
-    const entry = target.handle.oplog.entries.get(track.entry_hash)
-    if (!track.existing && entry !== undefined) await context.libraries.register({ library_address: target.address, entries: [entry] })
+    const { label_entry_hash, ...track } = await commit({ target: track_target, prepared, release })
+    // The track PUT and the label record after it are indexed as one batch.
+    const hashes = [...(track.existing ? [] : [track.entry_hash]), ...(label_entry_hash === undefined ? [] : [label_entry_hash])]
+    const entries = hashes.flatMap((hash) => target.handle.oplog.entries.get(hash) ?? [])
+    if (entries.length > 0) await context.libraries.register({ library_address: target.address, entries })
     return track
   })
   context.ingests = tail

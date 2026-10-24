@@ -46,14 +46,14 @@ describe('peer', () => {
     await first.ingest_file(f7.fixture_path)
     await first.add_tag({ track_id: f7.track_id, tag: 'kept' })
     await first.record_listen({ track_id: f7.track_id, library_address: first.identity().own_address })
-    const { own_address, listens_address } = first.identity()
+    const { own_address, listens_address, labels_address } = first.identity()
     await stop(first)
     expect(statSync(data_paths(data_dir).identity).mode & 0o777).toBe(0o600)
 
     const second = await start(data_dir)
     expect(second.identity()).toMatchObject({ own_address, listens_address })
     const { items } = await second.list_tracks(QUERY)
-    expect(items).toEqual([expect.objectContaining({ id: f7.track_id, tags: [{ library_address: own_address, tag: 'kept' }], listen_count: 1 })])
+    expect(items).toEqual([expect.objectContaining({ id: f7.track_id, tags: [{ library_address: labels_address, tag: 'kept' }], listen_count: 1 })])
     expect((await second.get_audio(f7.audio_cid))?.length).toBe(items[0]?.audio_size_bytes)
     expect(await second.content_store.is_pinned(f7.audio_cid)).toBe(true)
   })
@@ -105,13 +105,13 @@ describe('peer', () => {
     const peer = await start()
     await peer.ingest_file(f7.fixture_path)
     await peer.add_tag({ track_id: f7.track_id, tag: 'kept' })
-    const { own_address } = peer.identity()
+    const { own_address, labels_address } = peer.identity()
     const entry_count = () => peer.context.libraries.get(own_address)?.oplog.entries.size ?? 0
     const [before] = (await peer.list_tracks(QUERY)).items
     const appended = entry_count()
 
     const updated = await peer.update_track({ track_id: f7.track_id, tags: { title: 'Corrected', album: 'Fixed Album', artist: null } })
-    expect(updated).toMatchObject({ id: f7.track_id, title: 'Corrected', album: 'Fixed Album', audio_cid: before?.audio_cid, tags: [{ library_address: own_address, tag: 'kept' }] })
+    expect(updated).toMatchObject({ id: f7.track_id, title: 'Corrected', album: 'Fixed Album', audio_cid: before?.audio_cid, tags: [{ library_address: labels_address, tag: 'kept' }] })
     expect(updated.artist ?? null).toBeNull()
     expect(updated.content_cid).not.toBe(before?.content_cid)
     expect(entry_count()).toBe(appended + 1)

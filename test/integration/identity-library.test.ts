@@ -116,16 +116,23 @@ describe('identity library', () => {
     const track_id = (entry.operation as { key: string }).key
     const mixes = await peer.create_own_library({ discriminator: 'mixes', about: { name: 'Mixes' } })
     expect(mixes).toMatchObject({ is_own: true, is_retired: false, library_type: 'recordstore', name: 'Mixes', replication_mode: 'full' })
-    // Two active own recordstores: a write must name its target.
-    await expect(peer.add_tag({ track_id, tag: 'x' })).rejects.toMatchObject({ code: 'invalid' })
-    expect((await peer.add_tag({ track_id, tag: 'x', library_address: peer.identity().own_address })).tags).toContainEqual({ library_address: peer.identity().own_address, tag: 'x' })
+    // Two active own recordstores: a track write must name its target, and a
+    // label write with none goes to the labels library (§4.9).
+    await expect(peer.remove_track({ track_id })).rejects.toMatchObject({ code: 'invalid' })
+    const { own_address, labels_address } = peer.identity()
+    expect(await peer.add_tag({ track_id, tag: 'x' })).toMatchObject({ tags: [{ library_address: labels_address, tag: 'x' }] })
+    expect(await peer.add_tag({ track_id, tag: 'x', library_address: own_address })).toMatchObject({
+      tags: [{ library_address: labels_address, tag: 'x' }, { library_address: own_address, tag: 'x' }].sort((a, b) => a.library_address < b.library_address ? -1 : 1)
+    })
 
     await peer.retire_own_library(mixes.address)
     expect(await peer.get_library(mixes.address)).toMatchObject({ is_own: true, is_retired: true })
     await expect(peer.set_about({ address: mixes.address, fields: { name: 'again' } })).rejects.toMatchObject({ code: 'conflict' })
     await expect(peer.create_own_library({ discriminator: 'mixes' })).rejects.toMatchObject({ code: 'conflict' })
+    await expect(peer.add_tag({ track_id, tag: 'y', library_address: mixes.address })).rejects.toMatchObject({ code: 'conflict' })
     // One active recordstore again, so it is the default target.
-    expect((await peer.add_tag({ track_id, tag: 'y' })).tags).toContainEqual({ library_address: peer.identity().own_address, tag: 'y' })
+    await peer.remove_track({ track_id })
+    expect((await peer.list_tracks({ offset: 0, limit: 10, shuffle: false, sort: 'added_at', order: 'desc' })).total).toBe(0)
     await expect(peer.retire_own_library(peer.identity().listens_address)).rejects.toMatchObject({ code: 'conflict' })
   })
 

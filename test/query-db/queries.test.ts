@@ -11,7 +11,7 @@ import { create_projector } from '#query-db/projector.ts'
 import { get_track, list_listens, list_tags, list_tracks } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { open_test_library } from '#test/helpers/library.ts'
-import { add_track } from './fixtures.ts'
+import { add_labels, add_track } from './fixtures.ts'
 
 let db: DatabaseSync
 let own: string
@@ -39,9 +39,11 @@ beforeAll(async () => {
     { oplog: theirs.oplog, fingerprint: 'gamma', title: 'Gamma (theirs)', artist: 'Xu', tags: ['house'], timestamp: 4 },
     { oplog: theirs.oplog, fingerprint: 'delta', title: '100% off', artist: 'Wu', bpm: 128, tags: ['techno'], timestamp: 5 }
   ]
-  for (const { oplog, ...track } of tracks) {
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, ...track })] })
+  for (const { oplog, tags, ...track } of tracks) {
+    await add_track({ oplog, key_pair: writer, block_store, ...track })
+    add_labels({ oplog, key_pair: writer, track_id: id_of(track.fingerprint), set: tags })
   }
+  for (const oplog of [mine.oplog, theirs.oplog]) await projector.project_library({ oplog })
   const plays: [string, number][] = [['alpha', 10], ['gamma', 30], ['alpha', 40], ['unknown', 20]]
   for (const [fingerprint, timestamp] of plays) {
     const track_id = fingerprint === 'unknown' ? 'f'.repeat(64) : id_of(fingerprint)
@@ -64,17 +66,23 @@ describe('query-db list_tracks', () => {
     expect(gamma?.listen_timestamps_ms).toBeUndefined()
   })
 
-  test('library_addresses scopes rows and tags', () => {
-    const { items, total } = list_tracks({ db, own_library_addresses: [own], library_addresses: [friend] })
+  test('library_addresses scopes rows and label_libraries the labels', () => {
+    const { items, total } = list_tracks({ db, own_library_addresses: [own], library_addresses: [friend], label_libraries: [friend] })
     expect(total).toBe(2)
     const gamma = items.find(({ id }) => id === id_of('gamma'))
     expect(gamma).toMatchObject({ title: 'Gamma (theirs)', library_address: friend, have_track: true })
     expect(gamma?.tags).toEqual([{ library_address: friend, tag: 'house' }])
+    // Labels follow the track id, not the library holding it.
+    const labelled = list_tracks({ db, own_library_addresses: [own], library_addresses: [friend], label_libraries: [own] })
+    expect(labelled.items.find(({ id }) => id === id_of('gamma'))?.tags).toEqual([{ library_address: own, tag: 'deep' }])
   })
 
-  test('tags match with AND semantics within the scope', () => {
+  test('tags match with AND semantics over the label_libraries', () => {
     expect(ids(list_tracks({ db, tags: ['house', 'deep'], sort: 'title', order: 'asc' }).items)).toEqual(['alpha', 'gamma'].map(id_of))
-    expect(list_tracks({ db, tags: ['house', 'deep'], library_addresses: [own] }).total).toBe(1)
+    // Gamma's house is the friend's label, so only alpha matches on own labels alone.
+    expect(list_tracks({ db, tags: ['house', 'deep'], library_addresses: [own] }).total).toBe(2)
+    expect(ids(list_tracks({ db, tags: ['house', 'deep'], library_addresses: [own], label_libraries: [own] }).items)).toEqual([id_of('alpha')])
+    expect(list_tracks({ db, tags: ['house', 'deep'], library_addresses: [own], label_libraries: [own] }).total).toBe(1)
     expect(list_tracks({ db, tags: ['house', 'missing'] }).total).toBe(0)
   })
 
@@ -155,9 +163,12 @@ describe('query-db list_tracks', () => {
 })
 
 describe('query-db tags and listens', () => {
-  test('list_tags counts distinct tracks per tag in the scope', () => {
+  test('list_tags counts distinct live tracks in the membership scope per label of the label_libraries', () => {
     expect(list_tags({ db })).toEqual([{ tag: 'house', count: 3 }, { tag: 'deep', count: 2 }, { tag: 'techno', count: 1 }])
-    expect(list_tags({ db, library_addresses: [own] })).toEqual([{ tag: 'deep', count: 2 }, { tag: 'house', count: 2 }])
+    // Delta is only the friend's, so its label leaves the own scope.
+    expect(list_tags({ db, library_addresses: [own] })).toEqual([{ tag: 'house', count: 3 }, { tag: 'deep', count: 2 }])
+    expect(list_tags({ db, library_addresses: [own], label_libraries: [own] })).toEqual([{ tag: 'deep', count: 2 }, { tag: 'house', count: 2 }])
+    expect(list_tags({ db, label_libraries: [friend] })).toEqual([{ tag: 'house', count: 1 }, { tag: 'techno', count: 1 }])
   })
 
   test('get_track carries listen timestamps, newest first', () => {
