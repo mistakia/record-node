@@ -1,13 +1,24 @@
 import type { CompressedPubkeyHex } from './identity.ts';
-export type EnvelopeType = 'track' | 'log' | 'about';
-export type DeletableType = 'track' | 'log';
 export interface Envelope {
     readonly id: string;
     readonly timestamp: number;
     readonly v: 1;
-    readonly type: EnvelopeType;
+    readonly type: 'track';
     readonly content: string;
-    readonly tags?: readonly string[];
+}
+export type LabelPair = readonly [track_id: string, label: string];
+export interface LabelsRecord {
+    readonly type: 'labels';
+    readonly v: 1;
+    readonly timestamp: number;
+    readonly set: readonly LabelPair[];
+    readonly unset: readonly LabelPair[];
+}
+export interface AboutRecord {
+    readonly type: 'about';
+    readonly v: 1;
+    readonly timestamp: number;
+    readonly name: string;
 }
 export interface PutOperation {
     readonly op: 'PUT';
@@ -19,12 +30,24 @@ export interface DelOperation {
     readonly op: 'DEL';
     readonly key: string;
     readonly value: {
-        readonly type: DeletableType;
+        readonly type: 'track';
         readonly timestamp: number;
     };
     readonly capability_id?: string;
 }
 export type Operation = PutOperation | DelOperation;
+export interface LabelsPut {
+    readonly op: 'PUT';
+    readonly key: string;
+    readonly value: LabelsRecord;
+    readonly capability_id?: string;
+}
+export interface AboutPut {
+    readonly op: 'PUT';
+    readonly key: string;
+    readonly value: AboutRecord;
+    readonly capability_id?: string;
+}
 export interface AccessRecordPut {
     readonly op: 'PUT';
     readonly key: string;
@@ -40,7 +63,15 @@ export interface OpaqueOperation {
     readonly value: Readonly<Record<string, unknown>>;
     readonly opaque: true;
 }
-export type IdentityRecordType = 'library' | 'link' | 'pin';
+export type IdentityRecordType = 'library' | 'link' | 'pin' | 'profile';
+export interface ProfileRecord {
+    readonly type: 'profile';
+    readonly v: 1;
+    readonly timestamp: number;
+    readonly name?: string;
+    readonly bio?: string;
+    readonly avatar?: string;
+}
 export type IdentityRecord = {
     readonly type: 'library';
     readonly v: 1;
@@ -57,7 +88,7 @@ export type IdentityRecord = {
     readonly v: 1;
     readonly timestamp: number;
     readonly cid: string;
-};
+} | ProfileRecord;
 export type IdentityOperation = {
     readonly op: 'PUT';
     readonly key: string;
@@ -66,7 +97,7 @@ export type IdentityOperation = {
     readonly op: 'DEL';
     readonly key: string;
     readonly value: {
-        readonly type: IdentityRecordType;
+        readonly type: Exclude<IdentityRecordType, 'profile'>;
         readonly timestamp: number;
     };
 };
@@ -75,7 +106,7 @@ export interface ListenPayload {
     readonly address: string;
     readonly timestamp: number;
 }
-export type EntryPayload = Operation | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload;
+export type EntryPayload = Operation | LabelsPut | AboutPut | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload;
 export interface LamportClock {
     readonly id: CompressedPubkeyHex;
     readonly time: number;

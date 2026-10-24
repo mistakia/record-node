@@ -13,23 +13,16 @@ export interface HeadsMessage {
     readonly incomplete: boolean;
 }
 export declare const decode_heads_message: (data: Uint8Array) => HeadsMessage | undefined;
-export declare const build_loaded_about_entry: ({ hash, entry, about_content }: {
+export declare const build_loaded_about_entry: ({ hash, entry }: {
     hash: string;
     entry: SignedEntry;
-    about_content: Record<string, unknown>;
 }) => {
     hash: string;
     id: string;
     payload: {
         op: string;
         key: string;
-        value: {
-            id: string;
-            timestamp: number;
-            v: number;
-            type: string;
-            content: Record<string, unknown>;
-        };
+        value: Record<string, unknown>;
     };
     next: readonly string[];
     refs: readonly string[];

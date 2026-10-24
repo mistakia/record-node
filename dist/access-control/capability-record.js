@@ -11,7 +11,7 @@ import { ProtocolError } from '#types/errors.ts';
 import { is_record } from '#types/guards.ts';
 import { filter_shape, has_extra_fields, worst_shape } from "./filter.js";
 export const ACCESS_RECORD_TYPES = ['capability', 'revocation'];
-export const ACTIONS = ['library.append_track', 'library.append_tag', 'library.update_about', 'library.grant_capability'];
+export const ACTIONS = ['library.append_track', 'library.write_label', 'library.update_about', 'library.grant_capability'];
 const CAPABILITY_FIELDS = ['type', 'v', 'timestamp', 'grantee', 'actions', 'filter', 'conditions'];
 const REVOCATION_FIELDS = ['type', 'v', 'timestamp', 'revokes'];
 const is_uint = (value) => Number.isSafeInteger(value) && value >= 0;

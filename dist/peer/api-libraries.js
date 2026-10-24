@@ -1,30 +1,17 @@
 // ApiPeer library, identity, capability, About, and listen methods.
-import { encode_canonical } from '#encoding/canonical-bytes.ts';
-import { compute_cid_string } from '#encoding/cid.ts';
 import { parse_library_address } from '#encoding/library-address.ts';
-import { assert_payload_size } from '#encoding/size-bounds.ts';
-import { build_about_envelope } from '#entry/envelope.ts';
-import { compute_about_id } from '#entry/id.ts';
-import { build_put_operation } from '#entry/operations.ts';
+import { build_about_put } from '#entry/operations.ts';
 import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts';
-import { ProtocolError } from '#types/errors.ts';
 import { PeerError } from '#types/peer.ts';
 import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from "./capabilities.js";
 import { require_identity, serialise_write } from "./context.js";
 import { describe_library } from "./describe.js";
 import { connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library } from "./identity-library.js";
 import { record_listen } from "./listens.js";
-import { default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from "./ownership.js";
+import { default_label_libraries, default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from "./ownership.js";
 import { effective_policy, get_replication_policy, validate_policy } from "./policy.js";
 import { to_api_about, to_api_track } from "./views.js";
 import { append_write, resolve_write_target } from "./write-target.js";
-const store_payload = async (context, value) => {
-    const bytes = encode_canonical(value);
-    assert_payload_size(bytes);
-    const cid = compute_cid_string(bytes);
-    await context.content_store.put(cid, bytes);
-    return cid;
-};
 const require_library = (context, address) => {
     const library = describe_library(context, address);
     if (library === undefined)
@@ -42,25 +29,19 @@ const list_known = (context) => {
     }
     return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? []);
 };
-// Writes an About entry, owned or under a capability granting
-// library.update_about (§2.6, §3.5.6). The address field is stamped and null
-// clears a field.
+// Writes an About record, owned or under a capability granting
+// library.update_about (§2.6, §3.5.6). The record carries a name only, so the
+// other fields are not written; an unchanged name appends nothing.
 const write_about = async (context, { address, fields, capability_id }) => {
     await serialise_write(context, async () => {
-        const target = resolve_write_target(context, { library_address: address, capability_id });
-        const current = get_about({ db: context.db, library_address: address }) ?? {};
-        const merged = { name: current.name, bio: current.bio, location: current.location, avatar: current.avatar, ...fields };
-        const content = Object.fromEntries(Object.entries(merged).filter(([, value]) => typeof value === 'string'));
-        const content_cid = await store_payload(context, { ...content, address });
-        const envelope = build_about_envelope({ id: compute_about_id(address), content_cid });
-        try {
-            await append_write(context, target, build_put_operation({ envelope, capability_id: target.capability_id }));
-        }
-        catch (error) {
-            // An unchanged profile is already the live entry (§2.10).
-            if (!(error instanceof ProtocolError && error.code === 'duplicate_entry'))
-                throw error;
-        }
+        const target = resolve_write_target(context, { library_address: address, capability_id, kind: 'about' });
+        const current = get_about({ db: context.db, library_address: address })?.name ?? undefined;
+        const name = fields.name === undefined ? current : fields.name ?? undefined;
+        if (name === undefined)
+            throw new PeerError('invalid', 'an About record always carries a name, so it is never absent or cleared');
+        if (name === current)
+            return;
+        await append_write(context, target, build_about_put({ name, capability_id: target.capability_id }));
     });
 };
 const read_about = (context, address) => {
@@ -129,7 +110,7 @@ export const create_library_methods = (context) => ({
     list_listens: async ({ offset, limit }) => {
         const pins = identity_state(context).pins;
         const { items, total } = list_listens({
-            db: context.db, own_library_addresses: own_recordstore_addresses(context), listens_addresses: listens_addresses(context), offset, limit
+            db: context.db, own_library_addresses: own_recordstore_addresses(context), listens_addresses: listens_addresses(context), label_libraries: default_label_libraries(context), offset, limit
         });
         const tracks = items.flatMap(({ track, count, timestamps_ms }) => {
             const api_track = track === undefined ? undefined : to_api_track(track, pins);

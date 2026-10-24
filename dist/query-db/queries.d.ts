@@ -64,9 +64,9 @@ export interface ListenHistoryItem extends ListenCount {
     readonly last_listened_at_ms: number;
     readonly track?: TrackRow;
 }
-export interface LinkedLibrary {
-    readonly address: string;
-    readonly alias: string | null;
+export interface LabelState {
+    readonly track_id: string;
+    readonly tags: string[];
 }
 export interface LibrarySummary {
     readonly track_count: number;
@@ -84,6 +84,7 @@ export interface About {
 export interface ListTracksInput {
     readonly own_library_addresses?: readonly string[] | undefined;
     readonly library_addresses?: readonly string[] | undefined;
+    readonly label_libraries?: readonly string[] | undefined;
     readonly tags?: readonly string[] | undefined;
     readonly tag_groups?: ReadonlyArray<readonly string[]> | undefined;
     readonly query?: string | undefined;
@@ -96,33 +97,43 @@ export interface ListTracksInput {
 export declare const list_tracks: ({ db, ...input }: {
     db: DatabaseSync;
 } & ListTracksInput) => Page<TrackRow>;
-export declare const get_track: ({ db, track_id, own_library_addresses, library_addresses }: {
+export declare const get_track: ({ db, track_id, own_library_addresses, library_addresses, label_libraries }: {
     db: DatabaseSync;
     track_id: string;
     own_library_addresses?: readonly string[];
-    library_addresses?: readonly string[];
+    library_addresses?: readonly string[] | undefined;
+    label_libraries?: readonly string[] | undefined;
 }) => TrackRow | undefined;
-export declare const list_tags: ({ db, library_addresses, prefix }: {
+export declare const list_tags: ({ db, library_addresses, label_libraries, prefix }: {
     db: DatabaseSync;
-    library_addresses?: readonly string[];
+    library_addresses?: readonly string[] | undefined;
+    label_libraries?: readonly string[] | undefined;
     prefix?: string | undefined;
 }) => readonly TagCount[];
+export declare const track_labels: ({ db, track_id, label_libraries }: {
+    db: DatabaseSync;
+    track_id: string;
+    label_libraries: readonly string[];
+}) => string[];
+export declare const list_library_labels: ({ db, library_address, offset, limit }: {
+    db: DatabaseSync;
+    library_address: string;
+    offset?: number | undefined;
+    limit?: number | undefined;
+}) => Page<LabelState>;
 export declare const get_listen_count: ({ db, track_id, listens_addresses }: {
     db: DatabaseSync;
     track_id: string;
     listens_addresses?: readonly string[];
 }) => ListenCount;
-export declare const list_listens: ({ db, own_library_addresses, listens_addresses, offset, limit }: {
+export declare const list_listens: ({ db, own_library_addresses, listens_addresses, label_libraries, offset, limit }: {
     db: DatabaseSync;
     own_library_addresses?: readonly string[];
     listens_addresses?: readonly string[];
+    label_libraries?: readonly string[] | undefined;
     offset?: number;
     limit?: number;
 }) => Page<ListenHistoryItem>;
-export declare const list_linked_libraries: ({ db, library_address }: {
-    db: DatabaseSync;
-    library_address: string;
-}) => LinkedLibrary[];
 export declare const get_library_summary: ({ db, library_address }: {
     db: DatabaseSync;
     library_address: string;

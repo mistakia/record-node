@@ -15,15 +15,13 @@ export const to_api_track = (row, pins) => {
     return { ...rest, audio_cid, audio_size_bytes, is_pinned, resolvers: resolvers.map(to_resolver_entry) };
 };
 export const to_api_tracks = (rows, pins) => rows.flatMap((row) => to_api_track(row, pins) ?? []);
-export const to_api_about = (row) => ({ ...row });
+// An About record carries a name only (§2.6).
+export const to_api_about = ({ library_address, name }) => ({ library_address, name });
 export const to_api_library = ({ address, library_type, heads, summary, about, alias, is_own, is_retired, is_linked, held_capability_ids, replication_mode, is_loading, replication }) => ({
     id: compute_log_id(address),
     address,
     library_type,
     name: about?.name ?? null,
-    bio: about?.bio ?? null,
-    location: about?.location ?? null,
-    avatar: about?.avatar ?? null,
     alias,
     ...summary,
     heads: [...heads],

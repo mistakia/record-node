@@ -49,13 +49,13 @@ const insert_blocks = ({ oplog, blocks, admit }) => {
         insert_entry({ oplog, entry: result });
         merged.push(result);
     }
-    // Step 5: re-resolve every touched key, and every key an entry made inert
+    // Step 5: re-resolve every touched key or label pair, and every key an entry made inert
     // holds, over all of its known entries.
     const access = refresh_access_state({ oplog, added: merged });
     const keys = new Set(access.keys);
-    for (const { state_key } of merged)
-        if (state_key !== undefined)
-            keys.add(state_key);
+    for (const { state_keys } of merged)
+        for (const key of state_keys)
+            keys.add(key);
     refresh_current_state({ oplog, keys });
     return { merged, rejected, access };
 };

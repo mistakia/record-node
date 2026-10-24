@@ -84,7 +84,7 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
         await rm(temp_dir, { recursive: true, force: true });
     }
 };
-export const commit_local_file = async ({ prepared, target, release, tags, timestamp }) => {
+export const commit_local_file = async ({ prepared, target, release, timestamp }) => {
     if (prepared.kind === 'existing')
         return prepared.track;
     try {
@@ -95,7 +95,7 @@ export const commit_local_file = async ({ prepared, target, release, tags, times
             return existing;
         }
         // 12-13: envelope, PUT, sign, append, and pin.
-        return await put_track({ target, content: prepared.content, tags, timestamp });
+        return await put_track({ target, content: prepared.content, timestamp });
     }
     catch (error) {
         await release(prepared.blobs);
@@ -104,7 +104,7 @@ export const commit_local_file = async ({ prepared, target, release, tags, times
 };
 export const prepared_blobs = (prepared) => prepared.kind === 'new' ? prepared.blobs : [];
 // Both phases back to back, for a caller with one file and nothing to overlap.
-export const ingest_local_file = async ({ file_path, target, toolchain, resolver, tags, timestamp, release }) => {
+export const ingest_local_file = async ({ file_path, target, toolchain, resolver, timestamp, release }) => {
     const prepared = await prepare_local_file({ file_path, target, toolchain, ...(resolver === undefined ? {} : { resolver }) });
-    return await commit_local_file({ prepared, target, release: release ?? (async () => { }), tags, timestamp });
+    return await commit_local_file({ prepared, target, release: release ?? (async () => { }), timestamp });
 };

@@ -9,9 +9,11 @@ export interface WriteTarget {
 export declare const assert_writable: (context: PeerContext, { address }: {
     address: string;
 }) => void;
-export declare const resolve_write_target: (context: PeerContext, { library_address, capability_id }: {
+export type WriteKind = 'label' | 'about' | 'track';
+export declare const resolve_write_target: (context: PeerContext, { library_address, capability_id, kind }: {
     library_address?: string | undefined;
     capability_id?: string | undefined;
+    kind?: WriteKind;
 }) => WriteTarget;
 export declare const as_write_refusal: (error: unknown) => unknown;
 export declare const append_write: (context: PeerContext, target: WriteTarget, payload: unknown) => Promise<VerifiedEntry>;

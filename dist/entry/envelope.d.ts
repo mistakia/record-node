@@ -1,14 +1,7 @@
-import type { Envelope, EnvelopeType } from '#types/entry.ts';
-export declare const ENVELOPE_TYPES: readonly EnvelopeType[];
+import type { Envelope } from '#types/entry.ts';
 export declare const validate_envelope: (value: unknown) => Envelope;
-type EnvelopeInput = {
+export declare const build_track_envelope: ({ id, content_cid, timestamp }: {
     id: string;
     content_cid: string;
-    timestamp?: number;
-};
-export declare const build_track_envelope: (input: EnvelopeInput & {
-    tags?: readonly string[];
+    timestamp?: number | undefined;
 }) => Envelope;
-export declare const build_log_envelope: (input: EnvelopeInput) => Envelope;
-export declare const build_about_envelope: (input: EnvelopeInput) => Envelope;
-export {};

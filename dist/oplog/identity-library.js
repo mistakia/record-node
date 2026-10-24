@@ -1,32 +1,47 @@
 // The state an identity library records (§4.8.2 to §4.8.4): the libraries
-// it claims, retired for good by any DEL, its links, and its pins. Resolution
-// is per (type, key), which the oplog's state keys already are. Whether a
-// claimed library is really owned needs its AC chain, which the peer checks.
+// it claims, retired for good by any DEL, its links, its pins, and its
+// profile. Resolution is per (type, key), which the oplog's state keys
+// already are. Whether a claimed library is really owned needs its AC chain,
+// which the peer checks.
 import { is_identity_operation } from '#entry/operations.ts';
+import { compare_current_state } from "./current-state.js";
 const operation_of = (entry) => entry !== undefined && is_identity_operation(entry.operation) ? entry.operation : undefined;
+// The entry §4.4.2 order sorts last: the least, where the current entry is
+// the greatest. The record timestamp stands in for the envelope's (§4.8.2).
+export const least_entry = (entries) => entries.reduce((least, entry) => least === undefined || compare_current_state(entry, least) > 0 ? entry : least, undefined);
 export const identity_library_state = (oplog) => {
     const libraries = new Map();
     const links = new Map();
-    const link_keys = new Set();
     const pins = new Set();
+    let profile;
     for (const [state_key, hashes] of oplog.key_entries) {
-        const operations = [...hashes].flatMap((hash) => operation_of(oplog.entries.get(hash)) ?? []);
+        const entries = [...hashes].flatMap((hash) => {
+            const entry = oplog.entries.get(hash);
+            const operation = operation_of(entry);
+            return entry === undefined || operation === undefined ? [] : [{ entry, operation }];
+        });
         const current = operation_of(oplog.current.get(state_key));
-        const [type, key] = [operations[0]?.value.type, operations[0]?.key];
+        const type = entries[0]?.operation.value.type;
         if (type === 'library') {
-            // A DEL names only the key, so the address comes from any PUT for it.
-            const address = operations.flatMap(({ op, value }) => op === 'PUT' && value.type === 'library' ? [value.address] : [])[0];
-            if (address !== undefined)
-                libraries.set(address, { retired: operations.some(({ op }) => op === 'DEL') });
+            // A DEL names only the key, so the address comes from a PUT for it.
+            const first = least_entry(entries.flatMap(({ entry, operation: { op } }) => op === 'PUT' ? [entry] : []));
+            const put = operation_of(first);
+            if (first !== undefined && put?.op === 'PUT' && put.value.type === 'library') {
+                libraries.set(put.value.address, { retired: entries.some(({ operation: { op } }) => op === 'DEL'), first_put: first });
+            }
         }
-        else if (type === 'link' && key !== undefined) {
-            link_keys.add(key);
+        else if (type === 'link') {
             if (current?.op === 'PUT' && current.value.type === 'link')
                 links.set(current.value.address, { alias: current.value.alias });
         }
-        else if (type === 'pin' && current?.op === 'PUT' && current.value.type === 'pin') {
-            pins.add(current.value.cid);
+        else if (type === 'pin') {
+            if (current?.op === 'PUT' && current.value.type === 'pin')
+                pins.add(current.value.cid);
+        }
+        else if (type === 'profile') {
+            if (current?.op === 'PUT' && current.value.type === 'profile')
+                profile = current.value;
         }
     }
-    return { libraries, links, link_keys, pins };
+    return { libraries, links, pins, profile };
 };

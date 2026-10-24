@@ -10,10 +10,11 @@ export interface EffectivePolicy {
     readonly filter: SpecNode | null;
 }
 export declare const effective_policy: (context: PeerContext, address: string, scope?: LibraryScope) => EffectivePolicy | undefined;
-export declare const track_view: ({ library_address, entry, content }: {
+export declare const track_view: ({ library_address, entry, content, labels }: {
     library_address: string;
     entry: VerifiedEntry;
     content: Record<string, unknown>;
+    labels: readonly string[];
 }) => Record<string, unknown>;
 export declare const keeps_blobs: (context: PeerContext) => (chain: ResolvedAcChain) => KeepsBlobs;
 export declare const get_replication_policy: (context: PeerContext, address: string) => ReplicationPolicy;

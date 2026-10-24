@@ -1,74 +1,126 @@
-// ApiPeer track, tag, pin, audio, and image methods. Writes go to a write target:
-// an own library, or one written under a capability (chapter 7).
+// ApiPeer track, label, pin, audio, and image methods. Writes go to a write
+// target: an own library, or one written under a capability (chapter 7). A
+// label write goes to the labels library unless it names a target, takes any
+// track id, held or not, and appends at most one label record (§2.5).
 import { encode_canonical } from '#encoding/canonical-bytes.ts';
 import { compute_cid_string } from '#encoding/cid.ts';
-import { assert_payload_size } from '#encoding/size-bounds.ts';
+import { assert_label, assert_payload_size } from '#encoding/size-bounds.ts';
 import { build_track_envelope } from '#entry/envelope.ts';
 import { build_identity_del, build_identity_put, canonical_cid, identity_record_key } from '#entry/identity-record.ts';
-import { build_del_operation, build_put_operation, is_put } from '#entry/operations.ts';
+import { build_del_operation, build_put_operation, is_labels_put, is_put } from '#entry/operations.ts';
 import { decode_payload, validate_track_content } from '#entry/payload.ts';
+import { applies_label, label_state_key } from '#entry/records.ts';
 import { ingest_cid } from '#ingest/pipeline-cid.ts';
+import { check_payload, is_empty_diff, labels_payload } from '#ingest/put-track.ts';
 import { blob_decoded_fields, with_decoded_fields } from '#ingest/rederive.ts';
-import { resolve_current_state } from '#oplog/current-state.ts';
 import { get_live_entry } from '#oplog/dag.ts';
-import { get_track, list_tags, list_tracks } from '#query-db/queries.ts';
+import { get_track, list_library_labels, list_tags, list_tracks, track_labels } from '#query-db/queries.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { IngestError } from '#types/ingest.ts';
 import { PeerError } from '#types/peer.ts';
 import { ingest_into, require_identity, require_toolchain, serialise_write } from "./context.js";
 import { append_identity_record } from "./identity-library.js";
-import { identity_state, own_recordstore_addresses, visible_addresses } from "./ownership.js";
+import { default_label_libraries, identity_state, own_recordstore_addresses, visible_addresses } from "./ownership.js";
 import { to_api_track, to_api_tracks } from "./views.js";
 import { append_write, as_write_refusal, resolve_write_target } from "./write-target.js";
-// One library's view of a track.
+const TRACK_ID_PATTERN = /^[0-9a-f]{64}$/;
+// One library's view of a track, with the labels of the default
+// label_libraries for that library.
 const library_track = (context, { address, track_id }) => {
-    const row = get_track({ db: context.db, track_id, own_library_addresses: own_recordstore_addresses(context), library_addresses: [address] });
+    const row = get_track({
+        db: context.db,
+        track_id,
+        own_library_addresses: own_recordstore_addresses(context),
+        library_addresses: [address],
+        label_libraries: default_label_libraries(context, [address])
+    });
     const track = row === undefined ? undefined : to_api_track(row, identity_state(context).pins);
     if (track === undefined)
         throw new PeerError('not_found', `not in ${address}: ${track_id}`);
     return track;
 };
-// The envelope a write builds on. Under a capability it is the §3.5.6 base
-// entry, which ignores inertness, so the new PUT keeps exactly the tags the
-// verifier will check it against.
+// The answer to a label write (chapter 7 LabelWriteResult): the track over
+// every library the node shows, with the default label_libraries, or, when
+// none of them holds it, the target's labels on the track id.
+const label_write_result = (context, { track_id, tags }) => {
+    const row = get_track({
+        db: context.db,
+        track_id,
+        own_library_addresses: own_recordstore_addresses(context),
+        library_addresses: visible_addresses(context),
+        label_libraries: default_label_libraries(context)
+    });
+    const track = row === undefined ? undefined : to_api_track(row, identity_state(context).pins);
+    return track ?? { track_id, tags: [...tags] };
+};
+// The live envelope a write builds on.
 const live_envelope = (target, track_id) => {
-    const { oplog } = target.handle;
-    const live = target.capability_id === undefined
-        ? get_live_entry({ oplog, key: track_id })
-        : resolve_current_state([...oplog.key_entries.get(track_id) ?? []].flatMap((hash) => oplog.entries.get(hash) ?? []));
-    if (live === undefined || !is_put(live.operation) || live.operation.value.type !== 'track') {
+    const live = get_live_entry({ oplog: target.handle.oplog, key: track_id });
+    if (live === undefined || !is_put(live.operation)) {
         throw new PeerError('not_found', `not in ${target.address}: ${track_id}`);
     }
     return live.operation.value;
 };
+// A label as the node writes it (chapter 7): normalised to NFC, then held to
+// §2.5's bounds.
+const normal_label = (label) => {
+    try {
+        return assert_label(typeof label === 'string' ? label.normalize('NFC') : label);
+    }
+    catch (error) {
+        if (error instanceof ProtocolError)
+            throw new PeerError('invalid', error.message);
+        throw error;
+    }
+};
+const normal_labels = (labels) => labels === undefined ? undefined : [...new Set(labels.map(normal_label))];
+const checked_track_id = (track_id) => {
+    if (!TRACK_ID_PATTERN.test(track_id))
+        throw new PeerError('invalid', `a track id is 64 lowercase hex chars: ${track_id}`);
+    return track_id;
+};
 // A label change as the API takes it: set, or add and remove, with no label
-// both added and removed.
-const checked_label_change = ({ add, remove, set }) => {
-    if (add === undefined && remove === undefined && set === undefined)
+// both added and removed once normalised.
+const checked_label_change = (change) => {
+    if (change.add === undefined && change.remove === undefined && change.set === undefined)
         throw new PeerError('invalid', 'a label change gives add, remove, or set');
-    if (set !== undefined && (add !== undefined || remove !== undefined))
+    if (change.set !== undefined && (change.add !== undefined || change.remove !== undefined))
         throw new PeerError('invalid', 'set replaces the labels, so it excludes add and remove');
+    const [add, remove, set] = [normal_labels(change.add), normal_labels(change.remove), normal_labels(change.set)];
     const both = (add ?? []).find((label) => (remove ?? []).includes(label));
     if (both !== undefined)
         throw new PeerError('invalid', `a label is both added and removed: ${both}`);
     return { add, remove, set };
 };
-// The labels a change leaves, or undefined when they stay equal as a set.
-// Kept labels keep their order and added ones follow; set gives its own.
-const changed_labels = (current, { add = [], remove = [], set }) => {
-    const next = [...new Set(set ?? [...current.filter((label) => !remove.includes(label)), ...add])];
-    const before = new Set(current);
-    return next.length === before.size && next.every((label) => before.has(label)) ? undefined : next;
+// Whether the library's current entry for the pair, under §4.4.2 and with
+// inert entries excluded, is a label record that sets it.
+const applied = (oplog, pair) => {
+    const key = label_state_key(pair);
+    const entry = oplog.current.get(key);
+    return entry !== undefined && is_labels_put(entry.operation) && applies_label(entry.operation.value, key);
 };
-// A relabel PUT: the envelope's content with new tags (§2.4.3).
-const relabel_payload = (target, { envelope, tags }) => build_put_operation({
-    envelope: build_track_envelope({ id: envelope.id, content_cid: envelope.content, tags }),
-    capability_id: target.capability_id
+// The labels a library applies to a track id: the index's rows for it,
+// which every write waits on, and the labels a change names, each judged by
+// the oplog's current state, so a pair merged but not yet indexed still
+// counts when the change names it.
+const current_labels = (context, { address, oplog }, track_id, change) => {
+    const candidates = new Set([
+        ...track_labels({ db: context.db, track_id, label_libraries: [address] }),
+        ...change.add ?? [], ...change.remove ?? [], ...change.set ?? []
+    ]);
+    return new Set([...candidates].filter((label) => applied(oplog, [track_id, label])));
+};
+const next_labels = (current, { add = [], remove = [], set }) => new Set(set ?? [...[...current].filter((label) => !remove.includes(label)), ...add]);
+// The pairs that take a track id from one label set to another, so no pair
+// is already in its requested state (§2.5).
+const label_diff = (track_id, before, after) => ({
+    set: [...after].filter((label) => !before.has(label)).map((label) => [track_id, label]),
+    unset: [...before].filter((label) => !after.has(label)).map((label) => [track_id, label])
 });
+const sorted = (labels) => [...labels].sort();
 // A failed batch item's API code: a refusal of its own, or a protocol rule
-// its entry broke. Anything else fails the batch.
+// its pairs broke. Anything else fails the batch.
 const BATCH_ITEM_CODES = {
-    not_found: 'NOT_FOUND',
     forbidden: 'FORBIDDEN',
     capability_expired: 'CAPABILITY_EXPIRED',
     capability_revoked: 'CAPABILITY_REVOKED',
@@ -83,15 +135,61 @@ const batch_item_failure = (track_id, error) => {
     }
     throw refusal;
 };
-// Relabelling appends a new PUT of the same content with the new tags (§2.4.3).
-const relabel = async (context, { track_id, library_address, capability_id, tags }) => await serialise_write(context, async () => {
-    const target = resolve_write_target(context, { library_address, capability_id });
-    const envelope = live_envelope(target, track_id);
-    const next = tags(envelope.tags ?? []);
-    if (next !== undefined)
-        await append_write(context, target, relabel_payload(target, { envelope, tags: next }));
-    return library_track(context, { address: target.address, track_id });
+// Label changes to one target, in order, appended as one label record
+// carrying the pairs they change between them, or nothing when none changes.
+// Items naming one track id apply one after the other. Under a capability,
+// each of several items is checked alone, so one the capability does not
+// authorise fails alone; a single change is refused as the append would be.
+// A record over the §2.8.3 entry bound fails the whole write.
+const write_labels = async (context, { items, library_address, capability_id }) => await serialise_write(context, async () => {
+    const target = resolve_write_target(context, { library_address, capability_id, kind: 'label' });
+    const { oplog } = target.handle;
+    const track_target = { oplog, key_pair: require_identity(context).key_pair, content_store: context.content_store, capability_id: target.capability_id };
+    const checked = target.capability_id !== undefined && items.length > 1;
+    const before = new Map();
+    const after = new Map();
+    const results = items.map(({ track_id, change }) => {
+        const current = after.get(track_id) ?? current_labels(context, { address: target.address, oplog }, track_id, change);
+        if (!before.has(track_id))
+            before.set(track_id, current);
+        const next = next_labels(current, change);
+        const diff = label_diff(track_id, current, next);
+        if (is_empty_diff(diff)) {
+            after.set(track_id, current);
+            return { track_id, status: 'unchanged', tags: sorted(current) };
+        }
+        if (checked) {
+            try {
+                check_payload(track_target, labels_payload(track_target, diff));
+            }
+            catch (error) {
+                after.set(track_id, current);
+                return batch_item_failure(track_id, error);
+            }
+        }
+        after.set(track_id, next);
+        return { track_id, status: 'updated', tags: sorted(next) };
+    });
+    const diffs = [...after].map(([track_id, labels]) => label_diff(track_id, before.get(track_id) ?? new Set(), labels));
+    const diff = { set: diffs.flatMap(({ set }) => set), unset: diffs.flatMap(({ unset }) => unset) };
+    if (!is_empty_diff(diff)) {
+        try {
+            await append_write(context, target, labels_payload(track_target, diff));
+        }
+        catch (error) {
+            if (error instanceof ProtocolError && error.code === 'size_exceeded') {
+                throw new PeerError('invalid', `the label record is over the §2.8.3 entry bound: ${error.message}`);
+            }
+            throw error;
+        }
+    }
+    return results;
 });
+// One label change, answered as chapter 7's LabelWriteResult.
+const write_label_change = async (context, { track_id, change, library_address, capability_id }) => {
+    const [result] = await write_labels(context, { items: [{ track_id: checked_track_id(track_id), change: checked_label_change(change) }], library_address, capability_id });
+    return label_write_result(context, { track_id, tags: result !== undefined && 'tags' in result ? result.tags : [] });
+};
 // The live entry's content payload, which a correction rewrites.
 const stored_content = async (context, { envelope, track_id }) => {
     const stored = await context.content_store.get(envelope.content);
@@ -100,8 +198,7 @@ const stored_content = async (context, { envelope, track_id }) => {
     return validate_track_content(decode_payload(stored));
 };
 // A correction (§2.4.3, §6.4.4): a new content object for the same audio, PUT
-// under the same id with the envelope's labels kept. The same content appends
-// nothing.
+// under the same id. The same content appends nothing.
 const supersede_content = async (context, { target, envelope, content }) => {
     const bytes = encode_canonical(validate_track_content(content));
     assert_payload_size(bytes);
@@ -110,7 +207,7 @@ const supersede_content = async (context, { target, envelope, content }) => {
         return;
     await context.content_store.put(content_cid, bytes);
     const payload = build_put_operation({
-        envelope: build_track_envelope({ id: envelope.id, content_cid, ...(envelope.tags === undefined ? {} : { tags: envelope.tags }) }),
+        envelope: build_track_envelope({ id: envelope.id, content_cid }),
         capability_id: target.capability_id
     });
     await append_write(context, target, payload);
@@ -142,27 +239,34 @@ const pin_key_of = (cid) => {
     }
 };
 export const create_track_methods = (context) => ({
-    list_tracks: async ({ library_addresses, ...query }) => {
+    list_tracks: async ({ library_addresses, label_libraries, ...query }) => {
         const { items, total } = list_tracks({
             db: context.db,
             own_library_addresses: own_recordstore_addresses(context),
             library_addresses: library_addresses ?? visible_addresses(context),
+            label_libraries: label_libraries ?? default_label_libraries(context, library_addresses),
             ...query
         });
         return { items: to_api_tracks(items, identity_state(context).pins), total };
     },
     // CID ingest (§6.4.3): the content object must already be stored locally.
-    // A new track carries the given labels in its PUT, and a held one is
-    // relabelled to them.
+    // tags set the target's labels on the track, as a label change with set
+    // would, in a label record after the track PUT in one batch.
     add_track: async ({ content_cid, tags, library_address, capability_id }) => {
+        const change = tags === undefined ? undefined : checked_label_change({ set: tags });
         const target = resolve_write_target(context, { library_address, capability_id });
+        const labels = change === undefined
+            ? undefined
+            : (track_id) => {
+                const current = current_labels(context, { address: target.address, oplog: target.handle.oplog }, track_id, change);
+                return label_diff(track_id, current, next_labels(current, change));
+            };
         let track_id;
-        let existing;
         try {
             // Nothing to prepare: the content object is already stored.
-            ({ track_id, existing } = await ingest_into(context, target, {
+            ({ track_id } = await ingest_into(context, target, {
                 prepare: async () => undefined,
-                commit: async ({ target: track_target }) => await ingest_cid({ content_cid, target: track_target, ...(tags === undefined ? {} : { tags: [...new Set(tags)] }) }),
+                commit: async ({ target: track_target }) => await ingest_cid({ content_cid, target: track_target, labels }),
                 blobs: () => []
             }));
         }
@@ -171,13 +275,10 @@ export const create_track_methods = (context) => ({
                 throw new PeerError('not_found', error.message);
             throw as_write_refusal(error);
         }
-        if (existing && tags !== undefined) {
-            return await relabel(context, { track_id, library_address: target.address, capability_id, tags: (current) => changed_labels(current, { set: tags }) });
-        }
         return library_track(context, { address: target.address, track_id });
     },
     // A content.tags correction (§2.4.3): a new content object for the same
-    // audio, PUT under the same id with the envelope's labels kept.
+    // audio, PUT under the same id.
     update_track: async ({ track_id, tags, library_address, capability_id }) => await serialise_write(context, async () => {
         const target = resolve_write_target(context, { library_address, capability_id });
         const envelope = live_envelope(target, track_id);
@@ -219,7 +320,7 @@ export const create_track_methods = (context) => ({
         await serialise_write(context, async () => {
             const target = resolve_write_target(context, { library_address });
             live_envelope(target, track_id);
-            await append_write(context, target, build_del_operation({ key: track_id, type: 'track' }));
+            await append_write(context, target, build_del_operation({ key: track_id }));
         });
     },
     pin_track: async (cid) => {
@@ -238,51 +339,24 @@ export const create_track_methods = (context) => ({
             await append_identity_record(context, build_identity_del({ type: 'pin', key: identity_record_key({ type: 'pin', v: 1, timestamp: 0, cid: key }) }));
         });
     },
-    list_tags: async ({ library_addresses, prefix }) => list_tags({ db: context.db, library_addresses: library_addresses ?? visible_addresses(context), prefix }),
-    add_tag: async ({ track_id, tag, library_address, capability_id }) => await relabel(context, {
-        track_id,
-        library_address,
-        capability_id,
-        tags: (current) => {
-            if (current.includes(tag))
-                throw new PeerError('conflict', `already tagged ${tag}: ${track_id}`);
-            return [...current, tag];
-        }
+    list_tags: async ({ library_addresses, label_libraries, prefix }) => list_tags({
+        db: context.db,
+        library_addresses: library_addresses ?? visible_addresses(context),
+        label_libraries: label_libraries ?? default_label_libraries(context, library_addresses),
+        prefix
     }),
-    remove_tag: async ({ track_id, tag, library_address, capability_id }) => await relabel(context, {
-        track_id,
-        library_address,
-        capability_id,
-        tags: (current) => current.includes(tag) ? current.filter((label) => label !== tag) : undefined
-    }),
-    change_labels: async ({ track_id, add, remove, set, library_address, capability_id }) => {
-        const change = checked_label_change({ add, remove, set });
-        return await relabel(context, { track_id, library_address, capability_id, tags: (current) => changed_labels(current, change) });
-    },
-    // Each item builds from the live entry just before its append, so items
-    // naming one track apply one after the other.
+    add_tag: async ({ track_id, tag, library_address, capability_id }) => await write_label_change(context, { track_id, change: { add: [tag] }, library_address, capability_id }),
+    remove_tag: async ({ track_id, tag, library_address, capability_id }) => await write_label_change(context, { track_id, change: { remove: [tag] }, library_address, capability_id }),
+    change_labels: async ({ track_id, add, remove, set, library_address, capability_id }) => await write_label_change(context, { track_id, change: { add, remove, set }, library_address, capability_id }),
+    // Every item is checked before any applies, so a malformed one fails the batch.
     change_labels_batch: async ({ items, library_address, capability_id }) => {
-        const changes = items.map(({ track_id, ...change }) => ({ track_id, change: checked_label_change(change) }));
-        return await serialise_write(context, async () => {
-            const target = resolve_write_target(context, { library_address, capability_id });
-            const labels = [];
-            const outcomes = await context.libraries.append_many({
-                library_address: target.address,
-                key_pair: require_identity(context).key_pair,
-                builds: changes.map(({ track_id, change }, index) => () => {
-                    const envelope = live_envelope(target, track_id);
-                    const next = changed_labels(envelope.tags ?? [], change);
-                    labels[index] = next ?? [...new Set(envelope.tags ?? [])];
-                    return next === undefined ? undefined : relabel_payload(target, { envelope, tags: next });
-                })
-            });
-            return outcomes.map((outcome, index) => {
-                const { track_id } = changes[index];
-                if (!outcome.ok)
-                    return batch_item_failure(track_id, outcome.error);
-                return { track_id, status: outcome.entry === undefined ? 'unchanged' : 'updated', tags: labels[index] };
-            });
-        });
+        const checked = items.map(({ track_id, ...change }) => ({ track_id: checked_track_id(track_id), change: checked_label_change(change) }));
+        return await write_labels(context, { items: checked, library_address, capability_id });
+    },
+    list_library_labels: async ({ address, offset, limit }) => {
+        if (context.libraries.get(address) === undefined)
+            throw new PeerError('not_found', `library not open: ${address}`);
+        return { library_address: address, ...list_library_labels({ db: context.db, library_address: address, offset, limit }) };
     },
     get_audio: async (cid) => await context.audio.read(cid),
     has_audio: async (cid) => await context.audio.read_local(cid) !== undefined,

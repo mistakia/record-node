@@ -38,6 +38,11 @@ export declare const get_live_entry: ({ oplog, key }: {
     oplog: Oplog;
     key: string;
 }) => VerifiedEntry | undefined;
+export declare const sign_local_entry: ({ oplog, payload, key_pair }: {
+    oplog: Oplog;
+    payload: unknown;
+    key_pair: KeyPair;
+}) => VerifiedEntry;
 export declare const append_entry_with_access: ({ oplog, payload, key_pair }: {
     oplog: Oplog;
     payload: unknown;

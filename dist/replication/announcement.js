@@ -6,14 +6,13 @@
 // authenticate_announced has verified it against the library's AC chain.
 import { resolve_ac_chain } from '#access-control/resolve.ts';
 import { encode_canonical } from '#encoding/canonical-bytes.ts';
-import { compute_cid_string } from '#encoding/cid.ts';
-import { compute_about_id } from '#entry/id.ts';
-import { is_put } from '#entry/operations.ts';
-import { validate_about_content } from '#entry/payload.ts';
+import { is_about_put } from '#entry/operations.ts';
+import { ABOUT_KEY } from '#entry/records.ts';
 import { decode_signed_entry } from '#entry/signed.ts';
 import { RECORD_TOPIC } from '#fabric/pubsub.ts';
 import { check_entry } from '#oplog/accept.ts';
 import { ProtocolError } from '#types/errors.ts';
+const equal_bytes = (a, b) => a.length === b.length && a.every((byte, index) => byte === b[index]);
 export const create_announcer = ({ pubsub, interval_ms, timers, build }) => {
     const last_announced = new Map();
     let joined = new Set();
@@ -51,8 +50,8 @@ export const create_announcer = ({ pubsub, interval_ms, timers, build }) => {
 };
 // §5.3.2: re-fetches the canonical signed entry by hash and accepts the hint
 // only when that entry verifies against the library's AC chain as its About
-// PUT and the inlined content is the payload the entry names. The resolved
-// chain is the read-only handle of §5.3.4 step 3; nothing replicates.
+// PUT and the hint carries the payload the entry signs. The resolved chain is
+// the read-only handle of §5.3.4 step 3; nothing replicates.
 export const authenticate_announced = async ({ announced, get_block }) => {
     const { address, hint } = announced;
     try {
@@ -68,12 +67,11 @@ export const authenticate_announced = async ({ announced, get_block }) => {
         const { operation } = check_entry({ hashed, chain });
         if (!chain.write_list.includes(hashed.entry.key))
             return undefined;
-        if (!is_put(operation) || operation.value.type !== 'about' || operation.key !== compute_about_id(address))
+        if (!is_about_put(operation) || operation.key !== ABOUT_KEY)
             return undefined;
-        const content = validate_about_content({ value: hint.payload.value.content, library_address: address });
-        if (compute_cid_string(encode_canonical(content)) !== operation.value.content)
+        if (!equal_bytes(encode_canonical(hint.payload), encode_canonical(hashed.entry.payload)))
             return undefined;
-        return { chain, content };
+        return { chain, about: operation.value };
     }
     catch (error) {
         if (error instanceof ProtocolError)

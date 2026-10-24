@@ -2,7 +2,7 @@ import type { About as AboutRow, LibrarySummary, TrackRow } from '#query-db/quer
 import type { About, Library, ReplicationMode, ReplicationStatus, Track } from '#types/peer.ts';
 export declare const to_api_track: (row: TrackRow, pins: ReadonlySet<string>) => Track | undefined;
 export declare const to_api_tracks: (rows: readonly TrackRow[], pins: ReadonlySet<string>) => Track[];
-export declare const to_api_about: (row: AboutRow) => About;
+export declare const to_api_about: ({ library_address, name }: AboutRow) => About;
 export interface LibraryReplication {
     readonly status: ReplicationStatus;
     readonly is_replicating: boolean;

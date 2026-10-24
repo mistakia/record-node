@@ -7,7 +7,8 @@
 // is the open's path for entries this version already verified.
 import { authorise_entry } from '#access-control/capability.ts';
 import { assert_signed_entry_size } from '#encoding/size-bounds.ts';
-import { is_envelope_operation, is_identity_operation, validate_operation } from '#entry/operations.ts';
+import { is_about_put, is_envelope_operation, is_identity_operation, is_labels_put, validate_operation } from '#entry/operations.ts';
+import { label_state_key } from '#entry/records.ts';
 import { assert_signed_entry_shape } from '#entry/signed.ts';
 import { verify_entry_signature } from '#identity/verification.ts';
 import { ProtocolError } from '#types/errors.ts';
@@ -15,28 +16,33 @@ import { ProtocolError } from '#types/errors.ts';
 // The entry block cache records the version its entries were verified under
 // (query-db/entry-blocks.ts), and an open restores them unverified only under
 // the same version, so a bump re-verifies every cached entry once.
-export const VERIFICATION_RULES_VERSION = 1;
-// In a listens or identity library only the write list may sign, which the
-// entry alone decides; a recordstore grantee needs the causal past.
+export const VERIFICATION_RULES_VERSION = 2;
+// In a labels, listens or identity library only the write list may sign,
+// which the entry alone decides; a recordstore grantee needs the causal past.
 export const check_entry = ({ hashed, chain }) => {
     assert_signed_entry_size(hashed.bytes);
     assert_signed_entry_shape(hashed.entry);
-    const operation = validate_operation({ payload: hashed.entry.payload, library_type: chain.type });
+    const write_list_signer = chain.write_list.includes(hashed.entry.key);
+    const operation = validate_operation({ payload: hashed.entry.payload, library_type: chain.type, write_list_signer });
     if (!verify_entry_signature({ entry: hashed.entry })) {
         throw new ProtocolError('invalid_signature', `entry ${hashed.hash} failed append verification: invalid signature`);
     }
-    if (chain.type !== 'recordstore' && !chain.write_list.includes(hashed.entry.key)) {
+    if (chain.type !== 'recordstore' && !write_list_signer) {
         throw new ProtocolError('unauthorised_writer', `entry ${hashed.hash} failed append verification: ${hashed.entry.key} is not in the write list`);
     }
     return { hashed, operation };
 };
-// Identity records resolve per (type, key) (§4.8.2); envelope operations per key.
-const state_key_of = (operation) => {
+// Identity records resolve per (type, key) (§4.8.2), label records per pair
+// (§2.5), and track operations and the About record per key (§4.4.2).
+const NO_STATE = Object.freeze([]);
+const state_keys_of = (operation) => {
     if (is_identity_operation(operation))
-        return `${operation.value.type}:${operation.key}`;
-    if (is_envelope_operation(operation))
-        return operation.key;
-    return undefined;
+        return [`${operation.value.type}:${operation.key}`];
+    if (is_labels_put(operation))
+        return [...operation.value.set, ...operation.value.unset].map(label_state_key);
+    if (is_envelope_operation(operation) || is_about_put(operation))
+        return [operation.key];
+    return NO_STATE;
 };
 // §4.2: clock.time is one more than the greatest time in next, or 1 with none.
 const expected_clock_time = (oplog, next) => {
@@ -57,7 +63,7 @@ const assert_clock = (oplog, hashed) => {
     if (clock.time !== expected)
         throw new ProtocolError('invalid_clock', `entry ${hashed.hash} has clock.time ${clock.time}, not ${expected}`);
 };
-const as_verified = (hashed, operation) => Object.freeze({ ...hashed, operation, state_key: state_key_of(operation) });
+const as_verified = (hashed, operation) => Object.freeze({ ...hashed, operation, state_keys: state_keys_of(operation) });
 export const verify_entry = ({ oplog, hashed }) => {
     const { operation } = check_entry({ hashed, chain: oplog.chain });
     assert_clock(oplog, hashed);
@@ -73,7 +79,8 @@ export const verify_entry = ({ oplog, hashed }) => {
 // key, and the clock check still rejects an entry whose next are missing, so
 // a cache with a gap never restores. The hash was computed from the bytes.
 export const restore_entry = ({ oplog, hashed }) => {
-    const operation = validate_operation({ payload: hashed.entry.payload, library_type: oplog.chain.type });
+    const write_list_signer = oplog.chain.write_list.includes(hashed.entry.key);
+    const operation = validate_operation({ payload: hashed.entry.payload, library_type: oplog.chain.type, write_list_signer });
     assert_clock(oplog, hashed);
     return as_verified(hashed, operation);
 };

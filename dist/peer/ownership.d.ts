@@ -1,8 +1,8 @@
 import { type IdentityLibraryState } from '#oplog/identity-library.ts';
 import type { LibraryType } from '#types/library.ts';
 import { type PeerContext } from './context.ts';
-export declare const OWN_LIBRARY_NAME = "record";
 export declare const LISTENS_LIBRARY_NAME = "listens";
+export declare const LABELS_LIBRARY_NAME = "labels";
 export interface OwnLibrary {
     readonly address: string;
     readonly type: LibraryType;
@@ -12,7 +12,6 @@ export interface OwnLibrary {
 export interface Link {
     readonly address: string;
     readonly alias: string | null;
-    readonly source: 'identity' | 'legacy';
 }
 export declare const identity_state: (context: PeerContext) => IdentityLibraryState;
 export declare const own_libraries: (context: PeerContext) => OwnLibrary[];
@@ -21,10 +20,13 @@ export declare const active_own_libraries: (context: PeerContext, type: LibraryT
 export declare const default_write_target: (context: PeerContext) => string | undefined;
 export declare const default_own_library: (context: PeerContext) => string | undefined;
 export declare const listens_library: (context: PeerContext) => string | undefined;
+export declare const labels_library: (context: PeerContext) => string | undefined;
 export declare const link_set: (context: PeerContext) => Link[];
 export declare const linked_addresses: (context: PeerContext) => string[];
 export declare const visible_addresses: (context: PeerContext) => string[];
 export declare const own_recordstore_addresses: (context: PeerContext) => string[];
+export declare const own_label_addresses: (context: PeerContext) => string[];
+export declare const default_label_libraries: (context: PeerContext, library_addresses?: readonly string[] | undefined) => string[];
 export interface LibraryScope {
     readonly own: ReadonlyMap<string, OwnLibrary>;
     readonly links: ReadonlyMap<string, Link>;

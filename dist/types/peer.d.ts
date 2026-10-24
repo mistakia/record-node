@@ -50,6 +50,19 @@ export interface TagCount {
     tag: string;
     count: number;
 }
+export interface TrackLabels {
+    track_id: string;
+    tags: string[];
+}
+export interface LabelState {
+    track_id: string;
+    tags: string[];
+}
+export interface LabelStatePage {
+    library_address: string;
+    items: LabelState[];
+    total: number;
+}
 export interface LabelChange {
     add?: readonly string[] | undefined;
     remove?: readonly string[] | undefined;
@@ -209,6 +222,7 @@ export interface TrackQuery {
     offset: number;
     limit: number;
     library_addresses?: string[];
+    label_libraries?: string[];
     tags?: string[];
     tag_groups?: string[][];
     query?: string;
@@ -279,19 +293,20 @@ export interface ApiPeer {
     unpin_track: (cid: string) => Promise<void>;
     list_tags: (filter: {
         library_addresses?: string[];
+        label_libraries?: string[];
         prefix?: string;
     }) => Promise<readonly TagCount[]>;
     add_tag: (label: {
         track_id: string;
         tag: string;
-    } & WriteTargetInput) => Promise<Track>;
+    } & WriteTargetInput) => Promise<Track | TrackLabels>;
     remove_tag: (label: {
         track_id: string;
         tag: string;
-    } & WriteTargetInput) => Promise<Track>;
+    } & WriteTargetInput) => Promise<Track | TrackLabels>;
     change_labels: (input: {
         track_id: string;
-    } & LabelChange & WriteTargetInput) => Promise<Track>;
+    } & LabelChange & WriteTargetInput) => Promise<Track | TrackLabels>;
     change_labels_batch: (input: {
         items: ReadonlyArray<{
             track_id: string;

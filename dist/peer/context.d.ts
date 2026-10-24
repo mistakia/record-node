@@ -4,7 +4,7 @@ import type { WalCheckpointer } from '#fabric/wal-checkpointer.ts';
 import type { ContentStore } from '#fabric/content-store.ts';
 import type { KeyPair } from '#identity/key-pair.ts';
 import type { Download } from '#ingest/download.ts';
-import type { TrackTarget } from '#ingest/put-track.ts';
+import type { LabelledTrack, TrackTarget } from '#ingest/put-track.ts';
 import type { Toolchain } from '#ingest/toolchain.ts';
 import type { IngestedTrack } from '#types/ingest.ts';
 import type { AudioSource } from './audio.ts';
@@ -69,6 +69,6 @@ export declare const ingest_into: <P>(context: PeerContext, target: WriteTarget,
         target: TrackTarget;
         prepared: P;
         release: (cids: readonly string[]) => Promise<void>;
-    }) => Promise<IngestedTrack>;
+    }) => Promise<LabelledTrack>;
     blobs: (prepared: P) => readonly string[];
 }) => Promise<IngestedTrack>;

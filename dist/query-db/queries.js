@@ -1,7 +1,9 @@
 // Read side of the query index, shaped for the HTTP API routes (spec
-// 7-http-api.yaml): track lists, tags, listen history, linked libraries,
-// and profiles. Field names follow the API Track schema.
-import { compute_about_id } from '#entry/id.ts';
+// 7-http-api.yaml): track lists, labels, listen history, and profiles. Field
+// names follow the API Track schema. Membership and labelling are separate
+// scopes: library_addresses picks the libraries whose live tracks are in
+// scope, and label_libraries the libraries whose labels count (§2.5).
+import { ABOUT_KEY } from '#entry/records.ts';
 export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'bitrate', 'listen_count', 'added_at'];
 const SORT_KEYS = {
     title: { key: 't.title COLLATE NOCASE', nullable_column: 't.title' },
@@ -63,6 +65,13 @@ const to_resolver = (row) => {
         .map((field) => [field, row[field]]);
     return { extractor: String(row.extractor), id: String(row.id), ...Object.fromEntries(optional) };
 };
+// The libraries whose labels count, as a subquery: the given ones, or every
+// library the index holds, a projection marker or a track row each, so a
+// label read always narrows by library_address and reads an index.
+const label_scope = (label_libraries) => label_libraries === undefined
+    ? 'SELECT library_address FROM library_heads UNION SELECT library_address FROM library_totals'
+    : 'SELECT value FROM json_each(:label_libraries)';
+const label_parameters = (label_libraries) => label_libraries === undefined ? {} : { label_libraries: JSON.stringify(label_libraries) };
 // Whether `t` is the representative row of its track id across the scoped
 // libraries: the requestor's own library first, then the lowest address. The
 // probe is one index lookup per row, which in a deep page costs more than
@@ -112,15 +121,16 @@ const cached_count = (db, key, count) => {
     cache.counts.set(key, value);
     return value;
 };
-// Tags, resolvers, listen counts, and ownership for a page of track rows.
-const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, with_timestamps = false }) => {
+// Labels, resolvers, listen counts, and ownership for a page of track rows.
+// A track's labels are those the label_libraries apply to its id, whichever
+// library holds it (§2.5).
+const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, label_libraries, with_timestamps = false }) => {
     const track_ids = JSON.stringify(rows.map((row) => row.track_id));
     const scoped = library_addresses !== undefined;
     const tag_rows = db.prepare(`
     SELECT track_id, library_address, tag FROM tags
-    WHERE track_id IN (SELECT value FROM json_each(:track_ids))
-    ${scoped ? 'AND library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
-    ORDER BY track_id, library_address, tag`).all({ track_ids, ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}) });
+    WHERE track_id IN (SELECT value FROM json_each(:track_ids)) AND library_address IN (${label_scope(label_libraries)})
+    ORDER BY track_id, library_address, tag`).all({ track_ids, ...label_parameters(label_libraries) });
     const tags = group_by(tag_rows, 'track_id', (row) => ({ library_address: String(row.library_address), tag: String(row.tag) }));
     const resolver_rows = db.prepare(`
     SELECT * FROM resolvers
@@ -176,7 +186,7 @@ const hydrate_tracks = ({ db, rows, own_library_addresses, library_addresses, wi
 };
 // GET /tracks. One item per track id; tag labels come from every scoped library.
 export const list_tracks = ({ db, ...input }) => {
-    const { own_library_addresses = [], library_addresses, tags = [], tag_groups = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
+    const { own_library_addresses = [], library_addresses, label_libraries, tags = [], tag_groups = [], query, shuffle = false, sort = 'added_at', order = 'desc', offset = 0, limit = DEFAULT_LIMIT } = input;
     assert_page({ offset, limit });
     if (!TRACK_SORTS.includes(sort))
         throw new RangeError(`sort must be one of ${TRACK_SORTS.join(', ')}, not ${sort}`);
@@ -194,16 +204,16 @@ export const list_tracks = ({ db, ...input }) => {
       SELECT 1 FROM tracks INDEXED BY tracks_by_track_id ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}
       GROUP BY track_id HAVING count(*) > 1
     ) AS duplicates`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).duplicates)) === 1;
-    // A label group as a filter: by default the set of track ids carrying a
-    // label in it, read once; correlated, a probe of each walked row's own
-    // labels, which only holds without duplicates, where a track id's labels
-    // all sit on its one row's library.
+    // A label group as a filter, over the labels of label_libraries: by
+    // default the set of track ids carrying a label in it, read once by
+    // (library, label); correlated, a probe of each walked row's track id.
+    const labels_from = label_scope(label_libraries);
     const group_filter = (index, correlated) => correlated
-        ? `EXISTS (SELECT 1 FROM tags AS g WHERE g.library_address = t.library_address AND g.track_id = t.track_id
-          AND g.tag IN (SELECT value FROM json_each(:tag_group_${index})))`
+        ? `EXISTS (SELECT 1 FROM tags AS g WHERE g.track_id = t.track_id
+          AND g.tag IN (SELECT value FROM json_each(:tag_group_${index})) AND g.library_address IN (${labels_from}))`
         : `t.track_id IN (
           SELECT track_id FROM tags
-          WHERE ${scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses)) AND ' : ''}tag IN (SELECT value FROM json_each(:tag_group_${index}))
+          WHERE library_address IN (${labels_from}) AND tag IN (SELECT value FROM json_each(:tag_group_${index}))
         )`;
     const where_for = (correlated) => [
         representative_sql({ scoped, duplicates }),
@@ -216,6 +226,7 @@ export const list_tracks = ({ db, ...input }) => {
     const parameters = {
         ...(duplicates ? { own_library_addresses: JSON.stringify(own_library_addresses) } : {}),
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
+        ...(groups.length > 0 ? label_parameters(label_libraries) : {}),
         ...(indexed ? { phrase: search_phrase(query) } : searching ? { pattern: like_pattern(query) } : {}),
         ...Object.fromEntries(groups.map((group, index) => [`tag_group_${index}`, JSON.stringify(group)]))
     };
@@ -226,16 +237,17 @@ export const list_tracks = ({ db, ...input }) => {
     // Every scoped row, from the trigger-kept totals without reading the rows.
     const scope_total = () => Number(db.prepare(`SELECT coalesce(sum(track_count), 0) AS total FROM library_totals
         ${scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:library_addresses))' : ''}`).get(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}).total);
-    // Label-filtered without a search or duplicates, every tags row belongs to
-    // its library's track row and each track id to one row, so the total is the
-    // size of the groups' intersection, read from the (library, tag, track id)
-    // index rather than from every track row. Unscoped, the libraries come from
-    // library_totals, which every library with a track row has a row in.
-    const labelled = groups.length > 0 && !searching && !duplicates;
+    // Label-filtered without a search, the page lists one item per track id,
+    // so the total is the groups' intersection, read from the (library, label,
+    // track id) index, cut to the track ids a scoped library holds live: a
+    // label may name a track no library in scope holds (§2.5).
+    const labelled = groups.length > 0 && !searching;
     const label_count = () => cached_count(db, JSON.stringify(['labels', parameters]), () => {
-        const libraries = scoped ? 'SELECT value FROM json_each(:library_addresses)' : 'SELECT library_address FROM library_totals';
-        const sets = groups.map((_, index) => `SELECT DISTINCT track_id FROM tags WHERE library_address IN (${libraries}) AND tag IN (SELECT value FROM json_each(:tag_group_${index}))`);
-        return Number(db.prepare(`SELECT count(*) AS total FROM (${sets.join(' INTERSECT ')})`).get(parameters).total);
+        const sets = groups.map((_, index) => `SELECT track_id FROM tags WHERE library_address IN (${labels_from}) AND tag IN (SELECT value FROM json_each(:tag_group_${index}))`);
+        const held = `EXISTS (SELECT 1 FROM tracks AS h WHERE h.track_id = m.track_id
+      ${scoped ? 'AND h.library_address IN (SELECT value FROM json_each(:library_addresses))' : ''})`;
+        const { own_library_addresses: _own, ...used } = parameters;
+        return Number(db.prepare(`SELECT count(*) AS total FROM (${sets.join(' INTERSECT ')}) AS m WHERE ${held}`).get(used).total);
     });
     const total = labelled ? label_count() : searching || groups.length > 0 || duplicates ? count('') : scope_total();
     // A labelled page either sorts every match, or walks the sort's index
@@ -272,11 +284,11 @@ export const list_tracks = ({ db, ...input }) => {
             });
         page_keys = [...present, ...absent];
     }
-    return { items: hydrate_tracks({ db, rows: rows_by_key(db, page_keys), own_library_addresses, library_addresses }), total };
+    return { items: hydrate_tracks({ db, rows: rows_by_key(db, page_keys), own_library_addresses, library_addresses, label_libraries }), total };
 };
-// One track by id, with its listen timestamps; the response for POST and
-// DELETE /tags. Undefined when no scoped library holds it.
-export const get_track = ({ db, track_id, own_library_addresses = [], library_addresses }) => {
+// One track by id, with its listen timestamps; the response for a label
+// write. Undefined when no scoped library holds it.
+export const get_track = ({ db, track_id, own_library_addresses = [], library_addresses, label_libraries }) => {
     const scoped = library_addresses !== undefined;
     const row = db.prepare(`SELECT t.* FROM tracks AS t WHERE t.track_id = :track_id AND ${representative_sql({ scoped })}`).get({
         track_id,
@@ -285,27 +297,45 @@ export const get_track = ({ db, track_id, own_library_addresses = [], library_ad
     });
     if (row === undefined)
         return undefined;
-    return hydrate_tracks({ db, rows: [row], own_library_addresses, library_addresses, with_timestamps: true })[0];
+    return hydrate_tracks({ db, rows: [row], own_library_addresses, library_addresses, label_libraries, with_timestamps: true })[0];
 };
-// GET /tags: tags by the number of distinct live tracks carrying them, most
-// first. A prefix bounds the labels by range, so it reads only theirs: every
-// label starting with it sorts at or after it and before it followed by the
-// byte 0xff, which UTF-8 never contains.
-export const list_tags = ({ db, library_addresses, prefix }) => cached_count(db, JSON.stringify(['tags', library_addresses ?? null, prefix ?? null]), () => {
+// GET /tags: each label a library in label_libraries applies to a live track
+// in the membership scope, by the number of such tracks, most first. A prefix
+// bounds the labels by range, so it reads only theirs: every label starting
+// with it sorts at or after it and before it followed by the byte 0xff, which
+// UTF-8 never contains.
+export const list_tags = ({ db, library_addresses, label_libraries, prefix }) => cached_count(db, JSON.stringify(['tags', library_addresses ?? null, label_libraries ?? null, prefix ?? null]), () => {
     const scoped = library_addresses !== undefined;
-    const filters = [
-        scoped ? 'library_address IN (SELECT value FROM json_each(:library_addresses))' : '',
-        prefix === undefined ? '' : "tag >= :prefix AND tag < :prefix || CAST(x'ff' AS TEXT)"
-    ].filter((filter) => filter.length > 0);
     const rows = db.prepare(`
-    SELECT tag, count(DISTINCT track_id) AS count FROM tags
-    ${filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : ''}
-    GROUP BY tag ORDER BY count DESC, tag ASC`).all({
+    SELECT g.tag, count(DISTINCT g.track_id) AS count FROM tags AS g
+    WHERE g.library_address IN (${label_scope(label_libraries)})
+      ${prefix === undefined ? '' : "AND g.tag >= :prefix AND g.tag < :prefix || CAST(x'ff' AS TEXT)"}
+      AND EXISTS (SELECT 1 FROM tracks AS t WHERE t.track_id = g.track_id
+        ${scoped ? 'AND t.library_address IN (SELECT value FROM json_each(:library_addresses))' : ''})
+    GROUP BY g.tag ORDER BY count DESC, g.tag ASC`).all({
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
+        ...label_parameters(label_libraries),
         ...(prefix === undefined ? {} : { prefix })
     });
     return rows.map((row) => ({ tag: String(row.tag), count: Number(row.count) }));
 });
+// The labels the label_libraries apply to one track id, held or not, sorted.
+export const track_labels = ({ db, track_id, label_libraries }) => db.prepare(`
+  SELECT DISTINCT tag FROM tags
+  WHERE track_id = :track_id AND library_address IN (SELECT value FROM json_each(:label_libraries))
+  ORDER BY tag`).all({ track_id, label_libraries: JSON.stringify(label_libraries) }).map((row) => String(row.tag));
+// GET /libraries/{address}/labels: every track id the library applies a label
+// to, held by any library or not, by track id, with its labels (§2.5).
+export const list_library_labels = ({ db, library_address, offset = 0, limit = DEFAULT_LIMIT }) => {
+    assert_page({ offset, limit });
+    const total = cached_count(db, JSON.stringify(['library_labels', library_address]), () => Number(db.prepare('SELECT count(*) AS total FROM (SELECT DISTINCT track_id FROM tags WHERE library_address = ?)').get(library_address).total));
+    const items = db.prepare(`
+    SELECT track_id, json_group_array(tag ORDER BY tag) AS tags FROM tags
+    WHERE library_address = :library_address
+    GROUP BY track_id ORDER BY track_id
+    LIMIT :limit OFFSET :offset`).all({ library_address, limit, offset }).map((row) => ({ track_id: String(row.track_id), tags: json_strings(row.tags) }));
+    return { items, total };
+};
 // The response for POST /listens. listens_addresses narrows to the given
 // listens libraries.
 export const get_listen_count = ({ db, track_id, listens_addresses }) => {
@@ -318,7 +348,7 @@ export const get_listen_count = ({ db, track_id, listens_addresses }) => {
 };
 // GET /listens: listened tracks by most recent listen, newest first.
 // listens_addresses narrows to the given listens libraries.
-export const list_listens = ({ db, own_library_addresses = [], listens_addresses, offset = 0, limit = DEFAULT_LIMIT }) => {
+export const list_listens = ({ db, own_library_addresses = [], listens_addresses, label_libraries, offset = 0, limit = DEFAULT_LIMIT }) => {
     assert_page({ offset, limit });
     const scoped = listens_addresses !== undefined;
     const where = scoped ? 'WHERE library_address IN (SELECT value FROM json_each(:listens_addresses))' : '';
@@ -333,7 +363,7 @@ export const list_listens = ({ db, own_library_addresses = [], listens_addresses
     LIMIT :limit OFFSET :offset`).all({ ...parameters, limit, offset });
     const track_rows = db.prepare(`SELECT t.* FROM tracks AS t
     WHERE t.track_id IN (SELECT value FROM json_each(:track_ids)) AND ${representative_sql({ scoped: false })}`).all({ own_library_addresses: JSON.stringify(own_library_addresses), track_ids: JSON.stringify(groups.map((row) => row.track_id)) });
-    const tracks = new Map(hydrate_tracks({ db, rows: track_rows, own_library_addresses, library_addresses: undefined })
+    const tracks = new Map(hydrate_tracks({ db, rows: track_rows, own_library_addresses, library_addresses: undefined, label_libraries })
         .map((track) => [track.id, track]));
     const items = groups.map((row) => {
         const track_id = String(row.track_id);
@@ -349,28 +379,23 @@ export const list_listens = ({ db, own_library_addresses = [], listens_addresses
     });
     return { items, total };
 };
-// Libraries a library links to (§2.5), ordered by address. A link whose log
-// payload is not stored yet has no address and is left out.
-export const list_linked_libraries = ({ db, library_address }) => db.prepare(`
-  SELECT linked_address, alias FROM logs
-  WHERE library_address = ? AND linked_address IS NOT NULL
-  ORDER BY linked_address`).all(library_address).map((row) => ({ address: String(row.linked_address), alias: nullable_text(row.alias) }));
 // The counts of the API Library shape, from the trigger-kept library_totals
-// row (schema.ts); a library with no rows has none.
+// row (schema.ts); a library with no rows has none. A link is an identity
+// library record (§4.8.4), which no recordstore carries, so none links.
 export const get_library_summary = ({ db, library_address }) => {
-    const row = db.prepare('SELECT track_count, audio_size_bytes, linked_library_count, put_count FROM library_totals WHERE library_address = ?')
+    const row = db.prepare('SELECT track_count, audio_size_bytes, put_count FROM library_totals WHERE library_address = ?')
         .get(library_address);
     return {
         track_count: Number(row?.track_count ?? 0),
         audio_size_bytes: Number(row?.audio_size_bytes ?? 0),
-        linked_library_count: Number(row?.linked_library_count ?? 0),
+        linked_library_count: 0,
         length: Number(row?.put_count ?? 0)
     };
 };
 // The library's profile under its canonical about id (§2.6).
 export const get_about = ({ db, library_address }) => {
     const row = db.prepare('SELECT name, bio, location, avatar FROM about WHERE library_address = ? AND about_id = ?')
-        .get(library_address, compute_about_id(library_address));
+        .get(library_address, ABOUT_KEY);
     if (row === undefined)
         return undefined;
     return {

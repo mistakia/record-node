@@ -23,21 +23,19 @@ export declare const prepare_resolved_entry: ({ entry, target, toolchain, find_b
     find_by_source: FindBySource;
     download: Download;
 }) => Promise<PreparedSource>;
-export declare const commit_resolved_entry: ({ source, target, release, tags, timestamp }: {
+export declare const commit_resolved_entry: ({ source, target, release, timestamp }: {
     source: PreparedSource;
     target: TrackTarget;
     release: ReleaseBlobs;
-    tags?: readonly string[] | undefined;
     timestamp?: number | undefined;
 }) => Promise<IngestedTrack>;
 export declare const source_blobs: (source: PreparedSource) => readonly string[];
-export declare const ingest_resolved_entry: ({ entry, target, toolchain, find_by_source, download, tags, timestamp, release }: {
+export declare const ingest_resolved_entry: ({ entry, target, toolchain, find_by_source, download, timestamp, release }: {
     entry: ResolvedEntry;
     target: TrackTarget;
     toolchain: Toolchain;
     find_by_source: FindBySource;
     download: Download;
-    tags?: readonly string[];
     timestamp?: number;
     release?: ReleaseBlobs;
 }) => Promise<IngestedTrack>;

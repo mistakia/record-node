@@ -1,12 +1,12 @@
 // Replication policy (§4.6.1): node-local configuration deciding item 6, the
-// audio and artwork of each live Track entry and the avatar of the current
-// About entry, for a linked library. An own
-// library is always full. A link recorded in the identity library defaults to
-// full, and one carried over from a v1.0 Log entry to index_only.
+// audio and artwork of each live Track entry and the avatar of the owner's
+// announced profile, for a linked library. An own library is always full, and
+// a link with no configured policy is full.
 import { filter_matches, filter_shape } from '#access-control/filter.ts';
 import { is_put } from '#entry/operations.ts';
+import { track_labels } from '#query-db/queries.ts';
 import { PeerError } from '#types/peer.ts';
-import { find_own_library, link_set } from "./ownership.js";
+import { find_own_library, link_set, own_label_addresses } from "./ownership.js";
 // The policy a library replicates under, or undefined for one that is
 // neither own nor linked. scope saves a caller describing many libraries
 // from deriving ownership for each.
@@ -20,13 +20,14 @@ export const effective_policy = (context, address, scope) => {
     const stored = context.policies.get(address);
     if (stored !== undefined)
         return { mode: stored.mode, filter: stored.mode === 'selective' ? (stored.filter ?? null) : null };
-    return { mode: link.source === 'identity' ? 'full' : 'index_only', filter: null };
+    return { mode: 'full', filter: null };
 };
 const is_track = (entry) => is_put(entry.operation) && entry.operation.value.type === 'track';
 const strings = (value) => Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
 // The object a selective filter reads for one live Track entry (§4.6.1). A
-// field whose source is absent or null is left out.
-export const track_view = ({ library_address, entry, content }) => {
+// field whose source is absent or null is left out. labels are the labels
+// applied to the track by the holding library and the own libraries.
+export const track_view = ({ library_address, entry, content, labels }) => {
     const envelope = is_put(entry.operation) ? entry.operation.value : undefined;
     const tags = (content.tags ?? {});
     const audio = (content.audio ?? {});
@@ -34,7 +35,7 @@ export const track_view = ({ library_address, entry, content }) => {
         library_address,
         added_by: entry.entry.key,
         added_at: envelope?.timestamp,
-        tags: [...envelope?.tags ?? []],
+        tags: [...labels],
         cid: content.hash,
         audio_size_bytes: content.size,
         duration_seconds: audio.duration,
@@ -61,7 +62,15 @@ export const keeps_blobs = (context) => (chain) => {
         return () => false;
     if (policy.mode === 'full')
         return () => true;
-    return ({ entry, content }) => !is_track(entry) || filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content }));
+    // The view's labels are the indexed ones of the holding library and every
+    // own library (§4.6.1).
+    const labels = (entry) => track_labels({
+        db: context.db,
+        track_id: entry.operation.key,
+        label_libraries: [library_address, ...own_label_addresses(context)]
+    });
+    return ({ entry, content }) => !is_track(entry) ||
+        filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content, labels: labels(entry) }));
 };
 const connected = (context, address) => context.replication?.get(address)?.state() !== 'paused';
 export const get_replication_policy = (context, address) => {

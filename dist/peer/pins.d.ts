@@ -13,7 +13,7 @@ export declare const stored_track_content: ({ content_store, content_cid }: {
 }) => Promise<Record<string, unknown> | undefined>;
 export declare const track_blobs: (content: Record<string, unknown>) => string[];
 export declare const has_item_6: (entry: VerifiedEntry) => boolean;
-export declare const stored_item_6: ({ content_store, library_address, entry }: {
+export declare const stored_item_6: ({ content_store, entry }: {
     content_store: ContentStore;
     library_address: string;
     entry: VerifiedEntry;

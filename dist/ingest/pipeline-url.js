@@ -36,10 +36,10 @@ export const prepare_resolved_entry = async ({ entry, target, toolchain, find_by
         await rm(temp_dir, { recursive: true, force: true });
     }
 };
-export const commit_resolved_entry = async ({ source, target, release, tags, timestamp }) => {
+export const commit_resolved_entry = async ({ source, target, release, timestamp }) => {
     if (source.kind === 'cached')
         return source.track;
-    const track = await commit_local_file({ prepared: source.prepared, target, release, tags, timestamp });
+    const track = await commit_local_file({ prepared: source.prepared, target, release, timestamp });
     // Audio the library already held keeps its entry, so the source is added
     // to it: the next request for this source then dedups at step 2 (§2.10).
     if (!track.existing)
@@ -48,7 +48,7 @@ export const commit_resolved_entry = async ({ source, target, release, tags, tim
 };
 export const source_blobs = (source) => source.kind === 'downloaded' ? prepared_blobs(source.prepared) : [];
 // Both phases back to back.
-export const ingest_resolved_entry = async ({ entry, target, toolchain, find_by_source, download, tags, timestamp, release = async () => { } }) => {
+export const ingest_resolved_entry = async ({ entry, target, toolchain, find_by_source, download, timestamp, release = async () => { } }) => {
     const source = await prepare_resolved_entry({ entry, target, toolchain, find_by_source, download });
-    return await commit_resolved_entry({ source, target, release, tags, timestamp });
+    return await commit_resolved_entry({ source, target, release, timestamp });
 };

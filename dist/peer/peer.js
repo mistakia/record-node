@@ -1,7 +1,7 @@
 // The peer: identity, content store, libraries, query index, ingest, and
 // replication over the §5.5.1 network, wired together behind the ApiPeer
 // surface.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { download_to_file } from '#ingest/download.ts';
 import { verify_toolchain } from '#ingest/toolchain.ts';
 import { generate_key_pair } from '#identity/key-pair.ts';
@@ -26,7 +26,7 @@ import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_
 import { import_files, import_url, local_file_phases } from "./imports.js";
 import { create_library_manager } from "./library.js";
 import { project_entry_events } from "./notify.js";
-import { default_own_library, listens_library, OWN_LIBRARY_NAME } from "./ownership.js";
+import { default_own_library, labels_library, listens_library } from "./ownership.js";
 import { keeps_blobs } from "./policy.js";
 import { create_peer_replication } from "./replication.js";
 import { create_resolver, refuse_input_errors } from "./resolver.js";
@@ -34,10 +34,7 @@ import { create_file_state_store, create_memory_state_store } from "./state.js";
 import { lock_data_dir } from "./lock.js";
 import { open_peer_store } from "./store.js";
 import { resolve_write_target } from "./write-target.js";
-export { OWN_LIBRARY_NAME };
 const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
-// Runs job under a batcher's hold, or as it is for a store with no batching.
-const held = async (batcher, job) => batcher === undefined ? await job() : await batcher.hold(job);
 export const create_peer = async ({ config: overrides = {}, resolve, download = download_to_file, network: join_network } = {}) => {
     const config = resolve_peer_config(overrides);
     const paths = config.data_dir === undefined ? undefined : data_paths(config.data_dir, config.index_dir);
@@ -69,7 +66,6 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         entry_blocks: create_entry_block_cache({ db, commit: index_commit }),
         state_store: paths === undefined ? create_memory_state_store() : create_file_state_store({ path: paths.libraries }),
         pin_record: store.pin_record,
-        hold_commits: async (job) => await held(store.pin_commit, async () => await held(index_commit, job)),
         keeps_blobs: (chain) => keeps_blobs(context)(chain),
         retained: () => context.blobs.retained(),
         on_entries: (input) => {
@@ -81,7 +77,8 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
                 }
                 queue_identity_sync(context);
             }
-            else if (context.identity !== undefined) {
+            // Item 6: a track's audio and artwork, or the profile's avatar (§4.6).
+            if (context.identity !== undefined) {
                 context.blobs.entries(input.library_address, input.entries)
                     .catch((error) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${error.message}`); });
             }
@@ -146,7 +143,13 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         context,
         identity: () => {
             const { key_pair, identity_address } = require_identity(context);
-            return { key_pair, identity_address, own_address: default_own_library(context) ?? '', listens_address: listens_library(context) ?? '' };
+            return {
+                key_pair,
+                identity_address,
+                own_address: default_own_library(context) ?? '',
+                listens_address: listens_library(context) ?? '',
+                labels_address: labels_library(context) ?? ''
+            };
         },
         ingest_file: async (file_path) => {
             refuse_when_stopping(context);
@@ -178,7 +181,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
             const key_pair = private_key === undefined ? generate_key_pair() : unmarshal_private_key(private_key);
             if (paths !== undefined)
                 await save_key_pair({ path: paths.identity, key_pair });
-            await open_identity(context, key_pair);
+            await open_identity(context, key_pair, { created: private_key === undefined });
             await context.replication?.sync();
             return {
                 id: identity_id_of(key_pair),
@@ -205,8 +208,11 @@ export const start_peer = async (peer) => {
     const { ffmpeg_path, fpcalc_path, allow_toolchain_mismatch, data_dir } = context.config;
     context.toolchain = verify_toolchain({ ffmpeg_path, fpcalc_path, allow_version_mismatch: allow_toolchain_mismatch });
     context.toolchain.catch(() => { });
-    const key_pair = await load_key_pair({ path: data_dir === undefined ? undefined : data_paths(data_dir).identity });
-    await open_identity(context, key_pair);
+    // A key load_key_pair generates is a new identity (§4.8.3).
+    const key_path = data_dir === undefined ? undefined : data_paths(data_dir).identity;
+    const created = key_path === undefined || !existsSync(key_path);
+    const key_pair = await load_key_pair({ path: key_path });
+    await open_identity(context, key_pair, { created });
     await serialise_write(context, async () => { await finish_pending_unlinks(context); });
     await context.replication?.start();
     await context.census?.start();

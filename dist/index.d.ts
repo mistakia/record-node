@@ -1,4 +1,4 @@
-export { create_peer, start_peer, stop_peer, OWN_LIBRARY_NAME } from '#peer/peer.ts';
+export { create_peer, start_peer, stop_peer } from '#peer/peer.ts';
 export type { CreatePeerOptions, Peer } from '#peer/peer.ts';
 export { DEFAULT_PEER_CONFIG, TOOL_PINS } from '#peer/config.ts';
 export type { PeerConfig } from '#peer/config.ts';

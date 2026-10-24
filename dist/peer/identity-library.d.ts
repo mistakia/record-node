@@ -1,5 +1,6 @@
 import type { KeyPair } from '#identity/key-pair.ts';
 import type { VerifiedEntry } from '#oplog/accept.ts';
+import type { ProfileRecord } from '#types/entry.ts';
 import { type MetaLogPage, type MetaLogRecord } from '#types/peer.ts';
 import { type PeerContext } from './context.ts';
 export declare const try_open_library: (context: PeerContext, address: string) => Promise<void>;
@@ -14,11 +15,20 @@ export declare const unlink_library: (context: PeerContext, address: string) => 
 export declare const create_own_library: (context: PeerContext, { discriminator }: {
     discriminator?: string | undefined;
 }) => Promise<string>;
+export declare const read_profile: (context: PeerContext) => ProfileRecord | undefined;
+export declare const write_profile: (context: PeerContext, fields: {
+    name?: string;
+    bio?: string;
+    avatar?: string;
+}) => Promise<ProfileRecord | undefined>;
 export declare const retire_own_library: (context: PeerContext, address: string) => Promise<void>;
 export declare const ensure_listens_library: (context: PeerContext) => Promise<string>;
+export declare const ensure_labels_library: (context: PeerContext) => Promise<string>;
 export declare const sync_identity: (context: PeerContext) => Promise<void>;
 export declare const queue_identity_sync: (context: PeerContext) => void;
-export declare const open_identity: (context: PeerContext, key_pair: KeyPair) => Promise<void>;
+export declare const open_identity: (context: PeerContext, key_pair: KeyPair, { created }: {
+    created: boolean;
+}) => Promise<void>;
 export declare const meta_log_record: (context: PeerContext, entry: VerifiedEntry) => MetaLogRecord;
 export declare const read_meta_log: (context: PeerContext, { offset, limit, type, current_only }: {
     offset: number;

@@ -50,27 +50,21 @@ export const decode_heads_message = (data) => {
         return undefined;
     return { heads: value.heads, incomplete: value.incomplete === true };
 };
-// A LoadedAboutEntry is the signed about entry with entry.hash alongside and
-// the about payload inlined in place of the envelope content CID. It is a hint
-// only; receivers re-fetch the canonical entry by hash to authenticate it.
-export const build_loaded_about_entry = ({ hash, entry, about_content }) => {
-    const { op, key, value } = entry.payload;
-    return {
-        hash,
-        id: entry.id,
-        payload: {
-            op,
-            key,
-            value: { id: value.id, timestamp: value.timestamp, v: value.v, type: value.type, content: about_content }
-        },
-        next: entry.next,
-        refs: entry.refs,
-        v: entry.v,
-        clock: entry.clock,
-        key: entry.key,
-        sig: entry.sig
-    };
-};
+// A LoadedAboutEntry is the signed entry carrying a library's About record
+// (§2.6), with entry.hash alongside. The record is inline, so the entry is
+// sent as signed. It is a hint only; receivers re-fetch the canonical entry
+// by hash to authenticate it.
+export const build_loaded_about_entry = ({ hash, entry }) => ({
+    hash,
+    id: entry.id,
+    payload: entry.payload,
+    next: entry.next,
+    refs: entry.refs,
+    v: entry.v,
+    clock: entry.clock,
+    key: entry.key,
+    sig: entry.sig
+});
 // The announcement within the bound (§5.3.2): linked logs that would push it
 // over are left out, and an about entry too large alone is not sent at all.
 export const encode_announcement = ({ about, logs }) => {
@@ -84,22 +78,20 @@ export const encode_announcement = ({ about, logs }) => {
         kept.pop();
     }
 };
+// The library is the one the signed entry names as its id.
 const announced_library = (value) => {
-    if (!is_record(value) || typeof value.hash !== 'string' || !is_record(value.payload))
-        return undefined;
-    const content = is_record(value.payload.value) ? value.payload.value.content : undefined;
-    if (!is_record(content) || typeof content.address !== 'string')
+    if (!is_record(value) || typeof value.hash !== 'string' || !is_record(value.payload) || typeof value.id !== 'string')
         return undefined;
     try {
-        parse_library_address(content.address);
+        parse_library_address(value.id);
     }
     catch {
         return undefined;
     }
-    return { address: content.address, hint: value };
+    return { address: value.id, hint: value };
 };
 // §5.3.4 steps 1, 2 and 4: parse, and keep the about and each log whose
-// content.address is a valid library address. Undefined drops the message.
+// entry id is a valid library address. Undefined drops the message.
 export const decode_announcement = (data) => {
     const value = parse_bounded(data);
     if (!is_record(value))

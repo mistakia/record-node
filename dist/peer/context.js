@@ -66,7 +66,8 @@ const run_prepare = async (context, job) => {
 // commit makes the step 3 decision and appends, one at a time, so its dedup
 // check stays atomic. A prepare accepted before stop still commits. The
 // target is checked again at commit, since a library retired meanwhile
-// refuses new writes (§4.8.3), and a new entry is indexed.
+// refuses new writes (§4.8.3), and a new entry, with any label record the
+// commit appended after it, is indexed.
 export const ingest_into = async (context, target, { prepare, commit, blobs }) => {
     refuse_when_stopping(context);
     const { key_pair } = require_identity(context);
@@ -81,10 +82,12 @@ export const ingest_into = async (context, target, { prepare, commit, blobs }) =
             await release(blobs(prepared));
             throw error;
         }
-        const track = await commit({ target: track_target, prepared, release });
-        const entry = target.handle.oplog.entries.get(track.entry_hash);
-        if (!track.existing && entry !== undefined)
-            await context.libraries.register({ library_address: target.address, entries: [entry] });
+        const { label_entry_hash, ...track } = await commit({ target: track_target, prepared, release });
+        // The track PUT and the label record after it are indexed as one batch.
+        const hashes = [...(track.existing ? [] : [track.entry_hash]), ...(label_entry_hash === undefined ? [] : [label_entry_hash])];
+        const entries = hashes.flatMap((hash) => target.handle.oplog.entries.get(hash) ?? []);
+        if (entries.length > 0)
+            await context.libraries.register({ library_address: target.address, entries });
         return track;
     });
     context.ingests = tail;

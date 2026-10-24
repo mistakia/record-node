@@ -1,5 +1,6 @@
 import { type ResolvedAcChain } from '#access-control/resolve.ts';
 import { type PubSub } from '#fabric/pubsub.ts';
+import type { AboutRecord } from '#types/entry.ts';
 import type { AnnouncedLibrary } from './messages.ts';
 import type { Timers } from './timers.ts';
 export interface Announcer {
@@ -15,7 +16,7 @@ export declare const create_announcer: ({ pubsub, interval_ms, timers, build }: 
 }) => Announcer;
 export interface AuthenticatedAbout {
     readonly chain: ResolvedAcChain;
-    readonly content: Record<string, unknown>;
+    readonly about: AboutRecord;
 }
 export declare const authenticate_announced: ({ announced, get_block }: {
     announced: AnnouncedLibrary;

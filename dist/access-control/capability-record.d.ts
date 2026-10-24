@@ -1,7 +1,7 @@
 import { type Shape } from './filter.ts';
 export declare const ACCESS_RECORD_TYPES: readonly ["capability", "revocation"];
 export type AccessRecordType = typeof ACCESS_RECORD_TYPES[number];
-export declare const ACTIONS: readonly ["library.append_track", "library.append_tag", "library.update_about", "library.grant_capability"];
+export declare const ACTIONS: readonly ["library.append_track", "library.write_label", "library.update_about", "library.grant_capability"];
 export type Action = typeof ACTIONS[number];
 export declare const is_access_record_type: (value: unknown) => value is AccessRecordType;
 export declare const record_key: (value: unknown) => string;

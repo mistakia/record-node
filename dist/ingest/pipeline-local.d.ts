@@ -20,20 +20,18 @@ export declare const prepare_local_file: ({ file_path, target, toolchain, resolv
     toolchain: Toolchain;
     resolver?: readonly Record<string, unknown>[];
 }) => Promise<PreparedTrack>;
-export declare const commit_local_file: ({ prepared, target, release, tags, timestamp }: {
+export declare const commit_local_file: ({ prepared, target, release, timestamp }: {
     prepared: PreparedTrack;
     target: TrackTarget;
     release: ReleaseBlobs;
-    tags?: readonly string[] | undefined;
     timestamp?: number | undefined;
 }) => Promise<IngestedTrack>;
 export declare const prepared_blobs: (prepared: PreparedTrack) => readonly string[];
-export declare const ingest_local_file: ({ file_path, target, toolchain, resolver, tags, timestamp, release }: {
+export declare const ingest_local_file: ({ file_path, target, toolchain, resolver, timestamp, release }: {
     file_path: string;
     target: TrackTarget;
     toolchain: Toolchain;
     resolver?: readonly Record<string, unknown>[];
-    tags?: readonly string[];
     timestamp?: number;
     release?: ReleaseBlobs;
 }) => Promise<IngestedTrack>;

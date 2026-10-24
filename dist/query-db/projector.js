@@ -2,9 +2,9 @@
 // step 5, §4.7). The oplog's current-state map is the single resolution of
 // each key: the projector never re-sorts entries itself, it writes whatever
 // entry the oplog holds as current after an append or a merge.
-import { compute_about_id } from '#entry/id.ts';
-import { is_envelope_operation, is_put } from '#entry/operations.ts';
-import { decode_payload, validate_about_content, validate_log_content, validate_track_content } from '#entry/payload.ts';
+import { is_about_put, is_envelope_operation, is_labels_put, is_put } from '#entry/operations.ts';
+import { applies_label, is_label_key, label_pair_of } from '#entry/records.ts';
+import { decode_payload, validate_track_content } from '#entry/payload.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { is_record } from '#types/guards.ts';
 import { in_transaction } from "./schema.js";
@@ -14,20 +14,18 @@ const strings = (value) => Array.isArray(value) ? value.filter((item) => typeof 
 const record = (value) => is_record(value) ? value : {};
 // Single-valued artists come through as a plain string.
 const artists_of = (value) => typeof value === 'string' ? [value] : strings(value);
+// The tables a track or About key projects to. Labels are keyed per pair,
+// apart from the track (write_labels).
 const KEYED_TABLES = [
     ['tracks', 'track_id'],
-    ['tags', 'track_id'],
     ['resolvers', 'track_id'],
-    ['logs', 'log_id'],
     ['about', 'about_id']
 ];
 const create_statements = (db) => ({
     clear_key: KEYED_TABLES.map(([table, column]) => db.prepare(`DELETE FROM ${table} WHERE library_address = ? AND ${column} = ?`)),
     delete_entry: db.prepare('DELETE FROM entries WHERE library_address = ? AND key = ?'),
-    delete_tags: db.prepare('DELETE FROM tags WHERE library_address = ? AND track_id = ?'),
-    read_track_content: db.prepare('SELECT content_cid FROM tracks WHERE library_address = ? AND track_id = ?'),
-    update_entry: db.prepare('UPDATE entries SET entry_hash = ?, clock_time = ?, timestamp = ? WHERE library_address = ? AND key = ?'),
-    update_track_entry: db.prepare('UPDATE tracks SET entry_hash = ?, added_at_ms = ? WHERE library_address = ? AND track_id = ?'),
+    delete_label: db.prepare('DELETE FROM tags WHERE library_address = ? AND track_id = ? AND tag = ?'),
+    insert_label: db.prepare('INSERT INTO tags (library_address, track_id, tag, entry_hash) VALUES (?, ?, ?, ?)'),
     insert_entry: db.prepare(`
     INSERT INTO entries (library_address, key, entry_hash, op, type, clock_time, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
@@ -37,20 +35,18 @@ const create_statements = (db) => ({
       artists, album, album_artist, remixer, genre, bpm, duration_seconds, bitrate, codec, sample_rate,
       lossless, artwork, added_at_ms, listen_count
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT count(*) FROM listens WHERE track_id = ?2))`),
-    insert_tag: db.prepare('INSERT OR IGNORE INTO tags (library_address, track_id, tag) VALUES (?, ?, ?)'),
     insert_resolver: db.prepare(`
     INSERT OR IGNORE INTO resolvers (
       library_address, track_id, extractor, id, fulltitle, thumbnail, artist, alt_title, upload_date,
       webpage_url, duration_seconds
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-    insert_log: db.prepare('INSERT INTO logs (library_address, log_id, entry_hash, linked_address, alias) VALUES (?, ?, ?, ?, ?)'),
     insert_about: db.prepare(`
     INSERT INTO about (library_address, about_id, entry_hash, name, bio, location, avatar)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
     insert_listen: db.prepare(`
     INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
     VALUES (?, ?, ?, ?, ?)`),
-    remove_library: [...KEYED_TABLES.map(([table]) => table), 'entries', 'listens', 'library_totals'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
+    remove_library: [...KEYED_TABLES.map(([table]) => table), 'tags', 'entries', 'listens', 'library_totals'].map((table) => db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
     read_marker: db.prepare('SELECT heads, pending FROM library_heads WHERE library_address = ?'),
     upsert_marker: db.prepare(`
     INSERT INTO library_heads (library_address, heads, pending)
@@ -81,7 +77,7 @@ const touch_marker = ({ statements, oplog, stable }) => {
     statements.upsert_marker.run(oplog.chain.address, heads_of(oplog), JSON.stringify([...pending].sort()));
 };
 // First sight of a track in this library: the earliest envelope timestamp over
-// every known PUT for the key, so a relabel does not move it and a replay
+// every known PUT for the key, so a correction does not move it and a replay
 // reproduces it.
 const added_at_of = ({ oplog, key }) => {
     let earliest = Number.POSITIVE_INFINITY;
@@ -96,26 +92,14 @@ const write_track = ({ statements, library_address, entry, envelope, content, ad
     const tags = record(content?.tags);
     const audio = record(content?.audio);
     statements.insert_track.run(library_address, envelope.id, entry.hash, envelope.content, text(content?.hash), number(content?.size), text(tags.title), text(tags.artist), JSON.stringify(artists_of(tags.artists)), text(tags.album), text(tags.albumartist), text(tags.remixer), JSON.stringify(strings(tags.genre)), number(tags.bpm), number(audio.duration), number(audio.bitrate), text(audio.codec), number(audio.sampleRate), typeof audio.lossless === 'boolean' ? Number(audio.lossless) : null, JSON.stringify(strings(content?.artwork)), added_at_ms);
-    for (const tag of envelope.tags ?? [])
-        statements.insert_tag.run(library_address, envelope.id, tag);
     for (const resolver of Array.isArray(content?.resolver) ? content.resolver : []) {
         const { extractor, id, fulltitle, thumbnail, artist, alt_title, upload_date, webpage_url, duration } = record(resolver);
         statements.insert_resolver.run(library_address, envelope.id, text(extractor), text(id), text(fulltitle), text(thumbnail), text(artist), text(alt_title), text(upload_date), text(webpage_url), number(duration));
     }
 };
 const write_put = ({ statements, oplog, entry, envelope, content }) => {
-    const library_address = oplog.chain.address;
-    if (envelope.type === 'track') {
-        const added_at_ms = added_at_of({ oplog, key: envelope.id });
-        write_track({ statements, library_address, entry, envelope, content, added_at_ms });
-    }
-    else if (envelope.type === 'log') {
-        statements.insert_log.run(library_address, envelope.id, entry.hash, text(content?.address), text(content?.alias));
-    }
-    else if (content !== undefined) {
-        const { name, bio, location, avatar } = content;
-        statements.insert_about.run(library_address, envelope.id, entry.hash, text(name), text(bio), text(location), text(avatar));
-    }
+    const added_at_ms = added_at_of({ oplog, key: envelope.id });
+    write_track({ statements, library_address: oplog.chain.address, entry, envelope, content, added_at_ms });
 };
 // Replaces every row a key projects to with the projection of its current entry.
 const write_key = ({ statements, oplog, key, entry, content }) => {
@@ -124,36 +108,30 @@ const write_key = ({ statements, oplog, key, entry, content }) => {
         statement.run(library_address, key);
     // Deleted, not replaced, so the library_totals triggers see the old row go.
     statements.delete_entry.run(library_address, key);
-    if (entry === undefined || !is_envelope_operation(entry.operation))
+    if (entry === undefined)
         return;
     const { operation } = entry;
+    if (is_about_put(operation)) {
+        statements.insert_entry.run(library_address, key, entry.hash, 'PUT', 'about', entry.entry.clock.time, operation.value.timestamp);
+        statements.insert_about.run(library_address, key, entry.hash, operation.value.name, null, null, null);
+        return;
+    }
+    if (!is_envelope_operation(operation))
+        return;
     statements.insert_entry.run(library_address, key, entry.hash, operation.op, operation.value.type, entry.entry.clock.time, operation.value.timestamp);
     if (is_put(operation))
         write_put({ statements, oplog, entry, envelope: operation.value, content });
 };
-// The current entry of a key whose track row it only relabels: a track PUT of
-// the content the row already projects, whose payload was stored at that
-// write. Undefined when the key needs a full write.
-const relabel_entry = ({ statements, oplog, key, unfilled }) => {
-    if (unfilled.has(key))
-        return undefined;
-    const entry = oplog.current.get(key);
-    if (entry === undefined || !is_put(entry.operation) || entry.operation.value.type !== 'track')
-        return undefined;
-    const row = statements.read_track_content.get(oplog.chain.address, key);
-    return row?.content_cid === entry.operation.value.content ? entry : undefined;
-};
-// A relabel in place: the entry and its labels change, and nothing derived
-// from the content does, so the row keeps its content columns and search
-// index entry, and the content is never read.
-const write_relabel = ({ statements, oplog, key, entry }) => {
+// One label pair's row (§2.5): present while the pair's current entry under
+// §4.4.2, inert ones excluded (oplog.current), is a label record setting it.
+const write_label = ({ statements, oplog, key }) => {
     const library_address = oplog.chain.address;
-    const envelope = entry.operation.value;
-    statements.update_entry.run(entry.hash, entry.entry.clock.time, envelope.timestamp, library_address, key);
-    statements.update_track_entry.run(entry.hash, added_at_of({ oplog, key }), library_address, key);
-    statements.delete_tags.run(library_address, key);
-    for (const tag of envelope.tags ?? [])
-        statements.insert_tag.run(library_address, key, tag);
+    const [track_id, label] = label_pair_of(key);
+    statements.delete_label.run(library_address, track_id, label);
+    const entry = oplog.current.get(key);
+    if (entry !== undefined && is_labels_put(entry.operation) && applies_label(entry.operation.value, key)) {
+        statements.insert_label.run(library_address, track_id, label, entry.hash);
+    }
 };
 const write_listen = ({ statements, library_address, entry }) => {
     const { trackId, address, timestamp } = entry.operation;
@@ -161,7 +139,7 @@ const write_listen = ({ statements, library_address, entry }) => {
 };
 // The validated content payload behind a PUT, or undefined when the block is
 // not stored or does not validate for its envelope type.
-const load_content = async ({ read_content, oplog, entry }) => {
+const load_content = async ({ read_content, entry }) => {
     if (entry === undefined || !is_put(entry.operation))
         return undefined;
     const envelope = entry.operation.value;
@@ -169,15 +147,7 @@ const load_content = async ({ read_content, oplog, entry }) => {
     if (bytes === undefined)
         return undefined;
     try {
-        const value = decode_payload(bytes);
-        if (envelope.type === 'track')
-            return validate_track_content(value);
-        if (envelope.type === 'log')
-            return validate_log_content(value);
-        // A profile for another library never stands in for this one's (§2.6).
-        if (envelope.id !== compute_about_id(oplog.chain.address))
-            return undefined;
-        return validate_about_content({ value, library_address: oplog.chain.address });
+        return validate_track_content(decode_payload(bytes));
     }
     catch (error) {
         if (error instanceof ProtocolError)
@@ -201,31 +171,33 @@ export const create_projector = ({ db, read_content, commit }) => {
     // Content loads are async, and the oplog can move on while they run. A key
     // whose current entry changed under a load is loaded again, so a write
     // always carries the current entry at write time (§4.5 concurrent merges).
-    // A relabel loads nothing, and is judged again at write time; one that no
-    // longer holds is loaded in the next round.
+    // A label pair loads nothing, so it is written from the current state.
     const write_keys = async ({ oplog, keys }) => {
-        let pending = new Set(keys);
-        while (pending.size > 0) {
-            const unfilled = pending_of(statements, oplog.chain.address);
-            const relabels = new Set([...pending].filter((key) => relabel_entry({ statements, oplog, key, unfilled }) !== undefined));
-            const loaded = await Promise.all([...pending].filter((key) => !relabels.has(key)).map(async (key) => {
+        const labels = [];
+        let pending = new Set();
+        for (const key of keys) {
+            if (is_label_key(key))
+                labels.push(key);
+            else
+                pending.add(key);
+        }
+        let first = true;
+        while (first || pending.size > 0) {
+            const loaded = await Promise.all([...pending].map(async (key) => {
                 const entry = oplog.current.get(key);
-                return { key, entry, content: await load_content({ read_content, oplog, entry }) };
+                return { key, entry, content: await load_content({ read_content, entry }) };
             }));
             const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry);
             const retry = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key));
+            const label_keys = first ? labels : [];
             transact(() => {
-                for (const key of relabels) {
-                    const entry = relabel_entry({ statements, oplog, key, unfilled });
-                    if (entry === undefined)
-                        retry.add(key);
-                    else
-                        write_relabel({ statements, oplog, key, entry });
-                }
+                for (const key of label_keys)
+                    write_label({ statements, oplog, key });
                 for (const { key, entry, content } of stable)
                     write_key({ statements, oplog, key, entry, content });
                 touch_marker({ statements, oplog, stable });
             });
+            first = false;
             pending = retry;
         }
     };
@@ -249,15 +221,15 @@ export const create_projector = ({ db, read_content, commit }) => {
             return;
         }
         const touched = new Set(keys);
-        for (const { state_key } of entries)
-            if (state_key !== undefined)
-                touched.add(state_key);
+        for (const { state_keys } of entries)
+            for (const key of state_keys)
+                touched.add(key);
         await write_keys({ oplog, keys: touched });
     });
     return {
         project_entries,
         project_keys: ({ oplog, keys }) => enqueue(async () => {
-            if (oplog.chain.type === 'recordstore')
+            if (oplog.chain.type === 'recordstore' || oplog.chain.type === 'labels')
                 await write_keys({ oplog, keys });
         }),
         project_library: ({ oplog }) => enqueue(async () => {
