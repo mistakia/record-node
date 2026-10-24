@@ -34,17 +34,15 @@ export const open_test_library = async ({ name = 'library', type = 'recordstore'
   return { chain, block_store, writers, oplog: create_oplog({ chain }) }
 }
 
-export const track_put = ({ fingerprint = 'AQADtEmSaImS', content = { n: 0 }, timestamp, tags }: {
+export const track_put = ({ fingerprint = 'AQADtEmSaImS', content = { n: 0 }, timestamp }: {
   fingerprint?: string
   content?: unknown
   timestamp?: number
-  tags?: readonly string[]
 } = {}) => build_put_operation({
   envelope: build_track_envelope({
     id: compute_track_id(fingerprint),
     content_cid: content_cid_of(content),
-    ...(timestamp === undefined ? {} : { timestamp }),
-    ...(tags === undefined ? {} : { tags })
+    ...(timestamp === undefined ? {} : { timestamp })
   })
 })
 

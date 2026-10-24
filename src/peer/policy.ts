@@ -1,6 +1,5 @@
 // Replication policy (§4.6.1): node-local configuration deciding item 6, the
-// audio and artwork of each live Track entry and the avatar of the current
-// About entry, for a linked library. An own
+// audio and artwork of each live Track entry, for a linked library. An own
 // library is always full. A link recorded in the identity library defaults to
 // full, and one carried over from a v1.0 Log entry to index_only.
 
@@ -37,11 +36,13 @@ const is_track = (entry: VerifiedEntry): boolean => is_put(entry.operation) && e
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
 
 // The object a selective filter reads for one live Track entry (§4.6.1). A
-// field whose source is absent or null is left out.
-export const track_view = ({ library_address, entry, content }: {
+// field whose source is absent or null is left out. labels are the labels
+// applied to the track by the holding library and the own libraries.
+export const track_view = ({ library_address, entry, content, labels }: {
   library_address: string
   entry: VerifiedEntry
   content: Record<string, unknown>
+  labels: readonly string[]
 }): Record<string, unknown> => {
   const envelope = is_put(entry.operation) ? entry.operation.value : undefined
   const tags = (content.tags ?? {}) as Record<string, unknown>
@@ -50,7 +51,7 @@ export const track_view = ({ library_address, entry, content }: {
     library_address,
     added_by: entry.entry.key,
     added_at: envelope?.timestamp,
-    tags: [...envelope?.tags ?? []],
+    tags: [...labels],
     cid: content.hash,
     audio_size_bytes: content.size,
     duration_seconds: audio.duration,
@@ -74,7 +75,8 @@ export const keeps_blobs = (context: PeerContext) => (chain: ResolvedAcChain): K
   const policy = effective_policy(context, library_address)
   if (policy === undefined || policy.mode === 'index_only') return () => false
   if (policy.mode === 'full') return () => true
-  return ({ entry, content }) => !is_track(entry) || filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content }))
+  // No label index feeds the view yet, so a selective filter sees no labels.
+  return ({ entry, content }) => !is_track(entry) || filter_matches(policy.filter ?? { type: 'unknown' }, track_view({ library_address, entry, content, labels: [] }))
 }
 
 const connected = (context: PeerContext, address: string): boolean =>

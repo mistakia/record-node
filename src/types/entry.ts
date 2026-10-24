@@ -1,20 +1,36 @@
-// Entry, envelope, record, and operation shapes (§2.2, §2.7, §2.8, §3.4,
-// §3.5.5, §3.5.10, §4.1, §4.8.2).
+// Entry, envelope, record, and operation shapes (§2.2, §2.5, §2.6, §2.7,
+// §2.8, §3.4, §3.5.5, §3.5.10, §4.1, §4.8.2).
 
 import type { CompressedPubkeyHex } from './identity.ts'
 
-export type EnvelopeType = 'track' | 'log' | 'about'
-export type DeletableType = 'track' | 'log'
-
-// The read view of a record-entry envelope: known fields only. Unknown extras
-// on a received envelope are ignored (§2.2).
+// The read view of a track envelope: known fields only. Unknown extras on a
+// received envelope are ignored (§2.2).
 export interface Envelope {
   readonly id: string
   readonly timestamp: number
   readonly v: 1
-  readonly type: EnvelopeType
+  readonly type: 'track'
   readonly content: string
-  readonly tags?: readonly string[]
+}
+
+// A (track_id, label) pair of a label record (§2.5).
+export type LabelPair = readonly [track_id: string, label: string]
+
+// A label record, inline in a PUT keyed by the sha256 of its value (§2.5).
+export interface LabelsRecord {
+  readonly type: 'labels'
+  readonly v: 1
+  readonly timestamp: number
+  readonly set: readonly LabelPair[]
+  readonly unset: readonly LabelPair[]
+}
+
+// An About record, inline in a PUT keyed by sha256("about") (§2.6).
+export interface AboutRecord {
+  readonly type: 'about'
+  readonly v: 1
+  readonly timestamp: number
+  readonly name: string
 }
 
 // capability_id rides on an operation written under a capability (§2.8.1).
@@ -26,14 +42,29 @@ export interface PutOperation {
   readonly capability_id?: string
 }
 
+// A DEL tombstones a track; no other record is ever deleted (§2.8.2).
 export interface DelOperation {
   readonly op: 'DEL'
   readonly key: string
-  readonly value: { readonly type: DeletableType, readonly timestamp: number }
+  readonly value: { readonly type: 'track', readonly timestamp: number }
   readonly capability_id?: string
 }
 
 export type Operation = PutOperation | DelOperation
+
+export interface LabelsPut {
+  readonly op: 'PUT'
+  readonly key: string
+  readonly value: LabelsRecord
+  readonly capability_id?: string
+}
+
+export interface AboutPut {
+  readonly op: 'PUT'
+  readonly key: string
+  readonly value: AboutRecord
+  readonly capability_id?: string
+}
 
 // Capability and revocation records ride inline in a recordstore PUT (§3.5.5,
 // §3.5.10). The record is kept as received: its fields are read through the
@@ -72,7 +103,7 @@ export interface ListenPayload {
   readonly timestamp: number
 }
 
-export type EntryPayload = Operation | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload
+export type EntryPayload = Operation | LabelsPut | AboutPut | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload
 
 export interface LamportClock {
   readonly id: CompressedPubkeyHex

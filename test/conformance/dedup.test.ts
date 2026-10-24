@@ -5,10 +5,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compute_track_id } from '#entry/id.ts'
+import { build_labels_put } from '#entry/operations.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { compute_fingerprint } from '#ingest/fingerprint.ts'
 import { ingest_local_file } from '#ingest/pipeline-local.ts'
-import { get_live_entry } from '#oplog/dag.ts'
+import { append_entry, get_live_entry } from '#oplog/dag.ts'
 import { open_offline_helia_store } from '#test/helpers/helia.ts'
 import { make_tagged_copy, open_ingest_target, scratch_dir, stored_content, toolchain } from '#test/helpers/ingest.ts'
 import { append_track, oplog_state, open_test_library, track_put } from '#test/helpers/library.ts'
@@ -58,18 +59,28 @@ describe('dedup', () => {
     }
   })
 
-  test('§2.10 [MUST] duplicate_key treats a missing tags field as []', async () => {
+  test('§2.10 [MUST] duplicate_key is (library_address, envelope.id, envelope.content)', async () => {
     const oplog = await library()
-    append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT })
-    expect(() => append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, tags: [] })).toThrow('duplicates live entry')
+    append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, content: { n: 1 }, timestamp: 1 })
+    // Neither the timestamp nor an envelope extra, such as a v1 tags array, is in the tuple.
+    expect(() => append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, content: { n: 1 }, timestamp: 2 })).toThrow('duplicates live entry')
+    const live = get_live_entry({ oplog, key: compute_track_id(FINGERPRINT) })
+    const with_tags = { ...track_put({ fingerprint: FINGERPRINT, content: { n: 1 } }), value: { ...(live?.operation as { value: object }).value, tags: ['x'] } }
+    expect(() => append_entry({ oplog, key_pair: writer, payload: with_tags })).toThrow('duplicates live entry')
+    // A new content object for the same track is a new entry (§6.6), and so is
+    // the same content in another library.
+    expect(() => append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, content: { n: 2 } })).not.toThrow()
+    const other = (await open_test_library({ name: 'other', writers: [writer] })).oplog
+    expect(() => append_track({ oplog: other, key_pair: writer, fingerprint: FINGERPRINT, content: { n: 2 } })).not.toThrow()
   })
 
-  test('§2.10 [MUST] duplicate_key sorts tags lexicographically before comparison', async () => {
+  test('§2.10 [MUST] labelling a track never rewrites its envelope, so it is never a duplicate', async () => {
     const oplog = await library()
-    append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, tags: ['a', 'b'] })
-    expect(() => append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, tags: ['b', 'a'] })).toThrow('duplicates live entry')
-    // Re-labelling is a new entry over the same content CID (§6.6).
-    expect(() => append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT, tags: ['a', 'c'] })).not.toThrow()
+    const track = append_track({ oplog, key_pair: writer, fingerprint: FINGERPRINT })
+    const track_id = compute_track_id(FINGERPRINT)
+    append_entry({ oplog, key_pair: writer, payload: build_labels_put({ set: [[track_id, 'a']], timestamp: 1 }) })
+    append_entry({ oplog, key_pair: writer, payload: build_labels_put({ set: [[track_id, 'a']], timestamp: 2 }) })
+    expect(get_live_entry({ oplog, key: track_id })).toBe(track)
   })
 
   test('§2.10 [MUST] a rejected duplicate PUT is not appended to the oplog', async () => {

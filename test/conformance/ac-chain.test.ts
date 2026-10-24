@@ -60,14 +60,16 @@ describe('ac-chain', () => {
     expect(address).toBe(ac_chain_vector.library_address)
   })
 
-  test('§3.5.1 [check] creating a chain and resolving its address returns the same write-list', async () => {
-    const block_store = create_memory_block_store()
-    const write_keys = [writer.public_key, outsider.public_key]
-    const { address, cids } = await create_ac_chain({ name: 'library', type: 'listens', write_keys, block_store })
-    const chain = await resolve_ac_chain({ library_address: address, block_store })
-    expect(chain.write_list).toEqual(write_keys)
-    expect(chain.type).toBe('listens')
-    expect(chain.cids).toEqual(cids)
+  test('§3.5.1 [check] creating a chain and resolving its address returns the same write-list, for each library type', async () => {
+    for (const type of ['recordstore', 'labels', 'listens', 'identity'] as const) {
+      const block_store = create_memory_block_store()
+      const write_keys = [writer.public_key, outsider.public_key]
+      const { address, cids } = await create_ac_chain({ name: 'library', type, write_keys, block_store })
+      const chain = await resolve_ac_chain({ library_address: address, block_store })
+      expect(chain.write_list).toEqual(write_keys)
+      expect(chain.type).toBe(type)
+      expect(chain.cids).toEqual(cids)
+    }
   })
 
   test('§3.5.1 [MUST] all three chain objects are pinned when a library loads', async () => {

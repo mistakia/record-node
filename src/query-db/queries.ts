@@ -4,7 +4,7 @@
 
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 
-import { compute_about_id } from '#entry/id.ts'
+import { ABOUT_KEY } from '#entry/records.ts'
 
 export const TRACK_SORTS = ['title', 'artist', 'album', 'bpm', 'duration', 'bitrate', 'listen_count', 'added_at'] as const
 export type TrackSort = typeof TRACK_SORTS[number]
@@ -582,7 +582,7 @@ export const get_library_summary = ({ db, library_address }: {
 // The library's profile under its canonical about id (§2.6).
 export const get_about = ({ db, library_address }: { db: DatabaseSync, library_address: string }): About | undefined => {
   const row = db.prepare('SELECT name, bio, location, avatar FROM about WHERE library_address = ? AND about_id = ?')
-    .get(library_address, compute_about_id(library_address)) as Row | undefined
+    .get(library_address, ABOUT_KEY) as Row | undefined
   if (row === undefined) return undefined
   return {
     library_address,

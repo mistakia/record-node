@@ -23,7 +23,7 @@ export interface Oplog {
   readonly entries: Map<string, VerifiedEntry>
   readonly heads: Set<string>
   readonly referenced: Set<string>
-  // Entries per state key, and the current one of each (§4.4.2).
+  // Entries per state key, and the current one of each (§2.5, §4.4.2).
   readonly key_entries: Map<string, Set<string>>
   readonly current: Map<string, VerifiedEntry>
   // Capability and revocation records by entry hash (§4.4.1).
@@ -61,9 +61,9 @@ export const insert_entry = ({ oplog, entry }: { oplog: Oplog, entry: VerifiedEn
     oplog.heads.delete(parent)
   }
   if (!oplog.referenced.has(entry.hash)) oplog.heads.add(entry.hash)
-  if (entry.state_key !== undefined) {
-    const hashes = oplog.key_entries.get(entry.state_key) ?? new Set()
-    oplog.key_entries.set(entry.state_key, hashes.add(entry.hash))
+  for (const key of entry.state_keys) {
+    const hashes = oplog.key_entries.get(key) ?? new Set()
+    oplog.key_entries.set(key, hashes.add(entry.hash))
   }
   if (is_access_record(entry.operation)) {
     const index = entry.operation.value.type === 'capability' ? oplog.capabilities : oplog.revocations
@@ -116,7 +116,7 @@ export const refresh_access_state = ({ oplog, added }: { oplog: Oplog, added: re
     } else {
       oplog.inert.delete(hash)
     }
-    if (entry.state_key !== undefined) keys.add(entry.state_key)
+    for (const key of entry.state_keys) keys.add(key)
   }
   return { inert, keys }
 }
@@ -174,7 +174,7 @@ export const append_entry_with_access = ({ oplog, payload, key_pair }: {
   const entry = verify_entry({ oplog, hashed })
   insert_entry({ oplog, entry })
   const access = refresh_access_state({ oplog, added: [entry] })
-  refresh_current_state({ oplog, keys: entry.state_key === undefined ? access.keys : new Set([...access.keys, entry.state_key]) })
+  refresh_current_state({ oplog, keys: new Set([...access.keys, ...entry.state_keys]) })
   return { entry, access }
 }
 

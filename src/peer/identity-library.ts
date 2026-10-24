@@ -8,10 +8,9 @@ import { randomBytes } from 'node:crypto'
 import { derive_library_address, IDENTITY_LIBRARY_NAME, validate_discriminator } from '#encoding/library-address.ts'
 import { compute_log_id } from '#entry/id.ts'
 import { build_identity_del, build_identity_put } from '#entry/identity-record.ts'
-import { build_del_operation, is_identity_operation } from '#entry/operations.ts'
+import { is_identity_operation } from '#entry/operations.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
-import { get_live_entry } from '#oplog/dag.ts'
 import { ProtocolError } from '#types/errors.ts'
 import type { LibraryType } from '#types/library.ts'
 import { PeerError, type MetaLogPage, type MetaLogRecord } from '#types/peer.ts'
@@ -51,19 +50,11 @@ const drop_replica = async (context: PeerContext, address: string): Promise<void
   await context.libraries.unlink_library(address)
 }
 
-// Records the unlink in the identity library, and with a Log DEL in each
-// active own library a v1.0 Log entry links it from, so v1.0 peers see it.
+// Records the unlink in the identity library.
 const unlink_address = async (context: PeerContext, address: string): Promise<void> => {
-  const { key_pair } = require_identity(context)
   await context.libraries.begin_unlink(address)
   if (link_set(context).some((link) => link.address === address)) {
     await append_identity_record(context, build_identity_del({ type: 'link', key: compute_log_id(address) }))
-  }
-  for (const own of own_libraries(context)) {
-    const oplog = context.libraries.get(own.address)?.oplog
-    if (own.retired || own.type !== 'recordstore' || oplog === undefined) continue
-    if (get_live_entry({ oplog, key: compute_log_id(address) }) === undefined) continue
-    await context.libraries.append({ library_address: own.address, payload: build_del_operation({ key: compute_log_id(address), type: 'log' }), key_pair })
   }
   await drop_replica(context, address)
 }
@@ -228,7 +219,7 @@ export const meta_log_record = (context: PeerContext, entry: VerifiedEntry): Met
     record: value,
     clock_time: entry.entry.clock.time,
     timestamp_ms: typeof value.timestamp === 'number' ? value.timestamp : 0,
-    is_current: is_identity_operation(operation) && entry.state_key !== undefined && oplog?.current.get(entry.state_key) === entry
+    is_current: is_identity_operation(operation) && entry.state_keys.some((slot) => oplog?.current.get(slot) === entry)
   }
 }
 
@@ -245,7 +236,7 @@ export const read_meta_log = (context: PeerContext, { offset, limit, type, curre
   // Filtered and sorted as entries, so only the page is built into records:
   // the app's head-check asks for one.
   const is_current = (entry: VerifiedEntry): boolean =>
-    is_identity_operation(entry.operation) && entry.state_key !== undefined && oplog.current.get(entry.state_key) === entry
+    is_identity_operation(entry.operation) && entry.state_keys.some((slot) => oplog.current.get(slot) === entry)
   const entries = [...oplog.entries.values()]
     .filter((entry) => (type === undefined || String((entry.operation as { value: Record<string, unknown> }).value.type) === type) &&
       (!current_only || is_current(entry)))

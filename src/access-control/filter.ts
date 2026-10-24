@@ -3,6 +3,8 @@
 // malformed node, which rejects or refuses, from an unknown one, which fails
 // closed: a filter holding any unknown node matches nothing, even under not.
 
+import { utf8ToBytes } from '@noble/hashes/utils.js'
+
 import { is_record } from '#types/guards.ts'
 
 // ok, unknown (fail closed), or malformed (reject or refuse).
@@ -20,6 +22,7 @@ const is_scalar = (value: unknown): boolean =>
   value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
 
 const RANGE_BOUNDS = ['gte', 'gt', 'lte', 'lt'] as const
+const PREFIX_MAX_BYTES = 128
 
 export const filter_shape = (node: unknown, depth = 1): Shape => {
   if (depth > MAX_SPEC_DEPTH || !is_record(node) || typeof node.type !== 'string') return 'malformed'
@@ -38,6 +41,9 @@ export const filter_shape = (node: unknown, depth = 1): Shape => {
       return known(['type', 'field', ...RANGE_BOUNDS], typeof node.field === 'string' && bounds.length >= 1 &&
         bounds.every((bound) => typeof node[bound] === 'number'))
     }
+    case 'prefix':
+      return known(['type', 'field', 'prefix'], typeof node.field === 'string' && typeof node.prefix === 'string' &&
+        node.prefix.length > 0 && utf8ToBytes(node.prefix).length <= PREFIX_MAX_BYTES)
     case 'and':
     case 'or': {
       const filters = node.filters
@@ -61,6 +67,14 @@ const holds = (resolved: unknown, value: unknown): boolean =>
     ? resolved.some((element) => typeof element === typeof value && element === value)
     : resolved !== undefined && typeof resolved === typeof value && resolved === value
 
+// Code point by code point, so a prefix ending in half a surrogate pair never
+// matches the whole character.
+const starts_with = (value: unknown, prefix: string): boolean => {
+  if (typeof value !== 'string') return false
+  const [head, wanted] = [Array.from(value), Array.from(prefix)]
+  return wanted.length <= head.length && wanted.every((point, index) => head[index] === point)
+}
+
 // Evaluates a node whose whole tree is known to be well formed.
 const evaluate = (node: Record<string, unknown>, subject: unknown): boolean => {
   switch (node.type) {
@@ -74,6 +88,11 @@ const evaluate = (node: Record<string, unknown>, subject: unknown): boolean => {
       const bound = (name: typeof RANGE_BOUNDS[number]) => node[name] as number
       return (!('gte' in node) || value >= bound('gte')) && (!('gt' in node) || value > bound('gt')) &&
         (!('lte' in node) || value <= bound('lte')) && (!('lt' in node) || value < bound('lt'))
+    }
+    case 'prefix': {
+      const value = resolve_path(subject, node.field as string)
+      const prefix = node.prefix as string
+      return Array.isArray(value) ? value.some((element) => starts_with(element, prefix)) : starts_with(value, prefix)
     }
     case 'and':
       return (node.filters as Array<Record<string, unknown>>).every((filter) => evaluate(filter, subject))

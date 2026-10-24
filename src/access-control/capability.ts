@@ -3,13 +3,13 @@
 // and which revocations are effective, from which inertness follows. A
 // write-list signer is authorised by membership alone (§3.5.4).
 
-import { is_access_record, is_envelope_operation, is_put } from '#entry/operations.ts'
+import { is_access_record } from '#entry/operations.ts'
 import type { HashedEntry } from '#entry/signed.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { in_causal_past } from '#oplog/causal.ts'
-import { compare_bytes, compare_current_state, envelope_timestamp } from '#oplog/current-state.ts'
+import { compare_bytes, envelope_timestamp } from '#oplog/current-state.ts'
 import type { Oplog } from '#oplog/dag.ts'
-import type { EntryPayload } from '#types/entry.ts'
+import type { EntryPayload, LabelsRecord } from '#types/entry.ts'
 import type { ProtocolErrorCode } from '#types/errors.ts'
 import { capability_fails_closed, condition_shape, grantee_matches } from './capability-record.ts'
 import { filter_matches } from './filter.ts'
@@ -81,34 +81,30 @@ export const effective_revocations = (oplog: Oplog, revocations: Iterable<Verifi
   return effective
 }
 
-// §3.5.6 base entry of an append_tag PUT: among the track entries for its id
-// in its causal past, the one §4.4.2 puts first, inertness ignored.
-const base_entry = (oplog: Oplog, { id, next }: { id: string, next: readonly string[] }): VerifiedEntry | undefined => {
-  let base: VerifiedEntry | undefined
-  for (const hash of oplog.key_entries.get(id) ?? []) {
-    const candidate = oplog.entries.get(hash)
-    if (candidate === undefined || !is_envelope_operation(candidate.operation) || candidate.operation.value.type !== 'track') continue
-    if (!in_causal_past({ entries: oplog.entries, ancestor: hash, next })) continue
-    if (base === undefined || compare_current_state(candidate, base) < 0) base = candidate
-  }
-  return base
-}
-
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
 
-// The actions that authorise a PUT (§3.5.6), read from the value as signed.
-const covering_actions = (oplog: Oplog, { value, next }: { value: Record<string, unknown>, next: readonly string[] }): string[] => {
+// The action that authorises a PUT (§3.5.6), read from the value as signed.
+const covering_action = (value: Record<string, unknown>): string | undefined => {
   switch (value.type) {
-    case 'track': {
-      const base = base_entry(oplog, { id: value.id as string, next })
-      const prior = base?.operation
-      const keeps_base = prior !== undefined && is_put(prior) && prior.value.content === value.content && (prior.value.tags ?? []).every((tag) => strings(value.tags).includes(tag))
-      return keeps_base ? ['library.append_track', 'library.append_tag'] : ['library.append_track']
-    }
-    case 'about': return ['library.update_about']
-    case 'capability': return ['library.grant_capability']
-    default: return []
+    case 'track': return 'library.append_track'
+    case 'labels': return 'library.write_label'
+    case 'about': return 'library.update_about'
+    case 'capability': return 'library.grant_capability'
+    default: return undefined
   }
+}
+
+// What a capability's filter is evaluated against (§3.5.6): a track envelope
+// or About record as it appears in the value, and a label record once per
+// pair; none for a capability record.
+const filter_subjects = (value: Record<string, unknown>): readonly unknown[] => {
+  if (value.type === 'track' || value.type === 'about') return [value]
+  if (value.type !== 'labels') return []
+  const { set, unset } = value as unknown as LabelsRecord
+  return [
+    ...set.map(([track_id, label]) => ({ type: 'label', op: 'set', track_id, label })),
+    ...unset.map(([track_id, label]) => ({ type: 'label', op: 'unset', track_id, label }))
+  ]
 }
 
 // Why a capability's conditions fail an operation, or undefined when they hold.
@@ -157,15 +153,15 @@ export const authorise_entry = ({ oplog, hashed, operation }: {
     return in_scope ? ok : fail('capability_denied', `${key} issued neither ${target} nor a capability above it`)
   }
   // Step 5, against every capability in the chain.
-  const actions = covering_actions(oplog, { value, next })
-  const subject = value.type === 'track' ? { ...value, tags: value.tags ?? [] } : value
+  const action = covering_action(value)
+  const subjects = filter_subjects(value)
   for (const hash of chain) {
     const capability = capability_record(oplog.entries.get(hash)) as Record<string, unknown>
     if (capability_fails_closed(capability)) return fail('capability_denied', `capability ${hash} carries a field this version does not define`)
-    if (!strings(capability.actions).some((action) => actions.includes(action))) {
+    if (action === undefined || !strings(capability.actions).includes(action)) {
       return fail('capability_denied', `capability ${hash} grants no action that authorises this ${String(value.type)} PUT`)
     }
-    if ((value.type === 'track' || value.type === 'about') && !filter_matches(capability.filter, subject)) {
+    if (!subjects.every((subject) => filter_matches(capability.filter, subject))) {
       return fail('capability_denied', `capability ${hash}'s filter does not match the write`)
     }
     const failure = condition_failure(capability.conditions, value.timestamp as number)

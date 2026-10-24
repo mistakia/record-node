@@ -11,10 +11,9 @@ import { find_existing_track, put_track, type TrackTarget } from './put-track.ts
 // The content object must already be in the local store; fetching it from
 // the network is the replication engine's job. Its §2.4.1 required fields are
 // validated before anything is appended.
-export const ingest_cid = async ({ content_cid, target, tags, timestamp }: {
+export const ingest_cid = async ({ content_cid, target, timestamp }: {
   content_cid: string
   target: TrackTarget
-  tags?: readonly string[]
   timestamp?: number
 }): Promise<IngestedTrack> => {
   parse_cid(content_cid)
@@ -24,5 +23,5 @@ export const ingest_cid = async ({ content_cid, target, tags, timestamp }: {
   const track_id = compute_track_id((content.tags as Record<string, unknown>).acoustid_fingerprint as string)
   const existing = find_existing_track({ oplog: target.oplog, track_id })
   if (existing !== undefined) return existing
-  return await put_track({ target, content, tags, timestamp })
+  return await put_track({ target, content, timestamp })
 }

@@ -1,5 +1,5 @@
 // Conformance vectors ported from record-docs spec/fixtures (Record Protocol
-// v1.1.0). Inputs and expected outputs are typed constants; vectors.test.ts
+// v2.0.0). Inputs and expected outputs are typed constants; vectors.test.ts
 // recomputes every expected value with the same libraries the generators use
 // (@ipld/dag-cbor, @noble/curves, @noble/hashes, multiformats,
 // ipfs-unixfs-importer), so a porting error fails here rather than in a later
@@ -90,73 +90,48 @@ export const content_cid_vector = {
   cid: 'zBwWX8pQhjGaQLy57vXmwHUBxxMDeft5dzud3gari9HqUpFFzqEqfLLspwfCw7k9YSNz59f5JWJZnqP8eN8SDHwEEwrFk'
 } as const
 
-// F2 — §2.2.1 envelope vectors (track, log, about).
+// F2 — §2.2.1 track envelope and §2.6 inline About record.
 export const ENVELOPE_TIMESTAMP = 1611272666695
-const ENVELOPE_LIBRARY_ADDRESS = SIGNING_LIBRARY_ID
 const ENVELOPE_FINGERPRINT = 'AQADtEmSaImSJI+jiyiOI4+jHE+iJI/jHE+iJ4+jHE+iJ4+jHE+iJ4+jHA'
-const ENVELOPE_LINKED_LIBRARY = '/record/zdpuAxgMzJaTqK1HQU6CKQ9p2vUaG4eR9zUk4HwYj9Q1pK7DC/library'
 
-export const envelope_vectors = [
-  {
-    type: 'track',
-    id_input: ENVELOPE_FINGERPRINT,
-    id: '85709b6f3c244870af362add509f1f966451d299657de5a8c868c0092ec2173d',
-    payload: {
-      hash: FIXED_AUDIO_CID,
-      size: 4321987,
-      tags: {
-        acoustid_fingerprint: ENVELOPE_FINGERPRINT,
-        title: 'Vector Track',
-        artist: 'Test Vector',
-        artists: ['Test Vector'],
-        album: 'Spec Fixtures',
-        genre: ['ambient']
-      },
-      audio: {
-        codec: 'FLAC',
-        bitrate: 1024000,
-        duration: 270.5,
-        lossless: true,
-        container: 'FLAC',
-        sampleRate: 44100,
-        numberOfSamples: 11923050,
-        numberOfChannels: 2
-      },
-      artwork: [],
-      resolver: []
+export const track_envelope_vector = {
+  id_input: ENVELOPE_FINGERPRINT,
+  id: '85709b6f3c244870af362add509f1f966451d299657de5a8c868c0092ec2173d',
+  payload: {
+    hash: FIXED_AUDIO_CID,
+    size: 4321987,
+    tags: {
+      acoustid_fingerprint: ENVELOPE_FINGERPRINT,
+      title: 'Vector Track',
+      artist: 'Test Vector',
+      artists: ['Test Vector'],
+      album: 'Spec Fixtures',
+      genre: ['ambient']
     },
-    payload_cbor_length: 438,
-    content: 'zBwWX8s8jVcoQvakEsZzXaVeakz5eXiyaqb6jPBdQ4wYyz2LT8iKXYneYTrRWxqtEhcyyv8sMcL5ivsGosuE4saCCimeb',
-    envelope_extras: { tags: ['downtempo', 'fixture'] },
-    envelope_cbor_length: 230
-  },
-  {
-    type: 'log',
-    id_input: ENVELOPE_LINKED_LIBRARY,
-    id: 'cf040389e127294af13897e09beff5a7485eb26e7525dce9d5e1182db5dbafb1',
-    payload: { address: ENVELOPE_LINKED_LIBRARY, alias: 'friend' },
-    payload_cbor_length: 89,
-    content: 'zBwWX9D7vCE9TVXyvumtVe2u66g4gGy56wqWVfDFM54WZ7dxrj8BV83AS82Tnc68P6cTy8hkonpuoP32Bq4ntT6vqetWR',
-    envelope_extras: {},
-    envelope_cbor_length: 204
-  },
-  {
-    type: 'about',
-    id_input: ENVELOPE_LIBRARY_ADDRESS,
-    id: 'd4ebc6d0663387a931b1b906d9efe078ab4d963e2a84a67f1c83cc83aebf0169',
-    payload: {
-      address: ENVELOPE_LIBRARY_ADDRESS,
-      name: 'Spec Fixtures Library',
-      bio: 'Deterministic test vectors for the Record Protocol v1 spec.',
-      location: 'in vitro',
-      avatar: null
+    audio: {
+      codec: 'FLAC',
+      bitrate: 1024000,
+      duration: 270.5,
+      lossless: true,
+      container: 'FLAC',
+      sampleRate: 44100,
+      numberOfSamples: 11923050,
+      numberOfChannels: 2
     },
-    payload_cbor_length: 194,
-    content: 'zBwWX7ax1zjie7XCTHyf3gyPrF56FJSZQCemrWE4CUHg2RisFqkPhXHa4F2L1YzHRXYyLvMYgHN5LebjqWfseon5TQqCg',
-    envelope_extras: {},
-    envelope_cbor_length: 206
-  }
-] as const
+    artwork: [],
+    resolver: []
+  },
+  payload_cbor_length: 438,
+  content: 'zBwWX8s8jVcoQvakEsZzXaVeakz5eXiyaqb6jPBdQ4wYyz2LT8iKXYneYTrRWxqtEhcyyv8sMcL5ivsGosuE4saCCimeb',
+  envelope_cbor_hex:
+    'a5617601626964784038353730396236663363323434383730616633363261646435303966316639363634353164323939363537646535613863383638633030393265633231373364647479706565747261636b67636f6e74656e74785d7a427757583873386a56636f5176616b45735a7a58615665616b7a3565586979617162366a50426451347759797a324c5438694b58596e65595472525778717445686379797638734d634c35697673476f7375453473614343696d65626974696d657374616d701b000001772755be47'
+} as const
+
+export const about_record_vector = {
+  record: { type: 'about', v: 1, timestamp: ENVELOPE_TIMESTAMP, name: 'Spec Fixtures Library' },
+  record_cbor_hex: 'a4617601646e616d657553706563204669787475726573204c69627261727964747970656561626f75746974696d657374616d701b000001772755be47',
+  operation_key: 'a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1'
+} as const
 
 // F3 — §3.5.1 AC chain and §3.6 library address.
 export const ac_chain_vector = {
@@ -209,43 +184,28 @@ export const current_state_vector = {
   winner: 'C'
 } as const
 
-// F6 — §5.3.2 LoadedAboutEntry and §5.4.1 heads message.
-const NETWORK_LIBRARY_ADDRESS = ac_chain_vector.library_address
-const NETWORK_ABOUT_ID = '4e44c1dc1a37e40a1305a7d88f3b49c0e83969c9d0319da7a64afeb25817a742'
-
-export const loaded_about_entry_vector = {
-  message: {
-    hash: signed_entry_vector.entry_hash,
-    id: NETWORK_LIBRARY_ADDRESS,
+// F6 — §5.3.2 the signed entry carrying the F3 library's About record, as an
+// announcement carries it, and the §5.4.1 heads message naming it.
+export const announced_about_vector = {
+  entry: {
+    id: ac_chain_vector.library_address,
     payload: {
       op: 'PUT',
-      key: NETWORK_ABOUT_ID,
-      value: {
-        id: NETWORK_ABOUT_ID,
-        timestamp: 1611272666695,
-        v: 1,
-        type: 'about',
-        content: {
-          address: NETWORK_LIBRARY_ADDRESS,
-          name: 'Spec Fixtures Library',
-          bio: 'Deterministic test vectors for the Record Protocol v1 spec.',
-          location: 'in vitro',
-          avatar: null
-        }
-      }
+      key: 'a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1',
+      value: { type: 'about', v: 1, timestamp: 1700000000000, name: 'Spec Fixtures Library' }
     },
     next: [] as string[],
     refs: [] as string[],
     v: 2,
     clock: { id: TEST_PUBKEY_HEX, time: 1 },
     key: TEST_PUBKEY_HEX,
-    sig: signing_vector.signature_der_hex
+    sig: '3044022077980398e1cbc79f8706c733403a71183f69974084da311312b8eda85ac56112022012261dcc6177fd0f98f89e43c944cf6f6e23711db27fcd152ffa551ba32a0cb4'
   },
-  json_byte_length: 1060
+  entry_hash: 'zBwWX58W4xgGQCyXAQHz17NN4gavMie9ABm2cMExP1Tt7F1iK4dvop4H7pPnTYQucmGCyXgNY3ohXG5Ai13db918VJUGp'
 } as const
 
 export const heads_message_vector = {
-  json: `{"type":"heads","heads":["${signed_entry_vector.entry_hash}"]}`,
+  json: `{"type":"heads","heads":["${announced_about_vector.entry_hash}"]}`,
   json_byte_length: 122
 } as const
 
@@ -306,13 +266,14 @@ export const meta_log_vector = [
   { label: 'a stray library PUT of mixes', signed_bytes: 773, entry_hash: 'zBwWX8M4t6XTCqyoP198pk8KUbJj3N4vWmJ6J5ST4uqsQMCCQmy9RB6p2b1ejNXbSNoVTyvMK42TpSbVMWnSGm4HApgKY' }
 ] as const
 
-// F10 — §3.5.5 to §3.5.10: capability C, a write W under it, and the owner's
-// revocation R, in the F3 library. capability-vector.ts rebuilds every case.
+// F10 — §3.5.5 to §3.5.10: capability C, a label write W under it, and the
+// owner's revocation R, in the F3 library. capability-vector.ts rebuilds
+// every case.
 export const capability_vector = {
-  case_count: 327,
-  C: 'zBwWX61Hk9TaWwav3Kd5fTzdx4TEyJTU4NzSjhqDqDjyz9UoQPm7poFUmfJMQxUQU6VCbbF53C9MJbQW8HZGdwiNSb1Y1',
-  W: 'zBwWX9GLKF4xVufTPhStjkvwmB1NV2imR8QiGJD755BqTdsPc51ur6hEyS3qBoTwj9mcofwTYhPwvcSog53hmjp2f2NL8',
-  R: 'zBwWX7UthQBfd1XSMNssAhMwaKo38puex8DcjceV4cV3Gn59nkJYyvoDivq62GeFaEeskziMh6wb5EwBuLnUcn5DUsSwx'
+  case_count: 341,
+  C: 'zBwWX9ifGJ2hJUEXcWfBa8XPPXJeTVmueycsBVhJgF1LcXtKDhTDfXfGZJ6ThHMLSY55bdcN4kayr367jCXkmTj1X8kXo',
+  W: 'zBwWX9PQytHs1BvwyY41t41aqM2eG5qDyHJBcF4whar1Txj1iH2VpRDoPiuVDhpg18JTpahPFkhtJ6BCjfm9i8nKtMsXe',
+  R: 'zBwWX5Pjot9No4iFvojbv2EpRP4up8DzUgpwuH8TmiKrEpGBgxJxZ7CvbTBt7cmfN1DH9pZQE3Bm7NCKTToPMoT91Frd6'
 } as const
 
 // F11 — §6.1.6 degenerate fingerprints: literal fpcalc output (-json
@@ -336,4 +297,28 @@ export const degenerate_fingerprint_vector = {
     values: 948,
     distinct: 786
   }
+} as const
+
+// F12 — §2.5 and §4.4.2 label records in the F3 library, owner k = 1, each
+// naming the entries it cites: per-pair state, a tie broken by entry.hash,
+// and labels outliving a track DEL. Track B is held by no library.
+const LABEL_TRACK_A = 'cd24f44d2ee1fb5dba99a6cac74f0398f5a909f3341688d19ea59926c8ef693f'
+const LABEL_TRACK_B = '0c867c27728c4c1f9273bdc944f6043ebdbb98b7599ae90486549717c06418d6'
+export const label_vector = {
+  track_a: LABEL_TRACK_A,
+  track_b: LABEL_TRACK_B,
+  entries: [
+    { name: 'E1', next: [], record: { timestamp: 1700000000000, set: [[LABEL_TRACK_A, 'mix/x'], [LABEL_TRACK_A, 'lifestream-radio'], [LABEL_TRACK_B, 'mix/x']], unset: [] }, key: 'f38f274cb0b9b709657ca3815bfa9a574b88ce16e5eb2afd814e93aba2e84383', entry_hash: 'zBwWX9xHYcyaGijdXW1c7cBGTT1BMX7puKLzv8sxW88xiZEuhk6Jwji8bXpixuFNs5xZUvRV4eEvcHdWh6HLhsNmJX9nT' },
+    { name: 'E2', next: ['E1'], record: { timestamp: 1700000000001, set: [], unset: [[LABEL_TRACK_A, 'mix/x']] }, key: 'f228c4f7c920f3062473aeffe3dd70f42f6af466e268b2afd9b63fb8c149e0d6', entry_hash: 'zBwWX9xxmJBCHW9iy8X8daY14uogwZGqAmALsxn99eT3UxNSzeA86BNFPNw6hNsF9NYUn1wNeg9RQ2oWdScGeSpf7CNrg' },
+    { name: 'E3a', next: ['E2'], record: { timestamp: 1700000000002, set: [[LABEL_TRACK_B, 'y']], unset: [] }, key: '9760b282a8c46eec35d64aca23f7089eeb793f81f92af45ad43b84ead3e05852', entry_hash: 'zBwWX83N6tEvQ2q38PvPhS8LFnzZkatX5REcN2LXMfUVXqqhgJufdPrmVRepZ58ubSJt2kmx4o43yX1gKASKNbLshrJ6d' },
+    { name: 'E3b', next: ['E2'], record: { timestamp: 1700000000002, set: [], unset: [[LABEL_TRACK_B, 'y']] }, key: '39a57e65ac5a5f19def03c6733ce88bd8afe3affed02cc9ecadd09c5105093d0', entry_hash: 'zBwWX9zXdkL9A69bmJyiJa9hvaG9dWJULCxCGnbb2Z88TzmNs2PAVYS5uohU5gaDYEHxB9LzgoHr8Ljp6mP44eSFS8sJz' },
+    { name: 'E4', next: ['E3a', 'E3b'], del: { key: LABEL_TRACK_A, timestamp: 1700000000003 }, entry_hash: 'zBwWX6MHYuh9eJqyyp52fJJs7Qsfjzbc2LEqMQgx4uUWxYwi66Pf3Mjm6Gty7rT14FHPu6UYFXRMMNfLT1uL5YaKZWJKZ' }
+  ],
+  label_state: [
+    { track_id: LABEL_TRACK_B, label: 'mix/x', applied: true },
+    { track_id: LABEL_TRACK_B, label: 'y', applied: true },
+    { track_id: LABEL_TRACK_A, label: 'lifestream-radio', applied: true },
+    { track_id: LABEL_TRACK_A, label: 'mix/x', applied: false }
+  ],
+  tie_winner: 'E3a'
 } as const

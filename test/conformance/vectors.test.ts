@@ -19,20 +19,22 @@ import {
   TEST_PUBKEY_HEX,
   ENVELOPE_TIMESTAMP,
   NETWORK_MESSAGE_SIZE_BOUND,
+  about_record_vector,
   ac_chain_vector,
+  announced_about_vector,
   audio_pipeline_vector,
   build_multi_block_input,
   build_race_entry,
   child_entry_vector,
   content_cid_vector,
   current_state_vector,
-  envelope_vectors,
   heads_message_vector,
-  loaded_about_entry_vector,
+  label_vector,
   multi_block_vector,
   sha256_vector,
   signed_entry_vector,
-  signing_vector
+  signing_vector,
+  track_envelope_vector
 } from './vectors.ts'
 
 const SHA3_512_CODE = 0x14
@@ -99,24 +101,20 @@ describe('fixture port self-check', () => {
     expect(sha3_cid(cbor).toString(base58btc)).toBe(content_cid_vector.cid)
   })
 
-  test.each(envelope_vectors.map((vector) => [vector.type, vector] as const))(
-    'F2 §2.2.1 %s envelope',
-    (_type, vector) => {
-      expect(bytesToHex(sha256(utf8(vector.id_input)))).toBe(vector.id)
-      const cbor = encode(vector.payload)
-      expect(cbor.length).toBe(vector.payload_cbor_length)
-      expect(sha3_cid(cbor).toString(base58btc)).toBe(vector.content)
-      const envelope = {
-        id: vector.id,
-        timestamp: ENVELOPE_TIMESTAMP,
-        v: 1,
-        type: vector.type,
-        content: vector.content,
-        ...vector.envelope_extras
-      }
-      expect(encode(envelope).length).toBe(vector.envelope_cbor_length)
-    }
-  )
+  test('F2 §2.2.1 track envelope', () => {
+    const vector = track_envelope_vector
+    expect(bytesToHex(sha256(utf8(vector.id_input)))).toBe(vector.id)
+    const cbor = encode(vector.payload)
+    expect(cbor.length).toBe(vector.payload_cbor_length)
+    expect(sha3_cid(cbor).toString(base58btc)).toBe(vector.content)
+    const envelope = { id: vector.id, timestamp: ENVELOPE_TIMESTAMP, v: 1, type: 'track', content: vector.content }
+    expect(bytesToHex(encode(envelope))).toBe(vector.envelope_cbor_hex)
+  })
+
+  test('F2 §2.6 About record', () => {
+    expect(bytesToHex(encode(about_record_vector.record))).toBe(about_record_vector.record_cbor_hex)
+    expect(bytesToHex(sha256(utf8('about')))).toBe(about_record_vector.operation_key)
+  })
 
   test('F3 §3.5.1 AC chain and §3.6 address', () => {
     const write_list = encode({ write: ac_chain_vector.write_keys })
@@ -151,12 +149,12 @@ describe('fixture port self-check', () => {
     expect(sorted[0]?.tag).toBe(current_state_vector.winner)
   })
 
-  test('F6 §5.3.2 LoadedAboutEntry and §5.4.1 heads message', () => {
-    const { message } = loaded_about_entry_vector
-    expect<string>(message.payload.key).toBe(bytesToHex(sha256(utf8(ac_chain_vector.library_address))))
-    const json = JSON.stringify(message)
-    expect(Buffer.byteLength(json)).toBe(loaded_about_entry_vector.json_byte_length)
-    expect(JSON.parse(json)).toEqual(message)
+  test('F6 §5.3.2 announced About entry and §5.4.1 heads message', () => {
+    const { entry, entry_hash } = announced_about_vector
+    expect(entry.payload.key).toBe(about_record_vector.operation_key)
+    const { key: _key, sig, ...unsigned } = entry
+    expect(sign_der(sha256(encode(unsigned)))).toBe(sig)
+    expect(sha3_cid(encode(entry)).toString(base58btc)).toBe(entry_hash)
     expect(Buffer.byteLength(heads_message_vector.json)).toBe(heads_message_vector.json_byte_length)
     expect(heads_message_vector.json_byte_length).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)
   })
@@ -167,5 +165,36 @@ describe('fixture port self-check', () => {
     expect(bytesToHex(sha256(audio))).toBe(audio_pipeline_vector.audio_identity_sha256)
     expect(await profile_cid(audio)).toBe(audio_pipeline_vector.audio_cid)
     expect(await profile_cid(build_multi_block_input())).toBe(multi_block_vector.cid)
+  })
+
+  test('F12 §2.5 label record keys, entry hashes, and per-pair state', () => {
+    const hashes = new Map<string, string>()
+    const named = new Map<string, Record<string, unknown>>()
+    for (const vector of label_vector.entries) {
+      const next = vector.next.map((name) => hashes.get(name) as string)
+      const time = next.length === 0 ? 1 : Math.max(...vector.next.map((name) => (named.get(name)?.clock as { time: number }).time)) + 1
+      const payload = 'record' in vector
+        ? { op: 'PUT', key: vector.key, value: { type: 'labels', v: 1, ...vector.record } }
+        : { op: 'DEL', key: vector.del.key, value: { type: 'track', timestamp: vector.del.timestamp } }
+      if ('record' in vector) expect(bytesToHex(sha256(encode(payload.value)))).toBe(vector.key)
+      const unsigned = { id: ac_chain_vector.library_address, payload, next, refs: [], v: 2, clock: { id: TEST_PUBKEY_HEX, time } }
+      const signed = { ...unsigned, key: TEST_PUBKEY_HEX, sig: sign_der(sha256(encode(unsigned))) }
+      expect(sha3_cid(encode(signed)).toString(base58btc)).toBe(vector.entry_hash)
+      hashes.set(vector.name, vector.entry_hash)
+      named.set(vector.name, signed)
+    }
+    // Per pair, the record greatest under §4.4.2 among those naming it decides.
+    const multihash = (hash: string) => CID.parse(hash, base58btc).multihash.bytes
+    const records = label_vector.entries.flatMap((vector) => 'record' in vector ? [vector] : [])
+    const time_of = (name: string) => (named.get(name)?.clock as { time: number }).time
+    const state = label_vector.label_state.map(({ track_id, label }) => {
+      const naming = records.flatMap((vector) => [
+        ...vector.record.set.filter(([t, l]) => t === track_id && l === label).map(() => ({ vector, applied: true })),
+        ...vector.record.unset.filter(([t, l]) => t === track_id && l === label).map(() => ({ vector, applied: false }))
+      ]).sort((a, b) => time_of(b.vector.name) - time_of(a.vector.name) || b.vector.record.timestamp - a.vector.record.timestamp ||
+        compare_bytes(multihash(a.vector.entry_hash), multihash(b.vector.entry_hash)))
+      return { track_id, label, applied: naming[0]?.applied ?? false }
+    })
+    expect(state).toEqual(label_vector.label_state.map((pair) => ({ ...pair })))
   })
 })

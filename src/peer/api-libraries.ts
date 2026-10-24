@@ -1,14 +1,8 @@
 // ApiPeer library, identity, capability, About, and listen methods.
 
-import { encode_canonical } from '#encoding/canonical-bytes.ts'
-import { compute_cid_string } from '#encoding/cid.ts'
 import { parse_library_address } from '#encoding/library-address.ts'
-import { assert_payload_size } from '#encoding/size-bounds.ts'
-import { build_about_envelope } from '#entry/envelope.ts'
-import { compute_about_id } from '#entry/id.ts'
-import { build_put_operation } from '#entry/operations.ts'
+import { build_about_put } from '#entry/operations.ts'
 import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts'
-import { ProtocolError } from '#types/errors.ts'
 import { PeerError, type About, type AboutUpdate, type ApiPeer, type Library } from '#types/peer.ts'
 import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from './capabilities.ts'
 import { require_identity, serialise_write, type PeerContext } from './context.ts'
@@ -21,14 +15,6 @@ import { default_own_library, find_own_library, identity_state, library_scope, o
 import { effective_policy, get_replication_policy, validate_policy } from './policy.ts'
 import { to_api_about, to_api_track } from './views.ts'
 import { append_write, resolve_write_target } from './write-target.ts'
-
-const store_payload = async (context: PeerContext, value: Record<string, unknown>): Promise<string> => {
-  const bytes = encode_canonical(value)
-  assert_payload_size(bytes)
-  const cid = compute_cid_string(bytes)
-  await context.content_store.put(cid, bytes)
-  return cid
-}
 
 const require_library = (context: PeerContext, address: string): Library => {
   const library = describe_library(context, address)
@@ -47,9 +33,9 @@ const list_known = (context: PeerContext): Library[] => {
   return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? [])
 }
 
-// Writes an About entry, owned or under a capability granting
-// library.update_about (§2.6, §3.5.6). The address field is stamped and null
-// clears a field.
+// Writes an About record, owned or under a capability granting
+// library.update_about (§2.6, §3.5.6). The record carries a name only, so the
+// other fields are not written; an unchanged name appends nothing.
 const write_about = async (context: PeerContext, { address, fields, capability_id }: {
   address: string
   fields: AboutUpdate
@@ -57,17 +43,11 @@ const write_about = async (context: PeerContext, { address, fields, capability_i
 }): Promise<void> => {
   await serialise_write(context, async () => {
     const target = resolve_write_target(context, { library_address: address, capability_id })
-    const current: Partial<About> = get_about({ db: context.db, library_address: address }) ?? {}
-    const merged = { name: current.name, bio: current.bio, location: current.location, avatar: current.avatar, ...fields }
-    const content = Object.fromEntries(Object.entries(merged).filter(([, value]) => typeof value === 'string'))
-    const content_cid = await store_payload(context, { ...content, address })
-    const envelope = build_about_envelope({ id: compute_about_id(address), content_cid })
-    try {
-      await append_write(context, target, build_put_operation({ envelope, capability_id: target.capability_id }))
-    } catch (error) {
-      // An unchanged profile is already the live entry (§2.10).
-      if (!(error instanceof ProtocolError && error.code === 'duplicate_entry')) throw error
-    }
+    const current = get_about({ db: context.db, library_address: address })?.name ?? undefined
+    const name = fields.name === undefined ? current : fields.name ?? undefined
+    if (name === undefined) throw new PeerError('invalid', 'an About record always carries a name, so it is never absent or cleared')
+    if (name === current) return
+    await append_write(context, target, build_about_put({ name, capability_id: target.capability_id }))
   })
 }
 

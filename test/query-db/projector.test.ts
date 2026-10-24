@@ -10,11 +10,11 @@ import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { append_listen } from '#oplog/listens.ts'
 import { create_projector } from '#query-db/projector.ts'
-import { get_about, get_library_summary, get_listen_count, get_track, list_linked_libraries, list_tracks } from '#query-db/queries.ts'
+import { get_about, get_library_summary, get_listen_count, get_track, list_tracks } from '#query-db/queries.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import type { DatabaseSync } from 'node:sqlite'
 import { open_test_library } from '#test/helpers/library.ts'
-import { add_link, add_track, delete_track, set_about, store_content, track_content } from './fixtures.ts'
+import { add_track, delete_track, set_about, store_content, track_content } from './fixtures.ts'
 
 // The summary computed from the rows themselves, which library_totals must match.
 const scanned_summary = (db: DatabaseSync, library_address: string) => {
@@ -143,20 +143,17 @@ describe('query-db projector', () => {
     expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
   })
 
-  test('links and the profile project from log and about payloads', async () => {
-    const { oplog, writer, block_store, db, projector } = await setup()
-    const other = await open_test_library({ name: 'other' })
-    await projector.project_entries({ oplog, entries: [await add_link({ oplog, key_pair: writer, block_store, address: other.chain.address, alias: 'friend' })] })
-    await projector.project_entries({ oplog, entries: [await set_about({ oplog, key_pair: writer, block_store, profile: { name: 'Mine', bio: 'Bio' } })] })
-    expect(list_linked_libraries({ db, library_address: oplog.chain.address })).toEqual([{ address: other.chain.address, alias: 'friend' }])
+  test('the About record projects its name', async () => {
+    const { oplog, writer, db, projector } = await setup()
+    await projector.project_entries({ oplog, entries: [set_about({ oplog, key_pair: writer, name: 'Mine' })] })
     expect(get_about({ db, library_address: oplog.chain.address })).toEqual({
       library_address: oplog.chain.address,
       name: 'Mine',
-      bio: 'Bio',
+      bio: null,
       location: null,
       avatar: null
     })
-    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 1, length: 2 })
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 1 })
   })
 
   test('a track whose content is not stored yet fills in when re-projected', async () => {
@@ -203,17 +200,15 @@ describe('query-db projector', () => {
     }
     check()
     expect(get_library_summary({ db, library_address: address })).toMatchObject({ track_count: 3, audio_size_bytes: 3 * 4096, length: 3 })
-    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', tags: ['relabel'], timestamp: 99 })] })
+    await projector.project_entries({ oplog, entries: [await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-1', title: 'retitled', timestamp: 99 })] })
     const late = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-late', store: false })
     await projector.project_entries({ oplog, entries: [late] })
     check()
     await store_content({ block_store, value: track_content({ fingerprint: 'AQAA-late' }) })
     await projector.project_keys({ oplog, keys: [compute_track_id('AQAA-late')] })
     await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: compute_track_id('AQAA-2') })] })
-    const other = await open_test_library({ name: 'other' })
-    await projector.project_entries({ oplog, entries: [await add_link({ oplog, key_pair: writer, block_store, address: other.chain.address })] })
     check()
-    expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 3, audio_size_bytes: 3 * 4096, linked_library_count: 1, length: 4 })
+    expect(get_library_summary({ db, library_address: address })).toMatchObject({ track_count: 3, audio_size_bytes: 3 * 4096, linked_library_count: 0 })
     await projector.remove_library({ library_address: address })
     expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
   })

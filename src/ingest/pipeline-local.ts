@@ -115,11 +115,10 @@ export const prepare_local_file = async ({ file_path, target, toolchain, resolve
   }
 }
 
-export const commit_local_file = async ({ prepared, target, release, tags, timestamp }: {
+export const commit_local_file = async ({ prepared, target, release, timestamp }: {
   prepared: PreparedTrack
   target: TrackTarget
   release: ReleaseBlobs
-  tags?: readonly string[] | undefined
   timestamp?: number | undefined
 }): Promise<IngestedTrack> => {
   if (prepared.kind === 'existing') return prepared.track
@@ -131,7 +130,7 @@ export const commit_local_file = async ({ prepared, target, release, tags, times
       return existing
     }
     // 12-13: envelope, PUT, sign, append, and pin.
-    return await put_track({ target, content: prepared.content, tags, timestamp })
+    return await put_track({ target, content: prepared.content, timestamp })
   } catch (error) {
     await release(prepared.blobs)
     throw error
@@ -141,15 +140,14 @@ export const commit_local_file = async ({ prepared, target, release, tags, times
 export const prepared_blobs = (prepared: PreparedTrack): readonly string[] => prepared.kind === 'new' ? prepared.blobs : []
 
 // Both phases back to back, for a caller with one file and nothing to overlap.
-export const ingest_local_file = async ({ file_path, target, toolchain, resolver, tags, timestamp, release }: {
+export const ingest_local_file = async ({ file_path, target, toolchain, resolver, timestamp, release }: {
   file_path: string
   target: TrackTarget
   toolchain: Toolchain
   resolver?: readonly Record<string, unknown>[]
-  tags?: readonly string[]
   timestamp?: number
   release?: ReleaseBlobs
 }): Promise<IngestedTrack> => {
   const prepared = await prepare_local_file({ file_path, target, toolchain, ...(resolver === undefined ? {} : { resolver }) })
-  return await commit_local_file({ prepared, target, release: release ?? (async () => {}), tags, timestamp })
+  return await commit_local_file({ prepared, target, release: release ?? (async () => {}), timestamp })
 }

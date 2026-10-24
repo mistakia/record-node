@@ -9,13 +9,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { encode_canonical } from '#encoding/canonical-bytes.ts'
-import { compute_cid_string } from '#encoding/cid.ts'
-import { build_log_envelope } from '#entry/envelope.ts'
 import { canonical_cid } from '#entry/identity-record.ts'
-import { compute_log_id } from '#entry/id.ts'
-import { build_put_operation } from '#entry/operations.ts'
-import { get_live_entry } from '#oplog/dag.ts'
 import { stop_peer, type Peer } from '#peer/peer.ts'
 import { append_track, create_memory_peers, wait_until } from '#test/helpers/network.ts'
 
@@ -80,33 +74,6 @@ describe('identity library', () => {
     await wait_until(async () => await first.get_library(address) === undefined)
     await wait_until(() => first.context.libraries.get(address) === undefined)
     expect(await first.content_store.is_pinned(address.split('/')[2] as string)).toBe(false)
-  })
-
-  test('§4.8.4 [MUST] a v1.0 Log entry links an address no link record names, as index_only; a link record then decides', async () => {
-    const peer = await peers.start()
-    const friend = await peers.start()
-    const address = friend.identity().own_address
-    const { key_pair, own_address } = peer.identity()
-    const content = encode_canonical({ address, alias: 'old' })
-    const content_cid = compute_cid_string(content)
-    await peer.content_store.put(content_cid, content)
-    await peer.context.libraries.append({
-      library_address: own_address,
-      payload: build_put_operation({ envelope: build_log_envelope({ id: compute_log_id(address), content_cid }) }),
-      key_pair
-    })
-    await wait_until(async () => (await peer.get_library(address))?.is_linked === true)
-    expect(await peer.get_library(address)).toMatchObject({ alias: 'old', replication_mode: 'index_only' })
-
-    // Unlinking records a link DEL and a Log DEL, so v1.0 peers see it too.
-    await peer.unlink_library(address)
-    expect(await peer.get_library(address)).toBeUndefined()
-    const own = peer.context.libraries.get(own_address)?.oplog
-    expect(own === undefined ? undefined : get_live_entry({ oplog: own, key: compute_log_id(address) })).toBeUndefined()
-    expect((await records(peer, 'link')).map(({ op }) => op)).toEqual(['DEL'])
-
-    await peer.link_library({ address, alias: 'new' })
-    expect(await peer.get_library(address)).toMatchObject({ alias: 'new', replication_mode: 'full' })
   })
 
   test('§4.6.2 [MUST] a pin record keeps its blob on every device of the identity, and an unpin releases it', async () => {

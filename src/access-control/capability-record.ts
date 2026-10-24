@@ -16,7 +16,7 @@ import { filter_shape, has_extra_fields, worst_shape, type Shape } from './filte
 export const ACCESS_RECORD_TYPES = ['capability', 'revocation'] as const
 export type AccessRecordType = typeof ACCESS_RECORD_TYPES[number]
 
-export const ACTIONS = ['library.append_track', 'library.append_tag', 'library.update_about', 'library.grant_capability'] as const
+export const ACTIONS = ['library.append_track', 'library.write_label', 'library.update_about', 'library.grant_capability'] as const
 export type Action = typeof ACTIONS[number]
 
 const CAPABILITY_FIELDS = ['type', 'v', 'timestamp', 'grantee', 'actions', 'filter', 'conditions']

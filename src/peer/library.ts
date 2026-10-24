@@ -407,7 +407,7 @@ export const create_library_manager = ({ content_store, projector, entry_blocks,
     reindex: async ({ library_address, entries }) => {
       const handle = require_library(library_address)
       await changing_pins(handle, async () => { await pin_entries(handle, entries) })
-      const keys = entries.flatMap(({ state_key }) => state_key === undefined ? [] : [state_key])
+      const keys = entries.flatMap(({ state_keys }) => state_keys)
       const projected = projector.project_keys({ oplog: handle.oplog, keys })
       indexing = projected.catch(() => {})
       await projected

@@ -6,11 +6,13 @@ import { base32 } from 'multiformats/bases/base32'
 
 import { decode_canonical, encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid, compute_cid_string, parse_cid, SHA3_512_CODE } from '#encoding/cid.ts'
+import { build_track_envelope } from '#entry/envelope.ts'
+import { build_about_put } from '#entry/operations.ts'
 import { decode_signed_entry } from '#entry/signed.ts'
-import { validate_about_content, validate_log_content, validate_track_content } from '#entry/payload.ts'
+import { validate_track_content } from '#entry/payload.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { sign_raw, TEST_PRIVATE_KEY } from '#test/helpers/library.ts'
-import { content_cid_vector, envelope_vectors, signing_vector } from './vectors.ts'
+import { about_record_vector, content_cid_vector, ENVELOPE_TIMESTAMP, signing_vector, track_envelope_vector as track_vector } from './vectors.ts'
 
 const DAG_CBOR_CODE = 0x71
 
@@ -31,12 +33,10 @@ const error_code = (run: () => unknown) => {
 
 describe('content-cid', () => {
   test('§2.1 [MUST] envelope payloads are stored as dag-cbor objects hashed with sha3-512', () => {
-    for (const vector of envelope_vectors) {
-      const cid = compute_cid(encode_canonical(vector.payload))
-      expect(cid.code).toBe(DAG_CBOR_CODE)
-      expect(cid.multihash.code).toBe(SHA3_512_CODE)
-      expect(cid.multihash.size).toBe(64)
-    }
+    const cid = compute_cid(encode_canonical(track_vector.payload))
+    expect(cid.code).toBe(DAG_CBOR_CODE)
+    expect(cid.multihash.code).toBe(SHA3_512_CODE)
+    expect(cid.multihash.size).toBe(64)
   })
 
   test('§2.1 [MUST] content CID is dag-cbor, then sha3-512, then CIDv1 with dag-cbor codec, then base58btc', () => {
@@ -67,15 +67,15 @@ describe('content-cid', () => {
     expect(compute_cid_string(bytes)).toBe(content_cid_vector.cid)
   })
 
-  test('§2.2.1 [vector] F2 track, log, and about payloads yield the spec content CIDs', () => {
-    for (const vector of envelope_vectors) {
-      const bytes = encode_canonical(vector.payload)
-      expect(bytes.length).toBe(vector.payload_cbor_length)
-      expect(compute_cid_string(bytes)).toBe(vector.content)
-    }
-    const [track, log, about] = envelope_vectors
-    expect(() => validate_track_content(track.payload)).not.toThrow()
-    expect(() => validate_log_content(log.payload)).not.toThrow()
-    expect(() => validate_about_content({ value: about.payload, library_address: about.id_input })).not.toThrow()
+  test('§2.2.1 [vector] F2 the track payload yields the spec content CID, and the envelope and About record the spec bytes', () => {
+    const bytes = encode_canonical(track_vector.payload)
+    expect(bytes.length).toBe(track_vector.payload_cbor_length)
+    expect(compute_cid_string(bytes)).toBe(track_vector.content)
+    expect(() => validate_track_content(track_vector.payload)).not.toThrow()
+    const envelope = build_track_envelope({ id: track_vector.id, content_cid: track_vector.content, timestamp: ENVELOPE_TIMESTAMP })
+    expect(bytesToHex(encode_canonical(envelope))).toBe(track_vector.envelope_cbor_hex)
+    const about = build_about_put({ name: about_record_vector.record.name, timestamp: about_record_vector.record.timestamp })
+    expect(bytesToHex(encode_canonical(about.value))).toBe(about_record_vector.record_cbor_hex)
+    expect(about.key).toBe(about_record_vector.operation_key)
   })
 })

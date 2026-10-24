@@ -4,9 +4,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
-import { build_about_envelope, build_log_envelope } from '#entry/envelope.ts'
-import { compute_about_id, compute_log_id } from '#entry/id.ts'
-import { build_del_operation, build_put_operation } from '#entry/operations.ts'
+import { compute_track_id } from '#entry/id.ts'
+import { build_about_put, build_del_operation, build_labels_put } from '#entry/operations.ts'
 import type { KeyPair } from '#identity/key-pair.ts'
 import { append_entry, type Oplog } from '#oplog/dag.ts'
 import type { ContentReader } from '#query-db/projector.ts'
@@ -42,6 +41,7 @@ export const track_content = ({ fingerprint, audio = {}, resolver = [], ...tags 
   resolver
 })
 
+// The track PUT, and a label record setting tags on it when any are given.
 export const add_track = async ({ oplog, key_pair, block_store, timestamp, tags, store = true, ...content }: {
   oplog: Oplog
   key_pair: KeyPair
@@ -52,15 +52,27 @@ export const add_track = async ({ oplog, key_pair, block_store, timestamp, tags,
 } & Parameters<typeof track_content>[0]) => {
   const value = track_content(content)
   if (store) await store_content({ block_store, value })
-  return append_track({
-    oplog,
-    key_pair,
-    fingerprint: content.fingerprint,
-    content: value,
-    ...(timestamp === undefined ? {} : { timestamp }),
-    ...(tags === undefined ? {} : { tags })
-  })
+  const entry = append_track({ oplog, key_pair, fingerprint: content.fingerprint, content: value, ...(timestamp === undefined ? {} : { timestamp }) })
+  if (tags !== undefined && tags.length > 0) add_labels({ oplog, key_pair, track_id: compute_track_id(content.fingerprint), set: tags })
+  return entry
 }
+
+export const add_labels = ({ oplog, key_pair, track_id, set = [], unset = [], timestamp }: {
+  oplog: Oplog
+  key_pair: KeyPair
+  track_id: string
+  set?: readonly string[]
+  unset?: readonly string[]
+  timestamp?: number
+}) => append_entry({
+  oplog,
+  key_pair,
+  payload: build_labels_put({
+    set: set.map((label) => [track_id, label] as const),
+    unset: unset.map((label) => [track_id, label] as const),
+    ...(timestamp === undefined ? {} : { timestamp })
+  })
+})
 
 export const delete_track = ({ oplog, key_pair, key, timestamp }: {
   oplog: Oplog
@@ -70,38 +82,15 @@ export const delete_track = ({ oplog, key_pair, key, timestamp }: {
 }) => append_entry({
   oplog,
   key_pair,
-  payload: build_del_operation({ key, type: 'track', ...(timestamp === undefined ? {} : { timestamp }) })
+  payload: build_del_operation({ key, ...(timestamp === undefined ? {} : { timestamp }) })
 })
 
-export const add_link = async ({ oplog, key_pair, block_store, address, alias = null }: {
+export const set_about = ({ oplog, key_pair, name, timestamp }: {
   oplog: Oplog
   key_pair: KeyPair
-  block_store: BlockStore
-  address: string
-  alias?: string | null
-}) => {
-  const content_cid = await store_content({ block_store, value: { address, alias } })
-  return append_entry({
-    oplog,
-    key_pair,
-    payload: build_put_operation({ envelope: build_log_envelope({ id: compute_log_id(address), content_cid }) })
-  })
-}
-
-export const set_about = async ({ oplog, key_pair, block_store, profile }: {
-  oplog: Oplog
-  key_pair: KeyPair
-  block_store: BlockStore
-  profile: Record<string, string>
-}) => {
-  const address = oplog.chain.address
-  const content_cid = await store_content({ block_store, value: { address, ...profile } })
-  return append_entry({
-    oplog,
-    key_pair,
-    payload: build_put_operation({ envelope: build_about_envelope({ id: compute_about_id(address), content_cid }) })
-  })
-}
+  name: string
+  timestamp?: number
+}) => append_entry({ oplog, key_pair, payload: build_about_put({ name, ...(timestamp === undefined ? {} : { timestamp }) }) })
 
 // Resolves each read after a random delay, so concurrent projection jobs
 // finish their content loads out of order.

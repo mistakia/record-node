@@ -201,7 +201,7 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }: {
     const asked = generation(library_address)
     const keeps = keeps_blobs(context)(handle.chain)
     for (const entry of entries) {
-      if (!has_item_6(entry) || handle.oplog.current.get(entry.state_key as string) !== entry) continue
+      if (!has_item_6(entry) || handle.oplog.current.get(entry.state_keys[0] as string) !== entry) continue
       const item = await stored_item_6({ content_store, library_address, entry })
       if (item === undefined || !keeps({ entry, content: item.content })) continue
       if (generation(library_address) !== asked) return

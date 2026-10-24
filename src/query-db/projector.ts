@@ -5,14 +5,8 @@
 
 import type { DatabaseSync } from 'node:sqlite'
 
-import { compute_about_id } from '#entry/id.ts'
-import { is_envelope_operation, is_put } from '#entry/operations.ts'
-import {
-  decode_payload,
-  validate_about_content,
-  validate_log_content,
-  validate_track_content
-} from '#entry/payload.ts'
+import { is_about_put, is_envelope_operation, is_put } from '#entry/operations.ts'
+import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import type { Oplog } from '#oplog/dag.ts'
 import type { Envelope, ListenPayload } from '#types/entry.ts'
@@ -64,7 +58,6 @@ const create_statements = (db: DatabaseSync) => ({
   clear_key: KEYED_TABLES.map(([table, column]) =>
     db.prepare(`DELETE FROM ${table} WHERE library_address = ? AND ${column} = ?`)),
   delete_entry: db.prepare('DELETE FROM entries WHERE library_address = ? AND key = ?'),
-  delete_tags: db.prepare('DELETE FROM tags WHERE library_address = ? AND track_id = ?'),
   read_track_content: db.prepare('SELECT content_cid FROM tracks WHERE library_address = ? AND track_id = ?'),
   update_entry: db.prepare('UPDATE entries SET entry_hash = ?, clock_time = ?, timestamp = ? WHERE library_address = ? AND key = ?'),
   update_track_entry: db.prepare('UPDATE tracks SET entry_hash = ?, added_at_ms = ? WHERE library_address = ? AND track_id = ?'),
@@ -77,13 +70,11 @@ const create_statements = (db: DatabaseSync) => ({
       artists, album, album_artist, remixer, genre, bpm, duration_seconds, bitrate, codec, sample_rate,
       lossless, artwork, added_at_ms, listen_count
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT count(*) FROM listens WHERE track_id = ?2))`),
-  insert_tag: db.prepare('INSERT OR IGNORE INTO tags (library_address, track_id, tag) VALUES (?, ?, ?)'),
   insert_resolver: db.prepare(`
     INSERT OR IGNORE INTO resolvers (
       library_address, track_id, extractor, id, fulltitle, thumbnail, artist, alt_title, upload_date,
       webpage_url, duration_seconds
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-  insert_log: db.prepare('INSERT INTO logs (library_address, log_id, entry_hash, linked_address, alias) VALUES (?, ?, ?, ?, ?)'),
   insert_about: db.prepare(`
     INSERT INTO about (library_address, about_id, entry_hash, name, bio, location, avatar)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
@@ -161,7 +152,6 @@ const write_track = ({ statements, library_address, entry, envelope, content, ad
     typeof audio.lossless === 'boolean' ? Number(audio.lossless) : null,
     JSON.stringify(strings(content?.artwork)), added_at_ms
   )
-  for (const tag of envelope.tags ?? []) statements.insert_tag.run(library_address, envelope.id, tag)
   for (const resolver of Array.isArray(content?.resolver) ? content.resolver : []) {
     const { extractor, id, fulltitle, thumbnail, artist, alt_title, upload_date, webpage_url, duration } = record(resolver)
     statements.insert_resolver.run(
@@ -178,16 +168,8 @@ const write_put = ({ statements, oplog, entry, envelope, content }: {
   envelope: Envelope
   content: Content | undefined
 }) => {
-  const library_address = oplog.chain.address
-  if (envelope.type === 'track') {
-    const added_at_ms = added_at_of({ oplog, key: envelope.id })
-    write_track({ statements, library_address, entry, envelope, content, added_at_ms })
-  } else if (envelope.type === 'log') {
-    statements.insert_log.run(library_address, envelope.id, entry.hash, text(content?.address), text(content?.alias))
-  } else if (content !== undefined) {
-    const { name, bio, location, avatar } = content
-    statements.insert_about.run(library_address, envelope.id, entry.hash, text(name), text(bio), text(location), text(avatar))
-  }
+  const added_at_ms = added_at_of({ oplog, key: envelope.id })
+  write_track({ statements, library_address: oplog.chain.address, entry, envelope, content, added_at_ms })
 }
 
 // Replaces every row a key projects to with the projection of its current entry.
@@ -202,8 +184,14 @@ const write_key = ({ statements, oplog, key, entry, content }: {
   for (const statement of statements.clear_key) statement.run(library_address, key)
   // Deleted, not replaced, so the library_totals triggers see the old row go.
   statements.delete_entry.run(library_address, key)
-  if (entry === undefined || !is_envelope_operation(entry.operation)) return
+  if (entry === undefined) return
   const { operation } = entry
+  if (is_about_put(operation)) {
+    statements.insert_entry.run(library_address, key, entry.hash, 'PUT', 'about', entry.entry.clock.time, operation.value.timestamp)
+    statements.insert_about.run(library_address, key, entry.hash, operation.value.name, null, null, null)
+    return
+  }
+  if (!is_envelope_operation(operation)) return
   statements.insert_entry.run(
     library_address, key, entry.hash, operation.op, operation.value.type, entry.entry.clock.time, operation.value.timestamp
   )
@@ -226,7 +214,7 @@ const relabel_entry = ({ statements, oplog, key, unfilled }: {
   return row?.content_cid === entry.operation.value.content ? entry : undefined
 }
 
-// A relabel in place: the entry and its labels change, and nothing derived
+// A relabel in place: only the entry changes, and nothing derived
 // from the content does, so the row keeps its content columns and search
 // index entry, and the content is never read.
 const write_relabel = ({ statements, oplog, key, entry }: {
@@ -239,8 +227,6 @@ const write_relabel = ({ statements, oplog, key, entry }: {
   const envelope = (entry.operation as { value: Envelope }).value
   statements.update_entry.run(entry.hash, entry.entry.clock.time, envelope.timestamp, library_address, key)
   statements.update_track_entry.run(entry.hash, added_at_of({ oplog, key }), library_address, key)
-  statements.delete_tags.run(library_address, key)
-  for (const tag of envelope.tags ?? []) statements.insert_tag.run(library_address, key, tag)
 }
 
 const write_listen = ({ statements, library_address, entry }: {
@@ -254,9 +240,8 @@ const write_listen = ({ statements, library_address, entry }: {
 
 // The validated content payload behind a PUT, or undefined when the block is
 // not stored or does not validate for its envelope type.
-const load_content = async ({ read_content, oplog, entry }: {
+const load_content = async ({ read_content, entry }: {
   read_content: ContentReader
-  oplog: Oplog
   entry: VerifiedEntry | undefined
 }): Promise<Content | undefined> => {
   if (entry === undefined || !is_put(entry.operation)) return undefined
@@ -264,12 +249,7 @@ const load_content = async ({ read_content, oplog, entry }: {
   const bytes = await read_content(envelope.content)
   if (bytes === undefined) return undefined
   try {
-    const value = decode_payload(bytes)
-    if (envelope.type === 'track') return validate_track_content(value)
-    if (envelope.type === 'log') return validate_log_content(value)
-    // A profile for another library never stands in for this one's (§2.6).
-    if (envelope.id !== compute_about_id(oplog.chain.address)) return undefined
-    return validate_about_content({ value, library_address: oplog.chain.address })
+    return validate_track_content(decode_payload(bytes))
   } catch (error) {
     if (error instanceof ProtocolError) return undefined
     throw error
@@ -311,7 +291,7 @@ export const create_projector = ({ db, read_content, commit }: {
       const relabels = new Set([...pending].filter((key) => relabel_entry({ statements, oplog, key, unfilled }) !== undefined))
       const loaded = await Promise.all([...pending].filter((key) => !relabels.has(key)).map(async (key) => {
         const entry = oplog.current.get(key)
-        return { key, entry, content: await load_content({ read_content, oplog, entry }) }
+        return { key, entry, content: await load_content({ read_content, entry }) }
       }))
       const stable = loaded.filter(({ key, entry }) => oplog.current.get(key) === entry)
       const retry = new Set(loaded.filter((item) => !stable.includes(item)).map(({ key }) => key))
@@ -350,7 +330,7 @@ export const create_projector = ({ db, read_content, commit }: {
         return
       }
       const touched = new Set(keys)
-      for (const { state_key } of entries) if (state_key !== undefined) touched.add(state_key)
+      for (const { state_keys } of entries) for (const key of state_keys) touched.add(key)
       await write_keys({ oplog, keys: touched })
     })
 

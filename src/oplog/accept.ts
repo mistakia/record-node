@@ -9,7 +9,8 @@
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
 import { authorise_entry } from '#access-control/capability.ts'
 import { assert_signed_entry_size } from '#encoding/size-bounds.ts'
-import { is_envelope_operation, is_identity_operation, validate_operation } from '#entry/operations.ts'
+import { is_about_put, is_envelope_operation, is_identity_operation, is_labels_put, validate_operation } from '#entry/operations.ts'
+import { label_state_key } from '#entry/records.ts'
 import { assert_signed_entry_shape, type HashedEntry } from '#entry/signed.ts'
 import { verify_entry_signature } from '#identity/verification.ts'
 import type { EntryPayload } from '#types/entry.ts'
@@ -22,14 +23,15 @@ declare const verified_entry_brand: unique symbol
 // The entry block cache records the version its entries were verified under
 // (query-db/entry-blocks.ts), and an open restores them unverified only under
 // the same version, so a bump re-verifies every cached entry once.
-export const VERIFICATION_RULES_VERSION = 1
+export const VERIFICATION_RULES_VERSION = 2
 
 // An entry that passed verify_entry against a library's oplog. The oplog
-// stores nothing else. state_key is the slot current-state resolution keys
-// it under, undefined for an entry with no state of its own.
+// stores nothing else. state_keys are the slots current-state resolution
+// keys it under: one for a track, About or identity record, one per pair for
+// a label record, and none for an entry with no state of its own.
 export type VerifiedEntry = HashedEntry & {
   readonly operation: EntryPayload
-  readonly state_key: string | undefined
+  readonly state_keys: readonly string[]
 } & { readonly [verified_entry_brand]: true }
 
 export interface CheckedEntry {
@@ -37,8 +39,8 @@ export interface CheckedEntry {
   readonly operation: EntryPayload
 }
 
-// In a listens or identity library only the write list may sign, which the
-// entry alone decides; a recordstore grantee needs the causal past.
+// In a labels, listens or identity library only the write list may sign,
+// which the entry alone decides; a recordstore grantee needs the causal past.
 export const check_entry = ({ hashed, chain }: { hashed: HashedEntry, chain: ResolvedAcChain }): CheckedEntry => {
   assert_signed_entry_size(hashed.bytes)
   assert_signed_entry_shape(hashed.entry)
@@ -52,11 +54,14 @@ export const check_entry = ({ hashed, chain }: { hashed: HashedEntry, chain: Res
   return { hashed, operation }
 }
 
-// Identity records resolve per (type, key) (§4.8.2); envelope operations per key.
-const state_key_of = (operation: EntryPayload): string | undefined => {
-  if (is_identity_operation(operation)) return `${operation.value.type}:${operation.key}`
-  if (is_envelope_operation(operation)) return operation.key
-  return undefined
+// Identity records resolve per (type, key) (§4.8.2), label records per pair
+// (§2.5), and track operations and the About record per key (§4.4.2).
+const NO_STATE: readonly string[] = Object.freeze([])
+const state_keys_of = (operation: EntryPayload): readonly string[] => {
+  if (is_identity_operation(operation)) return [`${operation.value.type}:${operation.key}`]
+  if (is_labels_put(operation)) return [...operation.value.set, ...operation.value.unset].map(label_state_key)
+  if (is_envelope_operation(operation) || is_about_put(operation)) return [operation.key]
+  return NO_STATE
 }
 
 // §4.2: clock.time is one more than the greatest time in next, or 1 with none.
@@ -78,7 +83,7 @@ const assert_clock = (oplog: Oplog, hashed: HashedEntry) => {
 }
 
 const as_verified = (hashed: HashedEntry, operation: EntryPayload): VerifiedEntry =>
-  Object.freeze({ ...hashed, operation, state_key: state_key_of(operation) }) as VerifiedEntry
+  Object.freeze({ ...hashed, operation, state_keys: state_keys_of(operation) }) as VerifiedEntry
 
 export const verify_entry = ({ oplog, hashed }: { oplog: Oplog, hashed: HashedEntry }): VerifiedEntry => {
   const { operation } = check_entry({ hashed, chain: oplog.chain })

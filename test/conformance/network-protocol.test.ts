@@ -15,7 +15,7 @@ import { create_libp2p_options, RECORD_SWARM_KEY, type NetworkedHelia } from '#a
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
 import { create_memory_network } from '#adapter/memory/network.ts'
 import { sha256_hex } from '#encoding/sha256.ts'
-import { compute_about_id } from '#entry/id.ts'
+import { ABOUT_KEY } from '#entry/records.ts'
 import { assert_signed_entry_shape } from '#entry/signed.ts'
 import { RECORD_TOPIC, type PubSubMessage } from '#fabric/pubsub.ts'
 import type { Peer } from '#peer/peer.ts'
@@ -24,16 +24,15 @@ import { create_replicator } from '#replication/replicator.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import { open_offline_helia_store } from '#test/helpers/helia.ts'
 import { create_libp2p_peers, dial_address, LOOPBACK } from '#test/helpers/libp2p.ts'
-import { content_cid_of, open_test_library } from '#test/helpers/library.ts'
+import { open_test_library, sign_raw, TEST_PRIVATE_KEY } from '#test/helpers/library.ts'
 import { append_track, create_memory_peers, wait_for_event, wait_until } from '#test/helpers/network.ts'
 import {
+  announced_about_vector,
   audio_pipeline_vector,
   build_multi_block_input,
   heads_message_vector,
-  loaded_about_entry_vector,
   multi_block_vector,
-  NETWORK_MESSAGE_SIZE_BOUND,
-  signed_entry_vector
+  NETWORK_MESSAGE_SIZE_BOUND
 } from './vectors.ts'
 
 const import_with_helia = async (source: string | Uint8Array) => {
@@ -145,23 +144,17 @@ describe('network-protocol', () => {
     for (const topic of [address, address.slice(0, 64), sha256_hex(address)]) expect(observer.pubsub.subscribers(topic)).toEqual([])
     expect(network.published).toEqual([])
   })
-  test('§5.3.2 [vector] F6 LoadedAboutEntry inlines the about payload and serialises to 1060 bytes', () => {
-    const { message } = loaded_about_entry_vector
-    const about_content = message.payload.value.content
-    expect<string>(message.payload.key).toBe(compute_about_id(about_content.address))
-    // The signed entry carries the about content CID; the announcement inlines the payload.
-    const { hash, payload, ...fields } = message
-    const entry = assert_signed_entry_shape({
-      ...fields,
-      payload: { ...payload, value: { ...payload.value, content: content_cid_of(about_content) } }
-    })
-    const loaded = build_loaded_about_entry({ hash, entry, about_content })
-    const json = JSON.stringify(loaded)
-    expect(Buffer.byteLength(json)).toBe(loaded_about_entry_vector.json_byte_length)
-    expect(json).toBe(JSON.stringify(message))
+  test('§5.3.2 [vector] F6 the announced About entry is the signed entry carrying the About record, as signed', () => {
+    const { entry: vector, entry_hash } = announced_about_vector
+    expect<string>(vector.payload.key).toBe(ABOUT_KEY)
+    const { key: _key, sig: _sig, ...fields } = vector
+    const hashed = sign_raw({ private_key: TEST_PRIVATE_KEY, fields })
+    expect(hashed.hash).toBe(entry_hash)
+    expect(assert_signed_entry_shape(hashed.entry)).toEqual(vector as unknown as typeof hashed.entry)
+    expect(JSON.stringify(build_loaded_about_entry({ hash: hashed.hash, entry: hashed.entry }))).toBe(JSON.stringify({ hash: entry_hash, ...vector }))
   })
   test('§5.4.1 [vector] the single-entry heads message is the 122-byte spec JSON', () => {
-    const json = encode_heads_message({ heads: [signed_entry_vector.entry_hash] })
+    const json = encode_heads_message({ heads: [announced_about_vector.entry_hash] })
     expect(json).toBe(heads_message_vector.json)
     expect(Buffer.byteLength(json)).toBe(heads_message_vector.json_byte_length)
     expect(Buffer.byteLength(json)).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)

@@ -377,7 +377,7 @@ describe('content-processing', () => {
   test('§6.5 [MUST] listen entries cannot be deleted', async () => {
     const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
     append_listen({ oplog, track_id: TRACK_ID, address: oplog.chain.address, key_pair: writer })
-    expect(() => append_entry({ oplog, key_pair: writer, payload: build_del_operation({ key: TRACK_ID, type: 'track' }) }))
+    expect(() => append_entry({ oplog, key_pair: writer, payload: build_del_operation({ key: TRACK_ID }) }))
       .toThrow('accepts only listen writes')
     expect(oplog.entries.size).toBe(1)
   })

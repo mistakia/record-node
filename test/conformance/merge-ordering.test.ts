@@ -1,9 +1,10 @@
-// Current-state resolution and merge (§4.4.2, §4.5), against src/oplog.
+// Current-state resolution and merge (§2.5, §4.4.2, §4.5), against src/oplog.
 
 import { describe, expect, test } from 'bun:test'
 
 import { assert_signed_entry_shape, hash_signed_entry, type HashedEntry } from '#entry/signed.ts'
-import { build_del_operation } from '#entry/operations.ts'
+import { build_del_operation, build_labels_put } from '#entry/operations.ts'
+import { label_state_key } from '#entry/records.ts'
 import { generate_key_pair, type KeyPair } from '#identity/key-pair.ts'
 import { resolve_current_state } from '#oplog/current-state.ts'
 import { append_entry, create_oplog, get_live_entry, type Oplog } from '#oplog/dag.ts'
@@ -117,7 +118,7 @@ describe('merge-ordering', () => {
     const { oplog } = await open_test_library({ writers: [alice] })
     const put = append_track({ oplog, key_pair: alice, fingerprint: RACE })
     expect(get_live_entry({ oplog, key: race_key })).toBe(put)
-    const del = append_entry({ oplog, key_pair: alice, payload: build_del_operation({ key: race_key, type: 'track' }) })
+    const del = append_entry({ oplog, key_pair: alice, payload: build_del_operation({ key: race_key }) })
     expect(oplog.current.get(race_key)).toBe(del)
     expect(get_live_entry({ oplog, key: race_key })).toBeUndefined()
   })
@@ -131,7 +132,7 @@ describe('merge-ordering', () => {
       private_key: bob.private_key,
       fields: {
         id: oplog.chain.address,
-        payload: build_del_operation({ key: race_key, type: 'track', timestamp: 9 }),
+        payload: build_del_operation({ key: race_key, timestamp: 9 }),
         next: [(rungs[1] as HashedEntry).hash],
         clock: { id: bob.public_key, time: 3 }
       }
@@ -180,7 +181,7 @@ describe('merge-ordering', () => {
       const replica = create_oplog({ chain: oplog.chain })
       append_track({ oplog: replica, key_pair, fingerprint: RACE, timestamp: 100 + index, content: { index } })
       append_track({ oplog: replica, key_pair, fingerprint: `own-${index}`, timestamp: 100 })
-      if (index === 1) append_entry({ oplog: replica, key_pair, payload: build_del_operation({ key: race_key, type: 'track' }) })
+      if (index === 1) append_entry({ oplog: replica, key_pair, payload: build_del_operation({ key: race_key }) })
       return blocks_of(replica)
     }) as [Uint8Array[], Uint8Array[], Uint8Array[]]
     const ab_c = fresh(oplog, blocks_of(fresh(oplog, a, b)), c)
@@ -190,6 +191,26 @@ describe('merge-ordering', () => {
     expect(oplog_state(ab_c)).toEqual(oplog_state(c_ba))
     expect(ab_c.entries.size).toBe(7)
     expect(ab_c.heads.size).toBe(3)
+  })
+
+  test('§4.5 [MUST] concurrent label records resolve per pair, so two writers labelling one track both keep their labels', async () => {
+    const { oplog } = await open_test_library({ writers: [alice, bob] })
+    const track_id = race_key
+    const label = (key_pair: KeyPair, set: string[], unset: string[] = []) => {
+      const replica = create_oplog({ chain: oplog.chain })
+      append_entry({ oplog: replica, key_pair, payload: build_labels_put({ set: set.map((name) => [track_id, name] as const), unset: unset.map((name) => [track_id, name] as const), timestamp: 1 }) })
+      return blocks_of(replica)
+    }
+    // Alice and Bob each label the track without seeing the other; Bob also
+    // unsets a label Alice sets, and §4.4.2 order decides that one pair.
+    const merged = fresh(oplog, label(alice, ['mix/a', 'shared']), label(bob, ['mix/b'], ['shared']))
+    const state = (name: string) => merged.current.get(label_state_key([track_id, name]))?.operation
+    expect(state('mix/a')).toMatchObject({ value: { set: [[track_id, 'mix/a'], [track_id, 'shared']] } })
+    expect(state('mix/b')).toMatchObject({ value: { set: [[track_id, 'mix/b']] } })
+    const shared = [...merged.key_entries.get(label_state_key([track_id, 'shared'])) ?? []].map((hash) => merged.entries.get(hash) as HashedEntry)
+    expect(merged.current.get(label_state_key([track_id, 'shared']))).toBe(resolve_current_state(shared) as never)
+    // The track itself is untouched: no library holds it.
+    expect(merged.current.has(track_id)).toBe(false)
   })
 
   test('§4.5 [MUST] concurrent merge batches end in the same query-index state as one merge over their union', async () => {

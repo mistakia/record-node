@@ -1,12 +1,13 @@
-// Capabilities, revocation, and clock verification (§3.5.5 to §3.5.10, §4.2),
-// against src/access-control and src/oplog, through the F10 vector.
+// Capabilities, label records, revocation, and clock verification (§2.5,
+// §3.5.5 to §3.5.10, §4.2, §4.9), against src/access-control, src/entry and
+// src/oplog, through the F10 vector.
 
 import { describe, expect, test } from 'bun:test'
 
 import { create_ac_chain } from '#access-control/create.ts'
 import { resolve_ac_chain } from '#access-control/resolve.ts'
 import { build_track_envelope } from '#entry/envelope.ts'
-import { build_put_operation } from '#entry/operations.ts'
+import { build_put_operation, is_labels_put } from '#entry/operations.ts'
 import { sha256_hex } from '#encoding/sha256.ts'
 import { in_causal_past } from '#oplog/causal.ts'
 import { append_entry, create_oplog, MAX_CITED_HEADS, type Oplog } from '#oplog/dag.ts'
@@ -24,7 +25,12 @@ const open_owner_libraries = async (): Promise<Record<LibraryType, Oplog>> => {
     expect(address).toBe(LIBRARY_ADDRESSES[type])
     return create_oplog({ chain: await resolve_ac_chain({ library_address: address, block_store }) })
   }
-  return { recordstore: await open('recordstore', 'library'), listens: await open('listens', 'listens'), identity: await open('identity', 'identity') }
+  return {
+    recordstore: await open('recordstore', 'library'),
+    labels: await open('labels', 'labels'),
+    listens: await open('listens', 'listens'),
+    identity: await open('identity', 'identity')
+  }
 }
 
 // Merges every case into its library in one batch and reads each verdict back.
@@ -32,7 +38,7 @@ const run_vector = async () => {
   const vector = build_capability_vector()
   const oplogs = await open_owner_libraries()
   const verdicts = new Map<string, Verdict>()
-  for (const type of ['recordstore', 'listens', 'identity'] as const) {
+  for (const type of ['recordstore', 'labels', 'listens', 'identity'] as const) {
     const oplog = oplogs[type]
     const blocks = vector.cases.filter(({ library }) => library === type).map(({ hashed }) => hashed.bytes)
     const { merged, rejected } = merge_entries({ oplog, blocks })
@@ -88,9 +94,9 @@ describe('capabilities', () => {
 
   test('§4.4.2 [MUST] an inert entry takes no part in current-state resolution', () => {
     const { oplog } = result
-    const inert_tracks = [...oplog.inert].map((hash) => oplog.entries.get(hash)).filter((entry) => entry?.state_key !== undefined)
-    expect(inert_tracks.length).toBeGreaterThan(0)
-    for (const entry of inert_tracks) expect(oplog.current.get(entry?.state_key as string)?.hash).not.toBe(entry?.hash as string)
+    const inert = [...oplog.inert].flatMap((hash) => oplog.entries.get(hash) ?? []).filter(({ state_keys }) => state_keys.length > 0)
+    expect(inert.some(({ operation }) => is_labels_put(operation))).toBe(true)
+    for (const entry of inert) for (const key of entry.state_keys) expect(oplog.current.get(key)?.hash).not.toBe(entry.hash)
   })
 })
 

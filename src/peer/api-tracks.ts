@@ -10,14 +10,13 @@ import { build_del_operation, build_put_operation, is_put } from '#entry/operati
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import { ingest_cid } from '#ingest/pipeline-cid.ts'
 import { blob_decoded_fields, with_decoded_fields } from '#ingest/rederive.ts'
-import { resolve_current_state } from '#oplog/current-state.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import { get_track, list_tags, list_tracks } from '#query-db/queries.ts'
 import type { Envelope } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { IngestError } from '#types/ingest.ts'
-import { PeerError, type ApiPeer, type LabelBatchResult, type LabelChange, type Track } from '#types/peer.ts'
-import { ingest_into, require_identity, require_toolchain, serialise_write, type PeerContext } from './context.ts'
+import { PeerError, type ApiPeer, type LabelChange, type Track } from '#types/peer.ts'
+import { ingest_into, require_toolchain, serialise_write, type PeerContext } from './context.ts'
 import { append_identity_record } from './identity-library.ts'
 import { identity_state, own_recordstore_addresses, visible_addresses } from './ownership.ts'
 import { to_api_track, to_api_tracks } from './views.ts'
@@ -31,15 +30,10 @@ const library_track = (context: PeerContext, { address, track_id }: { address: s
   return track
 }
 
-// The envelope a write builds on. Under a capability it is the §3.5.6 base
-// entry, which ignores inertness, so the new PUT keeps exactly the tags the
-// verifier will check it against.
+// The live envelope a write builds on.
 const live_envelope = (target: WriteTarget, track_id: string): Envelope => {
-  const { oplog } = target.handle
-  const live = target.capability_id === undefined
-    ? get_live_entry({ oplog, key: track_id })
-    : resolve_current_state([...oplog.key_entries.get(track_id) ?? []].flatMap((hash) => oplog.entries.get(hash) ?? []))
-  if (live === undefined || !is_put(live.operation) || live.operation.value.type !== 'track') {
+  const live = get_live_entry({ oplog: target.handle.oplog, key: track_id })
+  if (live === undefined || !is_put(live.operation)) {
     throw new PeerError('not_found', `not in ${target.address}: ${track_id}`)
   }
   return live.operation.value
@@ -55,54 +49,11 @@ const checked_label_change = ({ add, remove, set }: LabelChange): LabelChange =>
   return { add, remove, set }
 }
 
-// The labels a change leaves, or undefined when they stay equal as a set.
-// Kept labels keep their order and added ones follow; set gives its own.
-const changed_labels = (current: readonly string[], { add = [], remove = [], set }: LabelChange): string[] | undefined => {
-  const next = [...new Set(set ?? [...current.filter((label) => !remove.includes(label)), ...add])]
-  const before = new Set(current)
-  return next.length === before.size && next.every((label) => before.has(label)) ? undefined : next
+// Labels are label records (§2.5), never envelope tags, and this build does
+// not write label records yet, so every label write is refused.
+const refuse_label_write = (): never => {
+  throw new PeerError('conflict', 'label writes are unavailable: labels are label records (§2.5), which this build does not write yet')
 }
-
-// A relabel PUT: the envelope's content with new tags (§2.4.3).
-const relabel_payload = (target: WriteTarget, { envelope, tags }: { envelope: Envelope, tags: readonly string[] }): unknown =>
-  build_put_operation({
-    envelope: build_track_envelope({ id: envelope.id, content_cid: envelope.content, tags }),
-    capability_id: target.capability_id
-  })
-
-// A failed batch item's API code: a refusal of its own, or a protocol rule
-// its entry broke. Anything else fails the batch.
-const BATCH_ITEM_CODES = {
-  not_found: 'NOT_FOUND',
-  forbidden: 'FORBIDDEN',
-  capability_expired: 'CAPABILITY_EXPIRED',
-  capability_revoked: 'CAPABILITY_REVOKED',
-  invalid: 'VALIDATION_ERROR'
-} as const
-
-const batch_item_failure = (track_id: string, error: unknown): LabelBatchResult => {
-  const refusal = as_write_refusal(error)
-  if (refusal instanceof ProtocolError) return { track_id, status: 'failed', error: { code: 'VALIDATION_ERROR', message: refusal.message } }
-  if (refusal instanceof PeerError && Object.hasOwn(BATCH_ITEM_CODES, refusal.code)) {
-    return { track_id, status: 'failed', error: { code: BATCH_ITEM_CODES[refusal.code as keyof typeof BATCH_ITEM_CODES], message: refusal.message } }
-  }
-  throw refusal
-}
-
-// Relabelling appends a new PUT of the same content with the new tags (§2.4.3).
-const relabel = async (context: PeerContext, { track_id, library_address, capability_id, tags }: {
-  track_id: string
-  library_address?: string | undefined
-  capability_id?: string | undefined
-  tags: (current: readonly string[]) => readonly string[] | undefined
-}): Promise<Track> =>
-  await serialise_write(context, async () => {
-    const target = resolve_write_target(context, { library_address, capability_id })
-    const envelope = live_envelope(target, track_id)
-    const next = tags(envelope.tags ?? [])
-    if (next !== undefined) await append_write(context, target, relabel_payload(target, { envelope, tags: next }))
-    return library_track(context, { address: target.address, track_id })
-  })
 
 // The live entry's content payload, which a correction rewrites.
 const stored_content = async (context: PeerContext, { envelope, track_id }: { envelope: Envelope, track_id: string }): Promise<Record<string, unknown>> => {
@@ -112,8 +63,7 @@ const stored_content = async (context: PeerContext, { envelope, track_id }: { en
 }
 
 // A correction (§2.4.3, §6.4.4): a new content object for the same audio, PUT
-// under the same id with the envelope's labels kept. The same content appends
-// nothing.
+// under the same id. The same content appends nothing.
 const supersede_content = async (context: PeerContext, { target, envelope, content }: {
   target: WriteTarget
   envelope: Envelope
@@ -125,7 +75,7 @@ const supersede_content = async (context: PeerContext, { target, envelope, conte
   if (content_cid === envelope.content) return
   await context.content_store.put(content_cid, bytes)
   const payload = build_put_operation({
-    envelope: build_track_envelope({ id: envelope.id, content_cid, ...(envelope.tags === undefined ? {} : { tags: envelope.tags }) }),
+    envelope: build_track_envelope({ id: envelope.id, content_cid }),
     capability_id: target.capability_id
   })
   await append_write(context, target, payload)
@@ -173,28 +123,25 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
   // A new track carries the given labels in its PUT, and a held one is
   // relabelled to them.
   add_track: async ({ content_cid, tags, library_address, capability_id }) => {
+    if (tags !== undefined && tags.length > 0) refuse_label_write()
     const target = resolve_write_target(context, { library_address, capability_id })
     let track_id: string
-    let existing: boolean
     try {
       // Nothing to prepare: the content object is already stored.
-      ({ track_id, existing } = await ingest_into(context, target, {
+      ({ track_id } = await ingest_into(context, target, {
         prepare: async () => undefined,
-        commit: async ({ target: track_target }) => await ingest_cid({ content_cid, target: track_target, ...(tags === undefined ? {} : { tags: [...new Set(tags)] }) }),
+        commit: async ({ target: track_target }) => await ingest_cid({ content_cid, target: track_target }),
         blobs: () => []
       }))
     } catch (error) {
       if (error instanceof ProtocolError && error.code === 'content_unavailable') throw new PeerError('not_found', error.message)
       throw as_write_refusal(error)
     }
-    if (existing && tags !== undefined) {
-      return await relabel(context, { track_id, library_address: target.address, capability_id, tags: (current) => changed_labels(current, { set: tags }) })
-    }
     return library_track(context, { address: target.address, track_id })
   },
 
   // A content.tags correction (§2.4.3): a new content object for the same
-  // audio, PUT under the same id with the envelope's labels kept.
+  // audio, PUT under the same id.
   update_track: async ({ track_id, tags, library_address, capability_id }) =>
     await serialise_write(context, async () => {
       const target = resolve_write_target(context, { library_address, capability_id })
@@ -234,7 +181,7 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
     await serialise_write(context, async () => {
       const target = resolve_write_target(context, { library_address })
       live_envelope(target, track_id)
-      await append_write(context, target, build_del_operation({ key: track_id, type: 'track' }))
+      await append_write(context, target, build_del_operation({ key: track_id }))
     })
   },
 
@@ -256,51 +203,17 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
 
   list_tags: async ({ library_addresses, prefix }) => list_tags({ db: context.db, library_addresses: library_addresses ?? visible_addresses(context), prefix }),
 
-  add_tag: async ({ track_id, tag, library_address, capability_id }) => await relabel(context, {
-    track_id,
-    library_address,
-    capability_id,
-    tags: (current) => {
-      if (current.includes(tag)) throw new PeerError('conflict', `already tagged ${tag}: ${track_id}`)
-      return [...current, tag]
-    }
-  }),
+  add_tag: async () => refuse_label_write(),
+  remove_tag: async () => refuse_label_write(),
 
-  remove_tag: async ({ track_id, tag, library_address, capability_id }) => await relabel(context, {
-    track_id,
-    library_address,
-    capability_id,
-    tags: (current) => current.includes(tag) ? current.filter((label) => label !== tag) : undefined
-  }),
-
-  change_labels: async ({ track_id, add, remove, set, library_address, capability_id }) => {
-    const change = checked_label_change({ add, remove, set })
-    return await relabel(context, { track_id, library_address, capability_id, tags: (current) => changed_labels(current, change) })
+  change_labels: async ({ add, remove, set }) => {
+    checked_label_change({ add, remove, set })
+    return refuse_label_write()
   },
 
-  // Each item builds from the live entry just before its append, so items
-  // naming one track apply one after the other.
-  change_labels_batch: async ({ items, library_address, capability_id }) => {
-    const changes = items.map(({ track_id, ...change }) => ({ track_id, change: checked_label_change(change) }))
-    return await serialise_write(context, async () => {
-      const target = resolve_write_target(context, { library_address, capability_id })
-      const labels: string[][] = []
-      const outcomes = await context.libraries.append_many({
-        library_address: target.address,
-        key_pair: require_identity(context).key_pair,
-        builds: changes.map(({ track_id, change }, index) => () => {
-          const envelope = live_envelope(target, track_id)
-          const next = changed_labels(envelope.tags ?? [], change)
-          labels[index] = next ?? [...new Set(envelope.tags ?? [])]
-          return next === undefined ? undefined : relabel_payload(target, { envelope, tags: next })
-        })
-      })
-      return outcomes.map((outcome, index): LabelBatchResult => {
-        const { track_id } = changes[index] as { track_id: string }
-        if (!outcome.ok) return batch_item_failure(track_id, outcome.error)
-        return { track_id, status: outcome.entry === undefined ? 'unchanged' : 'updated', tags: labels[index] as string[] }
-      })
-    })
+  change_labels_batch: async ({ items }) => {
+    for (const { add, remove, set } of items) checked_label_change({ add, remove, set })
+    return refuse_label_write()
   },
 
   get_audio: async (cid) => await context.audio.read(cid),

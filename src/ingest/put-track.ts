@@ -47,14 +47,14 @@ export const stored_track_duration = async ({ content_store, content_cid }: {
 }
 
 // The content is validated against §2.4.1 before anything is stored.
-export const put_track = async ({ target, content, tags, timestamp }: {
+export const put_track = async ({ target, content, timestamp }: {
   target: TrackTarget
   content: Record<string, unknown>
-  tags?: readonly string[] | undefined
   timestamp?: number | undefined
 }): Promise<IngestedTrack> => {
-  const { oplog, key_pair, content_store } = target
+  const { oplog, key_pair, content_store, capability_id } = target
   const track_content = validate_track_content(content)
+  const track_id = compute_track_id((track_content.tags as Record<string, unknown>).acoustid_fingerprint as string)
   // a-c: the content as canonical dag-cbor with sha3-512, pinned non-recursively.
   const bytes = encode_canonical(track_content)
   assert_payload_size(bytes)
@@ -62,13 +62,8 @@ export const put_track = async ({ target, content, tags, timestamp }: {
   await content_store.put(content_cid, bytes)
   await content_store.pin(content_cid)
   // d-e: the PUT keyed by the envelope id, signed and appended.
-  const envelope = build_track_envelope({
-    id: compute_track_id((track_content.tags as Record<string, unknown>).acoustid_fingerprint as string),
-    content_cid,
-    ...(timestamp === undefined ? {} : { timestamp }),
-    ...(tags === undefined ? {} : { tags })
-  })
-  const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope, capability_id: target.capability_id }) })
+  const envelope = build_track_envelope({ id: track_id, content_cid, ...(timestamp === undefined ? {} : { timestamp }) })
+  const entry = append_entry({ oplog, key_pair, payload: build_put_operation({ envelope, capability_id }) })
   // f: the entry block, pinned non-recursively.
   await content_store.put(entry.hash, entry.bytes)
   await content_store.pin(entry.hash)
@@ -76,8 +71,8 @@ export const put_track = async ({ target, content, tags, timestamp }: {
 }
 
 // Records a source pointer on a live track (§2.4.2): a PUT of the same audio
-// with the pointer added to content.resolver, keeping the envelope labels. A
-// pointer already present, or content not stored locally, appends nothing.
+// with the pointer added to content.resolver. A pointer already present, or
+// content not stored locally, appends nothing.
 export const add_track_resolver = async ({ target, track_id, resolver }: {
   target: TrackTarget
   track_id: string
@@ -92,5 +87,5 @@ export const add_track_resolver = async ({ target, track_id, resolver }: {
   const resolvers = content.resolver as ReadonlyArray<{ extractor: string, id: string }>
   const key = resolver_key(resolver)
   if (resolvers.some((existing) => resolver_key(existing) === key)) return undefined
-  return await put_track({ target, content: { ...content, resolver: [...resolvers, { ...resolver }] }, tags: envelope.tags })
+  return await put_track({ target, content: { ...content, resolver: [...resolvers, { ...resolver }] } })
 }

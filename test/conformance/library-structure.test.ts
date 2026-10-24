@@ -5,10 +5,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
+import { is_labels_put, is_put } from '#entry/operations.ts'
 import { decode_signed_entry } from '#entry/signed.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
 import { append_listen } from '#oplog/listens.ts'
-import { create_oplog } from '#oplog/dag.ts'
+import { create_oplog, type Oplog } from '#oplog/dag.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { create_projector } from '#query-db/projector.ts'
 import { rebuild_query_db } from '#query-db/rebuild.ts'
@@ -16,7 +17,7 @@ import { open_query_db } from '#query-db/schema.ts'
 import { append_track, blocks_of, open_test_library } from '#test/helpers/library.ts'
 import { append_stored_track, open_library_manager, pinned, write_chain } from '#test/helpers/library-manager.ts'
 import {
-  add_link,
+  add_labels,
   add_track,
   delete_track,
   dump_query_db,
@@ -28,6 +29,11 @@ import {
 
 const current_rows = (db: ReturnType<typeof open_query_db>) =>
   db.prepare('SELECT key, entry_hash FROM entries ORDER BY key').all().map(({ key, entry_hash }) => [key, entry_hash])
+
+// The oplog's resolution of every track and About key: the keys the entries
+// table projects. Label pairs resolve in the oplog alone so far.
+const current_keys = (oplog: Oplog) =>
+  [...oplog.current].filter(([, entry]) => !is_labels_put(entry.operation)).map(([key, entry]) => [key, entry.hash]).sort()
 
 describe('library-structure', () => {
   test('§4.1.1 [MUST] signed entry v is 2', async () => {
@@ -140,12 +146,12 @@ describe('library-structure', () => {
     const first = await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One', timestamp: 100 })
     await project(first)
     await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-two', title: 'Two', tags: ['dub'] }))
-    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One', tags: ['late'] }))
+    await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-one', title: 'One again', tags: ['late'] }))
     await project(await add_track({ oplog, key_pair: writer, block_store, fingerprint: 'AQAA-gone' }))
     const gone = oplog.entries.get([...oplog.heads][0] as string)
     await project(delete_track({ oplog, key_pair: writer, key: (gone?.operation as { key: string }).key }))
-    await project(await add_link({ oplog, key_pair: writer, block_store, address: listens.chain.address, alias: 'mine' }))
-    await project(await set_about({ oplog, key_pair: writer, block_store, profile: { name: 'Library' } }))
+    await project(add_labels({ oplog, key_pair: writer, track_id: (first.operation as { key: string }).key, set: ['dub'], unset: ['late'] }))
+    await project(set_about({ oplog, key_pair: writer, name: 'Library' }))
     for (const time of [1, 2, 3]) {
       const entry = append_listen({ oplog: listens.oplog, track_id: 'a'.repeat(64), address: oplog.chain.address, key_pair: writer, timestamp: time })
       await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
@@ -164,8 +170,9 @@ describe('library-structure', () => {
     expect(oplogs.map(({ entries }) => entries.size)).toEqual([oplog.entries.size, listens.oplog.entries.size])
     expect(dump_query_db(rebuilt)).toEqual(dump_query_db(db))
     // The projection holds the oplog's resolution of every key, tombstones included.
-    expect(current_rows(db)).toEqual([...oplog.current].map(([key, entry]) => [key, entry.hash]).sort())
+    expect(current_rows(db)).toEqual(current_keys(oplog))
     expect(db.prepare('SELECT count(*) AS count FROM tracks').get()?.count).toBe(2)
+    expect(db.prepare('SELECT name FROM about').all()).toEqual([{ name: 'Library' }])
     expect(db.prepare('SELECT count(*) AS count FROM listens').get()?.count).toBe(3)
   })
 
@@ -181,8 +188,10 @@ describe('library-structure', () => {
       await add_track({ oplog: alice_log, key_pair: alice, block_store, fingerprint, title: `alice ${index}`, timestamp: 1000 + index, tags: ['alice'] })
       await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint, title: `bob ${index}`, timestamp: 1000 + (index % 2) * 5, tags: ['bob'] })
     }
-    for (const key of [...alice_log.current.keys()].slice(0, 2)) delete_track({ oplog: alice_log, key_pair: alice, key, timestamp: 2000 })
-    await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-a', title: 'bob relabel', tags: ['again'], timestamp: 2000 })
+    const alice_tracks = [...alice_log.current].flatMap(([key, entry]) => is_put(entry.operation) ? [key] : [])
+    for (const key of alice_tracks.slice(0, 2)) delete_track({ oplog: alice_log, key_pair: alice, key, timestamp: 2000 })
+    await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-a', title: 'bob retitle', tags: ['again'], timestamp: 2000 })
+    add_labels({ oplog: alice_log, key_pair: alice, track_id: alice_tracks[0] as string, unset: ['alice'], timestamp: 2001 })
     await add_track({ oplog: bob_log, key_pair: bob, block_store, fingerprint: 'AQAA-z', title: 'not stored', store: false })
     const blocks = [...blocks_of(alice_log), ...blocks_of(bob_log)]
 
@@ -209,7 +218,7 @@ describe('library-structure', () => {
       }
       await Promise.all(projections)
       expect(dump_query_db(db)).toEqual(dump_query_db(rebuilt))
-      expect(current_rows(db)).toEqual([...oplog.current].map(([key, entry]) => [key, entry.hash]).sort())
+      expect(current_rows(db)).toEqual(current_keys(oplog))
     }
   })
 })

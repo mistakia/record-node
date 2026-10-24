@@ -36,7 +36,7 @@ describe('listens replication', () => {
     // A DEL validly signed by the listens library's own writer.
     const del = sign_raw({
       private_key: key_pair.private_key,
-      fields: { id: listens_address, payload: build_del_operation({ key: track_id, type: 'track' }), next: [...source.heads], clock: { id: key_pair.public_key, time: 99 } }
+      fields: { id: listens_address, payload: build_del_operation({ key: track_id }), next: [...source.heads], clock: { id: key_pair.public_key, time: 99 } }
     })
     const hostile_store = create_memory_content_store()
     const hostile = peers.network.join({ content_store: hostile_store })

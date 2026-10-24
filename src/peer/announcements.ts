@@ -3,16 +3,14 @@
 // announced library counts for a peer only once authenticate_announced has
 // verified it; until then it is a hint and changes nothing local.
 
-import { compute_about_id } from '#entry/id.ts'
-import { is_put } from '#entry/operations.ts'
-import { decode_payload } from '#entry/payload.ts'
+import { is_about_put } from '#entry/operations.ts'
+import { ABOUT_KEY } from '#entry/records.ts'
 import type { Network } from '#fabric/network.ts'
 import { RECORD_TOPIC, type PubSubMessage } from '#fabric/pubsub.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import { authenticate_announced, create_announcer } from '#replication/announcement.ts'
 import { build_loaded_about_entry, decode_announcement, encode_announcement, type AnnouncedLibrary, type LoadedAboutEntry } from '#replication/messages.ts'
 import type { Timers } from '#replication/timers.ts'
-import { is_record } from '#types/guards.ts'
 import type { PeerContext } from './context.ts'
 import { default_own_library, linked_addresses, own_recordstore_addresses } from './ownership.ts'
 
@@ -29,15 +27,11 @@ export interface PeerAnnouncements {
   announced_by: (peer_id: string) => AnnouncedBy | undefined
 }
 
-// The About entry of an open, non-empty library, with its payload inlined.
-const loaded_about = async (context: PeerContext, library_address: string): Promise<LoadedAboutEntry | undefined> => {
+// The About entry of an open library.
+const loaded_about = (context: PeerContext, library_address: string): LoadedAboutEntry | undefined => {
   const oplog = context.libraries.get(library_address)?.oplog
-  if (oplog === undefined || oplog.entries.size === 0) return undefined
-  const entry = get_live_entry({ oplog, key: compute_about_id(library_address) })
-  if (entry === undefined || !is_put(entry.operation)) return undefined
-  const bytes = await context.content_store.get(entry.operation.value.content)
-  const content = bytes === undefined ? undefined : decode_payload(bytes)
-  return is_record(content) ? build_loaded_about_entry({ hash: entry.hash, entry: entry.entry, about_content: content }) : undefined
+  const entry = oplog === undefined ? undefined : get_live_entry({ oplog, key: ABOUT_KEY })
+  return entry === undefined || !is_about_put(entry.operation) ? undefined : build_loaded_about_entry({ hash: entry.hash, entry: entry.entry })
 }
 
 export const create_peer_announcements = ({ context, network, timers, get_block, on_peer_join, on_peer_leave, on_library_verified }: {
@@ -65,11 +59,10 @@ export const create_peer_announcements = ({ context, network, timers, get_block,
       if (!context.config.announce || context.identity === undefined) return undefined
       const own_address = default_own_library(context)
       if (own_address === undefined) return undefined
-      const about = await loaded_about(context, own_address)
+      const about = loaded_about(context, own_address)
       if (about === undefined) return undefined
       const others = [...own_recordstore_addresses(context).filter((address) => address !== own_address), ...linked_addresses(context)]
-      const logs = await Promise.all(others.map(async (address) => await loaded_about(context, address)))
-      return encode_announcement({ about, logs: logs.filter((log) => log !== undefined) })
+      return encode_announcement({ about, logs: others.flatMap((address) => loaded_about(context, address) ?? []) })
     }
   })
 

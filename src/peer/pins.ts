@@ -1,14 +1,13 @@
 // What a library pins (§3.5.1, §4.6): the three AC chain objects, and per
 // entry the signed entry block, the envelope content payload, and item 6
 // when the library's replication policy keeps it (§4.6.1): a track's audio
-// blob and artwork, and the avatar of the library's About entry. Items 1-5 are
+// blob and artwork. Items 1-5 are
 // dag-cbor leaves and pinned directly; item 6 is a UnixFS DAG and pinned
 // recursively.
 
 import type { ResolvedAcChain } from '#access-control/resolve.ts'
-import { compute_about_id } from '#entry/id.ts'
 import { is_put } from '#entry/operations.ts'
-import { decode_payload, validate_about_content, validate_track_content } from '#entry/payload.ts'
+import { decode_payload, validate_track_content } from '#entry/payload.ts'
 import type { ContentStore } from '#fabric/content-store.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { ProtocolError } from '#types/errors.ts'
@@ -48,27 +47,20 @@ export const stored_track_content = async ({ content_store, content_cid }: {
 export const track_blobs = (content: Record<string, unknown>): string[] =>
   [content.hash as string, ...(content.artwork as string[])]
 
-// Whether an entry can carry item 6: a track, or an About entry.
-export const has_item_6 = (entry: VerifiedEntry): boolean =>
-  is_put(entry.operation) && (entry.operation.value.type === 'track' || entry.operation.value.type === 'about')
+// Whether an entry can carry item 6: a track PUT.
+export const has_item_6 = (entry: VerifiedEntry): boolean => is_put(entry.operation)
 
 // An entry's item 6 with the validated content that names it, or undefined
 // when the entry carries none or its payload is not stored or does not
-// validate. Only the library's own About entry counts (§2.6).
-export const stored_item_6 = async ({ content_store, library_address, entry }: {
+// validate.
+export const stored_item_6 = async ({ content_store, entry }: {
   content_store: ContentStore
   library_address: string
   entry: VerifiedEntry
 }): Promise<{ content: Record<string, unknown>, blobs: string[] } | undefined> => {
   if (!is_put(entry.operation)) return undefined
-  const { type, id, content: content_cid } = entry.operation.value
-  if (type === 'track') {
-    const content = await stored_track_content({ content_store, content_cid })
-    return content === undefined ? undefined : { content, blobs: track_blobs(content) }
-  }
-  if (type !== 'about' || id !== compute_about_id(library_address)) return undefined
-  const content = await stored_content({ content_store, content_cid, validate: (value) => validate_about_content({ value, library_address }) })
-  return content === undefined ? undefined : { content, blobs: typeof content.avatar === 'string' ? [content.avatar] : [] }
+  const content = await stored_track_content({ content_store, content_cid: entry.operation.value.content })
+  return content === undefined ? undefined : { content, blobs: track_blobs(content) }
 }
 
 // A payload not stored yet contributes no item-6 pins; they follow once the

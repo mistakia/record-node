@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
-import { compute_about_id } from '#entry/id.ts'
+import { ABOUT_KEY } from '#entry/records.ts'
 import { RECORD_TOPIC, type PubSubMessage } from '#fabric/pubsub.ts'
 import { get_live_entry } from '#oplog/dag.ts'
 import type { Peer } from '#peer/peer.ts'
@@ -19,7 +19,7 @@ import {
 } from '#replication/messages.ts'
 import { append_track, create_memory_peers, wait_for_event, wait_until } from '#test/helpers/network.ts'
 import { create_manual_timers } from '#test/helpers/timers.ts'
-import { loaded_about_entry_vector } from './vectors.ts'
+import { announced_about_vector } from './vectors.ts'
 
 const peers = create_memory_peers()
 afterEach(async () => { await peers.stop_all() })
@@ -28,9 +28,9 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const turn = async () => { await new Promise((resolve) => setImmediate(resolve)) }
 
-const vector_about = loaded_about_entry_vector.message as unknown as LoadedAboutEntry
-const with_content = (hint: LoadedAboutEntry, content: Record<string, unknown>): LoadedAboutEntry =>
-  ({ ...hint, payload: { ...hint.payload, value: { ...hint.payload.value, content } } })
+const vector_about = { hash: announced_about_vector.entry_hash, ...announced_about_vector.entry } as unknown as LoadedAboutEntry
+const with_name = (hint: LoadedAboutEntry, name: string): LoadedAboutEntry =>
+  ({ ...hint, payload: { ...hint.payload, value: { ...hint.payload.value, name } } })
 
 const peer_id_of = async (peer: Peer) => (await peer.get_settings()).peer_id
 
@@ -39,9 +39,9 @@ const announcing_peer = async (name: string) => {
   const peer = await peers.start()
   const address = peer.identity().own_address
   await peer.set_about({ address, fields: { name } })
-  const entry = get_live_entry({ oplog: peer.context.libraries.get(address)?.oplog as never, key: compute_about_id(address) })
+  const entry = get_live_entry({ oplog: peer.context.libraries.get(address)?.oplog as never, key: ABOUT_KEY })
   if (entry === undefined) throw new Error('no About entry')
-  const hint = build_loaded_about_entry({ hash: entry.hash, entry: entry.entry, about_content: { address, name } })
+  const hint = build_loaded_about_entry({ hash: entry.hash, entry: entry.entry })
   return { peer, address, hint }
 }
 
@@ -64,7 +64,8 @@ describe('announcement', () => {
     await wait_until(() => received.some(({ from }) => from === peer_id))
     const message = JSON.parse(decoder.decode(received.find(({ from }) => from === peer_id)?.data)) as { about: LoadedAboutEntry, logs: unknown[] }
     expect(message.about).toEqual(JSON.parse(JSON.stringify(hint)))
-    expect(message.about.payload.value.content).toEqual({ address, name: 'A' })
+    expect(message.about.id).toBe(address)
+    expect(message.about.payload.value).toMatchObject({ type: 'about', v: 1, name: 'A' })
     expect(message.logs).toEqual([])
   })
 
@@ -75,10 +76,10 @@ describe('announcement', () => {
       fetched.push(cid)
       return await peer.content_store.get(cid)
     }
-    expect((await authenticate_announced({ announced: { address, hint }, get_block }))?.content).toEqual({ address, name: 'A' })
+    expect((await authenticate_announced({ announced: { address, hint }, get_block }))?.about.name).toBe('A')
     expect(fetched).toContain(hint.hash)
-    // The inlined content is checked against the payload the canonical entry names.
-    const tampered = with_content(hint, { address, name: 'Mallory' })
+    // The hint's payload is checked against the payload the canonical entry signs.
+    const tampered = with_name(hint, 'Mallory')
     expect(await authenticate_announced({ announced: { address, hint: tampered }, get_block })).toBeUndefined()
     // Without the canonical entry there is nothing to authenticate.
     const without_entry = async (cid: string) => cid === hint.hash ? undefined : await peer.content_store.get(cid)
@@ -86,7 +87,7 @@ describe('announcement', () => {
   })
 
   test('§5.3.2 [MUST] announcements over 256 KiB of JSON are not sent', async () => {
-    const padded = (bytes: number) => with_content(vector_about, { ...vector_about.payload.value.content, bio: 'x'.repeat(bytes) })
+    const padded = (bytes: number) => with_name(vector_about, 'x'.repeat(bytes))
     const logs = Array.from({ length: 4 }, () => padded(100 * 1024))
     const bytes = encode_announcement({ about: vector_about, logs })
     expect(bytes?.length).toBeLessThanOrEqual(NETWORK_MESSAGE_MAX_BYTES)
@@ -123,7 +124,7 @@ describe('announcement', () => {
     await member.pubsub.publish(RECORD_TOPIC, within)
     await wait_until(() => delivered(within))
     expect(receiver.context.replication?.announced_by(member.peer_id)?.hints.map(({ address }) => address))
-      .toEqual([vector_about.payload.value.content.address as string])
+      .toEqual([vector_about.id])
   })
 
   test('§5.3.2 [MUST] announcement content is an untrusted hint until the AC chain and signatures verify', async () => {
@@ -131,7 +132,7 @@ describe('announcement', () => {
     const receiver = await peers.start()
     const { member: hostile } = await join_observer()
     // A hostile peer announces the genuine library with forged content.
-    await hostile.pubsub.publish(RECORD_TOPIC, encoder.encode(JSON.stringify({ about: with_content(hint, { address, name: 'Mallory' }), logs: [] })))
+    await hostile.pubsub.publish(RECORD_TOPIC, encoder.encode(JSON.stringify({ about: with_name(hint, 'Mallory'), logs: [] })))
     const genuine_id = await peer_id_of(genuine)
     await wait_until(() => receiver.context.replication?.announced_by(genuine_id)?.verified.has(address) === true)
     await wait_until(() => receiver.context.replication?.announced_by(hostile.peer_id) !== undefined)
