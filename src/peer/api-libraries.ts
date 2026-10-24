@@ -130,9 +130,12 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
     await revoke_capability(context, { library_address, revokes: capability_id, capability_id: via_capability_id })
   },
 
+  // An open library with no About record has a null name (chapter 7 About);
+  // only a library the node does not hold is unknown.
   get_about: async (address) => {
     const about = get_about({ db: context.db, library_address: address })
-    return about === undefined ? undefined : to_api_about(about)
+    if (about !== undefined) return to_api_about(about)
+    return context.libraries.get(address) === undefined ? undefined : { library_address: address, name: null }
   },
 
   set_about: async ({ address, name, capability_id }) => {

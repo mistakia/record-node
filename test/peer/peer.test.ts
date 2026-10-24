@@ -187,6 +187,9 @@ describe('peer', () => {
     const peer = await start()
     const address = peer.identity().own_address
     const entries = () => peer.context.libraries.get(address)?.oplog.entries.size ?? 0
+    // An open library with no About record has a null name; an unknown one is not found.
+    expect(await peer.get_about(address)).toEqual({ library_address: address, name: null })
+    expect(await peer.get_about(`${address}x`)).toBeUndefined()
     expect(await peer.set_about({ address, name: 'mine' })).toEqual({ library_address: address, name: 'mine' })
     const written = entries()
     expect(await peer.set_about({ address, name: 'mine' })).toEqual({ library_address: address, name: 'mine' })
