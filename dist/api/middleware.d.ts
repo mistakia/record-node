@@ -1,4 +1,4 @@
-import type { ErrorRequestHandler, RequestHandler } from 'express';
+import type { ErrorRequestHandler, RequestHandler, Response } from 'express';
 export type ErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'TRACK_ID_COLLISION' | 'DEGENERATE_FINGERPRINT' | 'RESOLVER_FAILED' | 'INTERNAL_ERROR';
 export interface ErrorDetail {
     field: string;
@@ -16,11 +16,14 @@ export declare class ApiError extends Error {
     });
 }
 export type Authenticate = (token: string | undefined) => boolean | Promise<boolean>;
+export type IdentifyToken = (token: string) => Promise<string | undefined>;
+export type ManagedLabelLibraries = ReadonlyMap<string, string>;
 export declare const KNOWN_CLIENT_ORIGINS: readonly string[];
 export declare const origin_allowed: (cors_origins: readonly string[], origin: string | undefined) => boolean;
 export declare const cors: (cors_origins: readonly string[]) => RequestHandler;
 export declare const no_cache: RequestHandler;
 export declare const bearer_token: (header: string | undefined) => string | undefined;
-export declare const authenticate_requests: (authenticate: Authenticate | undefined) => RequestHandler;
+export declare const authenticate_requests: (authenticate: Authenticate | undefined, identify?: IdentifyToken) => RequestHandler;
+export declare const assert_label_writer: (managed: ManagedLabelLibraries, res: Response, library_address: unknown) => void;
 export declare const handle_errors: (log_error: (error: unknown) => void) => ErrorRequestHandler;
 export declare const skip_abandoned_reads: RequestHandler;

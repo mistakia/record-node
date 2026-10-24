@@ -1,8 +1,7 @@
 // The WAL checkpointer: the write connection never checkpoints, a worker
-// does, the WAL stays bounded under steady writes and under back-to-back held
-// batches, stop and a drain interleave safely, a crash before any checkpoint
-// loses no committed batch, and under Node a pending stop keeps the process
-// alive.
+// does, the WAL stays bounded under steady writes, a crash before any
+// checkpoint loses no committed batch, and under Node a pending stop keeps
+// the process alive.
 
 import { afterEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
@@ -36,7 +35,7 @@ const store = (policy?: Partial<WalCheckpointPolicy>) => {
   db.exec('CREATE TABLE t (x BLOB)')
   const checkpointer = policy === undefined
     ? undefined
-    : start_wal_checkpointer({ db, path, policy: { interval_ms: 5, truncate_bytes: BOUND, drain_timeout_ms: 10_000, ...policy } })
+    : start_wal_checkpointer({ db, path, policy: { interval_ms: 5, truncate_bytes: BOUND, ...policy } })
   const count = () => {
     const reader = new DatabaseSync(path)
     const row = reader.prepare('SELECT COUNT(*) AS n FROM t').get() as { n: number }
@@ -71,50 +70,11 @@ test('keeps the WAL bounded under steady small batches, and within it at close',
   expect(count()).toBe(1000)
 }, 20_000)
 
-test('a held batch drains first, keeping the WAL bounded under back-to-back large batches', async () => {
-  const { path, db, checkpointer, count, insert } = store({ interval_ms: 60_000 })
-  const batch = create_commit_batcher(db, { window_ms: 60_000, max_transactions: 1000 }, checkpointer)
-  let peak = 0
-  // Each hold writes about 1 MB, four times the bound, with no idle time
-  // between holds for a scheduled pass to catch up in.
-  for (let round = 0; round < 40; round++) {
-    await batch.hold(async () => {
-      for (let row = 0; row < 250; row++) batch.run(() => insert.run(ROW))
-    })
-    peak = Math.max(peak, wal_bytes(path))
-  }
-  // The bound, plus the one batch written past it before the next drain.
-  expect(peak).toBeLessThan(BOUND + 250 * 4096 * 1.2)
-  expect(count()).toBe(10_000)
-})
-
-test('concurrent holds share one drain and both commit', async () => {
-  const { db, checkpointer, count, insert } = store({ interval_ms: 60_000 })
-  const batch = create_commit_batcher(db, { window_ms: 60_000, max_transactions: 1000 }, checkpointer)
-  await batch.hold(async () => { for (let row = 0; row < 250; row++) batch.run(() => insert.run(ROW)) })
-  expect(checkpointer.over_bound()).toBe(true)
-  const write = async () => { await batch.hold(async () => { batch.run(() => insert.run(ROW)) }) }
-  await Promise.all([write(), write()])
-  expect(count()).toBe(252)
-})
-
-test('stop during a drain ends both promptly', async () => {
-  const { db, checkpointer, insert } = store({ interval_ms: 60_000 })
-  for (let row = 0; row < 500; row++) insert.run(ROW)
-  const started = performance.now()
-  const draining = checkpointer.drain()
-  await checkpointer.stop()
-  await draining
-  expect(performance.now() - started).toBeLessThan(2000)
-  db.close()
-})
-
 test('the write connection never checkpoints on its own', () => {
-  const { path, checkpointer, insert } = store({ interval_ms: 60_000, truncate_bytes: 1 << 30 })
+  const { path, insert } = store({ interval_ms: 60_000, truncate_bytes: 1 << 30 })
   // Well past the default 1000-page autocheckpoint, with no nudge.
   for (let row = 0; row < 2000; row++) insert.run(ROW)
   expect(wal_bytes(path)).toBeGreaterThan(2000 * 4096)
-  expect(checkpointer.over_bound()).toBe(false)
 })
 
 test('a crash before any checkpoint keeps every committed batch', () => {
@@ -127,7 +87,7 @@ test('a crash before any checkpoint keeps every committed batch', () => {
     import { create_commit_batcher } from '#fabric/commit-batch.ts'
     import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts'
     const db = new DatabaseSync(${JSON.stringify(path)})
-    const checkpointer = start_wal_checkpointer({ db, path: ${JSON.stringify(path)}, policy: { interval_ms: 60_000, truncate_bytes: 1 << 30, drain_timeout_ms: 10_000 } })
+    const checkpointer = start_wal_checkpointer({ db, path: ${JSON.stringify(path)}, policy: { interval_ms: 60_000, truncate_bytes: 1 << 30 } })
     const batch = create_commit_batcher(db, { window_ms: 60_000, max_transactions: 99 }, checkpointer)
     const insert = db.prepare('INSERT INTO t (x) VALUES (?)')
     for (let row = 0; row < 500; row++) batch.run(() => insert.run(new Uint8Array(4096)))

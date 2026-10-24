@@ -1,9 +1,14 @@
 // Each route domain end to end over HTTP against the fake peer, with every
 // response validated against 7-http-api.yaml.
 
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { ResolverError } from 'record-resolver'
 
+import { create_token_authenticator, issue_access_token } from '#api/access-tokens.ts'
 import { CENSUS_ROW, CONTENT_CID, LINKED_ADDRESS, OWN_ADDRESS, TRACK_ID, UNKNOWN_ADDRESS } from './fake-peer.ts'
 import { library_path, post_json, start_test_server, type TestServer } from './server.ts'
 
@@ -31,6 +36,10 @@ describe('api: tracks', () => {
     expect(last_call('list_tracks')).toEqual([{
       offset: 0, limit: 100, tags: ['a', 'b'], library_addresses: [OWN_ADDRESS], query: 'sine', shuffle: false, sort: 'added_at', order: 'desc'
     }])
+    // label_libraries is passed apart from membership, once or many times.
+    expect((await fetch(api.url(`/tracks?label_libraries=${encodeURIComponent(LINKED_ADDRESS)}`))).status).toBe(200)
+    expect(last_call('list_tracks')).toEqual([expect.objectContaining({ label_libraries: [LINKED_ADDRESS] })])
+    expect(last_call('list_tracks')?.[0]).not.toHaveProperty('library_addresses')
   })
 
   test('GET /tracks takes label groups as JSON and rejects a malformed or empty group', async () => {
@@ -77,12 +86,15 @@ describe('api: tracks', () => {
 describe('api: tags', () => {
   test('GET /tags lists counts', async () => {
     const response = await fetch(api.url('/tags'))
-    expect(await response.json()).toEqual([{ tag: 'test', count: 1 }])
+    expect(await response.json()).toEqual([{ tag: 'test', count: 1, managed: false }])
   })
 
-  test('GET /tags passes a prefix', async () => {
+  test('GET /tags passes a prefix and label_libraries', async () => {
     expect((await fetch(api.url('/tags?prefix=view%2F'))).status).toBe(200)
-    expect(last_call('list_tags')).toEqual([{ prefix: 'view/' }])
+    expect(last_call('list_tags')).toEqual([{ prefix: 'view/', managed_libraries: [] }])
+    const both = new URLSearchParams([['label_libraries', OWN_ADDRESS], ['label_libraries', LINKED_ADDRESS]])
+    expect((await fetch(api.url(`/tags?${both.toString()}`))).status).toBe(200)
+    expect(last_call('list_tags')).toEqual([{ label_libraries: [OWN_ADDRESS, LINKED_ADDRESS], managed_libraries: [] }])
     await expect_error(await fetch(api.url('/tags?prefix=')), 400, 'VALIDATION_ERROR')
   })
 
@@ -95,13 +107,13 @@ describe('api: tags', () => {
     await expect_error(await patch({ set: [''] }), 400, 'VALIDATION_ERROR')
   })
 
-  test('POST /tags/batch answers a result per item, and bounds the batch', async () => {
+  test('POST /tags/batch answers a result per item, held or not, and bounds the batch', async () => {
     const response = await post_json(api.url('/tags/batch'), { items: [{ track_id: TRACK_ID, add: ['view/a'] }, { track_id: '0'.repeat(64), add: ['view/a'] }] })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       results: [
         { track_id: TRACK_ID, status: 'updated', tags: expect.any(Array) },
-        { track_id: '0'.repeat(64), status: 'failed', error: { code: 'NOT_FOUND', message: expect.any(String) } }
+        { track_id: '0'.repeat(64), status: 'updated', tags: ['view/a'] }
       ]
     })
     await expect_error(await post_json(api.url('/tags/batch'), { items: [] }), 400, 'VALIDATION_ERROR')
@@ -109,11 +121,13 @@ describe('api: tags', () => {
     await expect_error(await post_json(api.url('/tags/batch'), { items: [{ track_id: 'not-hex', add: ['x'] }] }), 400, 'VALIDATION_ERROR')
   })
 
-  test('POST /tags attaches, and a repeat is a 409', async () => {
+  test('POST /tags sets a label, a repeat is safe, and an unheld track answers its labels', async () => {
     const response = await post_json(api.url('/tags'), { track_id: TRACK_ID, tag: 'downtempo' })
     expect(response.status).toBe(200)
     expect((await response.json() as { tags: Array<{ tag: string }> }).tags.map(({ tag }) => tag)).toContain('downtempo')
-    await expect_error(await post_json(api.url('/tags'), { track_id: TRACK_ID, tag: 'downtempo' }), 409, 'CONFLICT')
+    expect((await post_json(api.url('/tags'), { track_id: TRACK_ID, tag: 'downtempo' })).status).toBe(200)
+    const unheld = await post_json(api.url('/tags'), { track_id: 'a'.repeat(64), tag: 'downtempo' })
+    expect(await unheld.json()).toEqual({ track_id: 'a'.repeat(64), tags: ['downtempo'] })
     await expect_error(await post_json(api.url('/tags'), { track_id: TRACK_ID, tag: '' }), 400, 'VALIDATION_ERROR')
   })
 
@@ -150,16 +164,34 @@ describe('api: libraries', () => {
     await expect_error(await fetch(api.url(`${library_path(unknown)}/connect`), { method: 'POST' }), 404, 'NOT_FOUND')
   })
 
-  test('GET /libraries/{address}/about returns the profile', async () => {
+  test('GET /libraries/{address}/about returns the name', async () => {
     const response = await fetch(api.url(`${library_path(OWN_ADDRESS)}/about`))
-    expect(await response.json()).toEqual({ library_address: OWN_ADDRESS, name: 'mine', bio: null })
+    expect(await response.json()).toEqual({ library_address: OWN_ADDRESS, name: 'mine' })
   })
 
-  test('POST /libraries/{address}/about updates only supplied fields and stamps the address', async () => {
-    const response = await post_json(api.url(`${library_path(OWN_ADDRESS)}/about`), { bio: 'hello', location: null })
+  test('POST /libraries/{address}/about renames, and takes a name only', async () => {
+    const response = await post_json(api.url(`${library_path(OWN_ADDRESS)}/about`), { name: 'Mixes' })
     expect(response.status).toBe(200)
-    expect(last_call('set_about')).toEqual([{ address: OWN_ADDRESS, fields: { bio: 'hello', location: null } }])
-    expect((await response.json() as { library_address: string }).library_address).toBe(OWN_ADDRESS)
+    expect(last_call('set_about')).toEqual([{ address: OWN_ADDRESS, name: 'Mixes' }])
+    expect(await response.json()).toEqual({ library_address: OWN_ADDRESS, name: 'Mixes' })
+    for (const body of [{}, { name: '' }, { name: 7 }]) {
+      await expect_error(await post_json(api.url(`${library_path(OWN_ADDRESS)}/about`), body), 400, 'VALIDATION_ERROR')
+    }
+  })
+
+  test('GET /libraries/{address}/labels pages the library label state, and 404s an unknown library', async () => {
+    const response = await fetch(api.url(`${library_path(OWN_ADDRESS)}/labels?limit=5`))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ library_address: OWN_ADDRESS, items: [{ track_id: TRACK_ID, tags: expect.any(Array) }], total: 1 })
+    expect(last_call('list_library_labels')).toEqual([{ address: OWN_ADDRESS, offset: 0, limit: 5 }])
+    await expect_error(await fetch(api.url(`${library_path(UNKNOWN_ADDRESS.replace(/unknown$/, 'unlisted'))}/labels`)), 404, 'NOT_FOUND')
+  })
+
+  test('GET /libraries/{address}/profile answers the owner profile, or 404 when none is known', async () => {
+    const response = await fetch(api.url(`${library_path(OWN_ADDRESS)}/profile`))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({ public_key: expect.any(String) }))
+    await expect_error(await fetch(api.url(`${library_path(LINKED_ADDRESS)}/profile`)), 404, 'NOT_FOUND')
   })
 
   test('POST /libraries/{address}/about is a 403 for a library the caller does not own', async () => {
@@ -189,6 +221,25 @@ describe('api: listens, peers, settings, identity', () => {
     expect(last_call('import_identity')).toEqual([{ private_key: '08021220' }])
     expect((await fetch(api.url('/identity/import'), { method: 'POST' })).status).toBe(200)
     expect(last_call('import_identity')).toEqual([{}])
+  })
+
+  test('GET and PUT /identity/profile read and replace the whole profile', async () => {
+    expect(await (await fetch(api.url('/identity/profile'))).json()).toEqual({ public_key: expect.any(String), name: null, bio: null, avatar: null })
+    const put = async (body: unknown) => await fetch(api.url('/identity/profile'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const response = await put({ name: 'Ada', bio: 'listens a lot' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({ name: 'Ada', bio: 'listens a lot', avatar: null }))
+    expect(last_call('set_profile')).toEqual([{ name: 'Ada', bio: 'listens a lot' }])
+    for (const body of [{ name: '' }, { bio: 'x'.repeat(1025) }, { avatar: 7 }]) await expect_error(await put(body), 400, 'VALIDATION_ERROR')
+  })
+
+  test('POST /identity/libraries takes a name and no discriminator', async () => {
+    const response = await post_json(api.url('/identity/libraries'), { name: 'Mixes' })
+    expect(response.status).toBe(201)
+    expect(last_call('create_own_library')).toEqual([{ name: 'Mixes' }])
+    for (const body of [{}, { name: '' }]) {
+      await expect_error(await post_json(api.url('/identity/libraries'), body), 400, 'VALIDATION_ERROR')
+    }
   })
 })
 
@@ -324,6 +375,44 @@ describe('api: hosted mode', () => {
       expect(allowed.headers.get('access-control-allow-origin')).toBe('https://app.example')
     } finally {
       await hosted.stop()
+    }
+  })
+})
+
+describe('api: node-managed label libraries', () => {
+  let dir: string
+  beforeAll(async () => { dir = await mkdtemp(join(tmpdir(), 'record-managed-')) })
+  afterAll(async () => { await rm(dir, { recursive: true, force: true }) })
+
+  test('only the managed library\'s token writes its labels; a tokenless loopback write is refused', async () => {
+    const path = join(dir, 'access-tokens.json')
+    const facets = await issue_access_token({ path, label: 'exporter' })
+    const other = await issue_access_token({ path, label: 'phone' })
+    const tokens = create_token_authenticator({ path })
+    const managed = await start_test_server({ identify: tokens.identify, managed_label_libraries: new Map([[OWN_ADDRESS, facets.entry.id]]) })
+    const bearer = (token: string) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' })
+    const label = (headers: Record<string, string> = { 'content-type': 'application/json' }) =>
+      fetch(managed.url('/tags'), { method: 'POST', headers, body: JSON.stringify({ track_id: TRACK_ID, tag: 'facet/genre/house', library_address: OWN_ADDRESS }) })
+    try {
+      await expect_error(await label(), 403, 'FORBIDDEN')
+      await expect_error(await label(bearer(other.token)), 403, 'FORBIDDEN')
+      await expect_error(await label(bearer('not-a-token')), 401, 'UNAUTHORIZED')
+      expect(managed.peer.calls.filter(({ method }) => method === 'add_tag')).toEqual([])
+      expect((await label(bearer(facets.token))).status).toBe(200)
+      expect(managed.peer.calls.filter(({ method }) => method === 'add_tag').length).toBe(1)
+      // Every label write route is guarded, and the guard reads only the target.
+      const batch = { items: [{ track_id: TRACK_ID, add: ['x'] }], library_address: OWN_ADDRESS }
+      await expect_error(await post_json(managed.url('/tags/batch'), batch), 403, 'FORBIDDEN')
+      await expect_error(await fetch(managed.url(`/tags?track_id=${TRACK_ID}&tag=x&library_address=${encodeURIComponent(OWN_ADDRESS)}`), { method: 'DELETE' }), 403, 'FORBIDDEN')
+      await expect_error(await fetch(managed.url(`/tracks/${TRACK_ID}/tags`), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ add: ['x'], library_address: OWN_ADDRESS }) }), 403, 'FORBIDDEN')
+      await expect_error(await post_json(managed.url('/tracks'), { content_cid: CONTENT_CID, tags: ['x'], library_address: OWN_ADDRESS }), 403, 'FORBIDDEN')
+      expect((await post_json(managed.url('/tracks'), { content_cid: CONTENT_CID, library_address: OWN_ADDRESS })).status).toBe(200)
+      expect((await post_json(managed.url('/tags'), { track_id: TRACK_ID, tag: 'mine' })).status).toBe(200)
+      expect((await post_json(managed.url('/tags'), { track_id: TRACK_ID, tag: 'mine', library_address: LINKED_ADDRESS })).status).toBe(200)
+      // Reads stay tokenless, and mark the managed library's labels.
+      expect(await (await fetch(managed.url('/tags'))).json()).toEqual([{ tag: 'test', count: 1, managed: true }])
+    } finally {
+      await managed.stop()
     }
   })
 })

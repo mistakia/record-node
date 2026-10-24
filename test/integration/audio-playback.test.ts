@@ -102,18 +102,21 @@ describe('audio playback', () => {
     expect(await b.content_store.is_pinned(track.audio_cid)).toBe(false)
   })
 
-  test('§4.6.1 [MUST] a full library keeps its current avatar pinned as it keeps artwork, and index_only releases it', async () => {
+  test('§4.6.1 [MUST] a full library keeps its owner\'s announced avatar pinned as it keeps artwork, and index_only releases it', async () => {
     const a = await peers.start()
     const address = a.identity().own_address
     const first = await a.put_image(randomBytes(4096))
-    await a.set_about({ address, fields: { avatar: first } })
+    await a.set_profile({ avatar: first })
     const b = await peers.start({ bootstrap: [await dial_address(a)] })
     await b.link_library({ address, alias: null })
     await wait_until(async () => await b.content_store.is_pinned(first))
+    expect((await b.get_library_profile(address))?.avatar).toBe((await a.get_profile()).avatar)
 
-    // A superseding About entry's avatar is fetched and pinned in turn.
+    // A superseding profile arrives with A's next announcement, sent when
+    // another peer joins, and its avatar is fetched and pinned in turn.
     const second = await a.put_image(randomBytes(4096))
-    await a.set_about({ address, fields: { avatar: second } })
+    await a.set_profile({ avatar: second })
+    await peers.start({ bootstrap: [await dial_address(a)] })
     await wait_until(async () => await b.content_store.is_pinned(second))
 
     await b.set_replication_policy({ address, mode: 'index_only' })
@@ -124,12 +127,12 @@ describe('audio playback', () => {
     const a = await peers.start()
     const address = a.identity().own_address
     const avatar = await a.put_image(randomBytes(4096))
-    await a.set_about({ address, fields: { avatar } })
+    await a.set_profile({ avatar })
     const track = await append_track({ peer: a, fingerprint: 'AQADavatarindexonly', audio: audio_of(1024) })
     const b = await peers.start({ bootstrap: [await dial_address(a)] })
     await b.link_library({ address, alias: null })
     await b.set_replication_policy({ address, mode: 'index_only' })
-    await wait_until(() => b.context.libraries.get(address)?.oplog.entries.size === 2)
+    await wait_until(() => b.context.libraries.get(address)?.oplog.entries.size === 1)
     await b.context.replication?.settled(address)
     await b.context.blobs.settled()
     expect(await b.content_store.is_pinned(avatar)).toBe(false)

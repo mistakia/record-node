@@ -99,7 +99,11 @@ describe('single peer', () => {
     const tagged = await post_json('/tags', { track_id: f7.track_id, tag: 'sweep' })
     expect(tagged.status).toBe(200)
     expect((await get_json<TrackList>('/tracks?tags=sweep')).items.map(({ id }) => id)).toEqual([f7.track_id])
-    expect(await get_json<unknown>('/tags')).toEqual([{ tag: 'sweep', count: 1 }])
+    expect(await get_json<unknown>('/tags')).toEqual([{ tag: 'sweep', count: 1, managed: false }])
+    // The label went to the labels library, which lists it apart from membership.
+    const labels_path = `/libraries/${encodeURIComponent(peer.identity().labels_address)}/labels`
+    expect(await get_json<unknown>(labels_path)).toEqual({ library_address: peer.identity().labels_address, items: [{ track_id: f7.track_id, tags: ['sweep'] }], total: 1 })
+    expect(events).toContainEqual({ type: 'library:labels-changed', payload: { library_address: peer.identity().labels_address, track_ids: [f7.track_id] } })
     const listen = await post_json('/listens', { track_id: f7.track_id, library_address: peer.identity().own_address })
     expect(await listen.json()).toMatchObject({ track_id: f7.track_id, count: 1 })
     expect((await get_json<TrackList>('/listens')).items).toEqual([expect.objectContaining({ id: f7.track_id, listen_count: 1 })])
@@ -134,12 +138,18 @@ describe('single peer', () => {
     expect((await get_json<TrackList>('/tracks')).total).toBe(2)
   })
 
-  test('serves the v1.1 identity, own-library, meta-log, policy, and capability routes', async () => {
+  test('serves the identity, profile, own-library, meta-log, policy, and capability routes', async () => {
     const identity = await get_json<{ public_key: string, meta_log_address: string, own_library_address: string }>('/identity')
     expect(identity).toEqual({ public_key: peer.identity().key_pair.public_key, meta_log_address: peer.identity().identity_address, own_library_address: peer.identity().own_address })
-    const created = await post_json('/identity/libraries', { discriminator: 'shared', about: { name: 'Shared' } })
+    const profile = await fetch(url('/identity/profile'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ada' }) })
+    expect(await profile.json()).toEqual({ public_key: identity.public_key, name: 'Ada', bio: null, avatar: null })
+    expect(await get_json<unknown>('/identity/profile')).toEqual({ public_key: identity.public_key, name: 'Ada', bio: null, avatar: null })
+    expect(await get_json<unknown>(`/libraries/${encodeURIComponent(identity.own_library_address)}/profile`)).toEqual({ public_key: identity.public_key, name: 'Ada', bio: null, avatar: null })
+    const created = await post_json('/identity/libraries', { name: 'Shared' })
     expect(created.status).toBe(201)
-    const { address } = await created.json() as { address: string }
+    const { address, name } = await created.json() as { address: string, name: string }
+    expect(name).toBe('Shared')
+    expect(address.split('/')[3]).toMatch(/^[a-z2-7]{26}$/)
     const page = await get_json<{ items: Array<{ type: string, record: { address?: string } }>, total: number }>('/identity/meta-log?type=library&current_only=true')
     expect(page.items.map(({ record }) => record.address)).toContain(address)
     const policy = await get_json<{ mode: string }>(`/libraries/${encodeURIComponent(address)}/replication-policy`)
@@ -151,11 +161,13 @@ describe('single peer', () => {
     const revoked = await fetch(url(`/libraries/${encodeURIComponent(address)}/capabilities/${encodeURIComponent(capability_id)}`), { method: 'DELETE' })
     expect(revoked.status).toBe(204)
     expect(await get_json<Array<{ status: string }>>(`/libraries/${encodeURIComponent(address)}/capabilities`)).toEqual([expect.objectContaining({ capability_id, status: 'revoked' })])
-    // Two active own recordstores: a write must now name its target.
-    const untargeted = await post_json('/tags', { track_id: f7.track_id, tag: 'x' })
-    expect(untargeted.status).toBe(400)
-    expect((await fetch(url(`/identity/libraries/${encodeURIComponent(address)}`), { method: 'DELETE' })).status).toBe(204)
+    // Two active own recordstores: a track write must now name its target,
+    // while a label write with none goes to the labels library.
+    const [{ content_cid }] = (await get_json<TrackList>('/tracks')).items as [Track]
+    expect((await post_json('/tracks', { content_cid })).status).toBe(400)
     expect((await post_json('/tags', { track_id: f7.track_id, tag: 'x' })).status).toBe(200)
+    expect((await fetch(url(`/identity/libraries/${encodeURIComponent(address)}`), { method: 'DELETE' })).status).toBe(204)
+    expect((await post_json('/tracks', { content_cid })).status).toBe(200)
     expect(events.filter(({ type }) => type.startsWith('identity:') || type.startsWith('capability:')).length).toBeGreaterThan(0)
     expect(events.filter((event) => !event_matches_spec(event))).toEqual([])
   })

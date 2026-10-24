@@ -1,3 +1,4 @@
 import { Router } from 'express';
 import type { ApiPeer } from '#types/peer.ts';
-export declare const tags_router: (peer: ApiPeer) => Router;
+import { type ManagedLabelLibraries } from '../middleware.ts';
+export declare const tags_router: (peer: ApiPeer, managed: ManagedLabelLibraries) => Router;

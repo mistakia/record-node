@@ -11,10 +11,12 @@ import {
   type ApiPeer,
   type Capability,
   type Library,
+  type Profile,
   type ReplicationPolicy,
   type PeerEvent,
   type Resolver,
-  type Track
+  type Track,
+  type TrackLabels
 } from '#types/peer.ts'
 
 export const OWN_ADDRESS = ac_chain_vector.library_address
@@ -67,7 +69,6 @@ const make_library = (address: string, overrides: Partial<Library> = {}): Librar
   alias: null,
   track_count: 1,
   audio_size_bytes: 4096,
-  linked_library_count: 0,
   length: 1,
   heads: [CONTENT_CID],
   replication_status: { progress: 1, total: 1 },
@@ -122,12 +123,22 @@ export const create_fake_peer = (): FakePeer => {
   ])
   const policies = new Map<string, ReplicationPolicy>([[LINKED_ADDRESS, { mode: 'full', filter: null, connected: true }]])
   const capabilities: Capability[] = [make_capability()]
-  const abouts = new Map<string, About>([[OWN_ADDRESS, { library_address: OWN_ADDRESS, name: 'mine', bio: null }]])
+  const abouts = new Map<string, About>([[OWN_ADDRESS, { library_address: OWN_ADDRESS, name: 'mine' }]])
+  let profile: Profile = { public_key: PUBLIC_KEY, name: null, bio: null, avatar: null }
   let track = make_track()
+  // Labels on track ids no library holds, as label writes accept any id.
+  const unheld = new Map<string, string[]>()
 
   const known_track = (track_id: string): Track => {
     if (track_id !== track.id) throw new PeerError('not_found', `unknown track: ${track_id}`)
     return track
+  }
+
+  // A label write on an unheld track id answers TrackLabels.
+  const relabel_unheld = (track_id: string, change: (labels: string[]) => string[]): TrackLabels => {
+    const tags = [...new Set(change(unheld.get(track_id) ?? []))].sort()
+    unheld.set(track_id, tags)
+    return { track_id, tags }
   }
 
   return {
@@ -173,33 +184,38 @@ export const create_fake_peer = (): FakePeer => {
 
     list_tags: async (filter) => {
       record('list_tags', filter)
-      return [{ tag: 'test', count: 1 }]
+      return [{ tag: 'test', count: 1, managed: (filter.managed_libraries ?? []).includes(OWN_ADDRESS) }]
     },
     add_tag: async ({ track_id, tag, ...target }) => {
       record('add_tag', { track_id, tag, ...target })
-      const current = known_track(track_id)
-      if (current.tags.some((label) => label.tag === tag)) throw new PeerError('conflict', `already tagged: ${tag}`)
-      track = { ...current, tags: [...current.tags, { library_address: OWN_ADDRESS, tag }] }
+      if (track_id !== track.id) return relabel_unheld(track_id, (labels) => [...labels, tag])
+      if (!track.tags.some((label) => label.tag === tag)) track = { ...track, tags: [...track.tags, { library_address: OWN_ADDRESS, tag }] }
       return track
     },
     remove_tag: async ({ track_id, tag, ...target }) => {
       record('remove_tag', { track_id, tag, ...target })
-      const current = known_track(track_id)
-      track = { ...current, tags: current.tags.filter((label) => label.tag !== tag) }
+      if (track_id !== track.id) return relabel_unheld(track_id, (labels) => labels.filter((label) => label !== tag))
+      track = { ...track, tags: track.tags.filter((label) => label.tag !== tag) }
       return track
     },
     change_labels: async (input) => {
       record('change_labels', input)
-      const current = known_track(input.track_id)
-      const labels = input.set ?? [...current.tags.map(({ tag }) => tag).filter((tag) => !(input.remove ?? []).includes(tag)), ...(input.add ?? [])]
-      track = { ...current, tags: [...new Set(labels)].map((tag) => ({ library_address: OWN_ADDRESS, tag })) }
+      const next = (labels: string[]) => input.set === undefined ? [...labels.filter((tag) => !(input.remove ?? []).includes(tag)), ...(input.add ?? [])] : [...input.set]
+      if (input.track_id !== track.id) return relabel_unheld(input.track_id, next)
+      track = { ...track, tags: [...new Set(next(track.tags.map(({ tag }) => tag)))].map((tag) => ({ library_address: OWN_ADDRESS, tag })) }
       return track
     },
     change_labels_batch: async (input) => {
       record('change_labels_batch', input)
-      return input.items.map(({ track_id }) => track_id === track.id
+      return input.items.map(({ track_id, add = [] }) => track_id === track.id
         ? { track_id, status: 'updated' as const, tags: track.tags.map(({ tag }) => tag) }
-        : { track_id, status: 'failed' as const, error: { code: 'NOT_FOUND' as const, message: `unknown track: ${track_id}` } })
+        : { track_id, status: 'updated' as const, tags: relabel_unheld(track_id, (labels) => [...labels, ...add]).tags })
+    },
+    list_library_labels: async ({ address, offset = 0, limit = 100 }) => {
+      record('list_library_labels', { address, offset, limit })
+      if (!libraries.has(address)) throw new PeerError('not_found', `unknown library: ${address}`)
+      const items = address === OWN_ADDRESS ? [{ track_id: track.id, tags: track.tags.map(({ tag }) => tag) }] : []
+      return { library_address: address, items: items.slice(offset, offset + limit), total: items.length }
     },
 
     list_libraries: async () => [...libraries.values()],
@@ -235,13 +251,14 @@ export const create_fake_peer = (): FakePeer => {
       if (!capabilities.some(({ capability_id }) => capability_id === input.capability_id)) throw new PeerError('not_found', 'unknown capability')
     },
     get_about: async (address) => abouts.get(address),
-    set_about: async ({ address, fields, capability_id }) => {
-      record('set_about', { address, fields, capability_id })
+    set_about: async ({ address, name, capability_id }) => {
+      record('set_about', { address, name, capability_id })
       if (address !== OWN_ADDRESS && capability_id === undefined) throw new PeerError('forbidden', `not the owner of ${address}`)
-      const about = { ...abouts.get(address), ...fields, library_address: address }
+      const about = { library_address: address, name }
       abouts.set(address, about)
       return about
     },
+    get_library_profile: async (address) => address === OWN_ADDRESS ? profile : undefined,
 
     list_listens: async (page) => {
       record('list_listens', page)
@@ -261,12 +278,17 @@ export const create_fake_peer = (): FakePeer => {
       record('import_identity', key)
       return { id: TRACK_ID, public_key: '08021221', own_library_address: OWN_ADDRESS, meta_log_address: META_LOG_ADDRESS }
     },
+    get_profile: async () => profile,
+    set_profile: async (input) => {
+      record('set_profile', input)
+      profile = { public_key: PUBLIC_KEY, name: input.name ?? null, bio: input.bio ?? null, avatar: input.avatar ?? null }
+      return profile
+    },
     list_own_libraries: async () => [...libraries.values()].filter(({ is_own }) => is_own),
     create_own_library: async (input) => {
       record('create_own_library', input)
-      const address = OWN_ADDRESS.replace(/library$/, input.discriminator ?? 'library-1')
-      if (libraries.has(address)) throw new PeerError('conflict', `already recorded: ${address}`)
-      const library = make_library(address, { is_own: true, replication_mode: 'full' })
+      const address = OWN_ADDRESS.replace(/library$/, `library-${libraries.size}`)
+      const library = make_library(address, { is_own: true, name: input.name, replication_mode: 'full' })
       libraries.set(address, library)
       return library
     },

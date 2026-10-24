@@ -3,11 +3,12 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { parse_library_address } from '#encoding/library-address.ts';
 import { DEFAULT_PEER_CONFIG, resolve_peer_config } from '#peer/config.ts';
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_HOST = '127.0.0.1';
 export const default_data_dir = () => join(homedir(), '.record');
-const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'remote_listener', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
+const FILE_KEYS = new Set(['port', 'host', 'cors_origins', 'remote_listener', 'managed_label_libraries', 'data_dir', 'index_dir', 'ytdlp_path', ...Object.keys(DEFAULT_PEER_CONFIG)]);
 const read_config_file = async (path) => {
     const value = JSON.parse(await readFile(path, 'utf8'));
     if (value === null || typeof value !== 'object' || Array.isArray(value))
@@ -47,14 +48,33 @@ const remote_listener_of = (value) => {
         throw new TypeError('remote_listener.port must be a number');
     return Object.freeze({ host, port: port_of(port) });
 };
+// { "<library address>": "<access-token id>" }, as `record-node token list` shows ids.
+const managed_label_libraries_of = (value) => {
+    if (value === undefined)
+        return new Map();
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw new TypeError('managed_label_libraries must map library addresses to access-token ids');
+    return new Map(Object.entries(value).map(([address, token_id]) => {
+        try {
+            parse_library_address(address);
+        }
+        catch {
+            throw new TypeError(`managed_label_libraries names an invalid library address: ${address}`);
+        }
+        if (typeof token_id !== 'string' || !/^[0-9a-f]{12}$/.test(token_id))
+            throw new TypeError(`managed_label_libraries[${address}] must be an access-token id`);
+        return [address, token_id];
+    }));
+};
 export const load_config = async ({ config_path, port, data_dir, env = process.env } = {}) => {
     const path = config_path ?? env.RECORD_CONFIG;
-    const { port: file_port, host, cors_origins, remote_listener, ...peer } = path === undefined ? {} : await read_config_file(path);
+    const { port: file_port, host, cors_origins, remote_listener, managed_label_libraries, ...peer } = path === undefined ? {} : await read_config_file(path);
     return {
         port: port_of(port ?? file_port ?? DEFAULT_PORT),
         host: typeof host === 'string' ? host : DEFAULT_HOST,
         cors_origins: cors_origins_of(cors_origins),
         remote_listener: remote_listener_of(remote_listener),
+        managed_label_libraries: managed_label_libraries_of(managed_label_libraries),
         peer: resolve_peer_config({ ...peer, data_dir: data_dir ?? peer.data_dir ?? default_data_dir() })
     };
 };

@@ -1,6 +1,24 @@
 import { Router } from 'express';
-import { about_fields } from "./libraries.js";
+import { canonical_cid } from '#entry/identity-record.ts';
+import { ApiError } from "../middleware.js";
 import { page, query_value } from "./query.js";
+// An avatar is a CID in any valid form, never a URL that would leak a
+// viewer's network identity (§4.8.2).
+const assert_avatar = (avatar) => {
+    if (avatar === undefined)
+        return;
+    try {
+        canonical_cid(avatar);
+    }
+    catch {
+        throw new ApiError({
+            status: 400,
+            code: 'VALIDATION_ERROR',
+            message: 'avatar must be a content-addressed CID, not a URL',
+            details: [{ field: 'avatar', message: 'not a CID' }]
+        });
+    }
+};
 export const identity_router = (peer) => {
     const router = Router();
     router.get('/', async (_req, res) => {
@@ -15,12 +33,21 @@ export const identity_router = (peer) => {
         const private_key = req.body?.private_key;
         res.json(await peer.import_identity(typeof private_key === 'string' ? { private_key } : {}));
     });
+    router.get('/profile', async (_req, res) => {
+        res.json(await peer.get_profile());
+    });
+    // The whole profile: a field the body omits is absent afterwards (§4.8.2).
+    router.put('/profile', async (req, res) => {
+        const { name, bio, avatar } = req.body;
+        assert_avatar(avatar);
+        res.json(await peer.set_profile({ name, bio, avatar }));
+    });
     router.get('/libraries', async (_req, res) => {
         res.json(await peer.list_own_libraries());
     });
     router.post('/libraries', async (req, res) => {
-        const { discriminator, about } = (req.body ?? {});
-        res.status(201).json(await peer.create_own_library({ discriminator, about: about === undefined ? undefined : about_fields(about) }));
+        const { name } = req.body;
+        res.status(201).json(await peer.create_own_library({ name }));
     });
     router.delete('/libraries/:address', async (req, res) => {
         await peer.retire_own_library(req.params.address);

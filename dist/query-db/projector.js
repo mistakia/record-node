@@ -41,8 +41,8 @@ const create_statements = (db) => ({
       webpage_url, duration_seconds
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     insert_about: db.prepare(`
-    INSERT INTO about (library_address, about_id, entry_hash, name, bio, location, avatar)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`),
+    INSERT INTO about (library_address, about_id, entry_hash, name)
+    VALUES (?, ?, ?, ?)`),
     insert_listen: db.prepare(`
     INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
     VALUES (?, ?, ?, ?, ?)`),
@@ -113,7 +113,7 @@ const write_key = ({ statements, oplog, key, entry, content }) => {
     const { operation } = entry;
     if (is_about_put(operation)) {
         statements.insert_entry.run(library_address, key, entry.hash, 'PUT', 'about', entry.entry.clock.time, operation.value.timestamp);
-        statements.insert_about.run(library_address, key, entry.hash, operation.value.name, null, null, null);
+        statements.insert_about.run(library_address, key, entry.hash, operation.value.name);
         return;
     }
     if (!is_envelope_operation(operation))

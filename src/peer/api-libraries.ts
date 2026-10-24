@@ -3,12 +3,13 @@
 import { parse_library_address } from '#encoding/library-address.ts'
 import { build_about_put } from '#entry/operations.ts'
 import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts'
-import { PeerError, type About, type AboutUpdate, type ApiPeer, type Library } from '#types/peer.ts'
+import type { ProfileRecord } from '#types/entry.ts'
+import { PeerError, type About, type ApiPeer, type Library, type Profile } from '#types/peer.ts'
 import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from './capabilities.ts'
 import { require_identity, serialise_write, type PeerContext } from './context.ts'
 import { describe_library } from './describe.ts'
 import {
-  connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library
+  connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, read_profile, retire_own_library, unlink_library, write_profile
 } from './identity-library.ts'
 import { record_listen } from './listens.ts'
 import { default_label_libraries, default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from './ownership.ts'
@@ -33,22 +34,32 @@ const list_known = (context: PeerContext): Library[] => {
   return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? [])
 }
 
-// Writes an About record, owned or under a capability granting
-// library.update_about (§2.6, §3.5.6). The record carries a name only, so the
-// other fields are not written; an unchanged name appends nothing.
-const write_about = async (context: PeerContext, { address, fields, capability_id }: {
+// Writes an About record naming the library, owned or under a capability
+// granting library.update_about (§2.6, §3.5.6); an unchanged name appends
+// nothing.
+const write_about = async (context: PeerContext, { address, name, capability_id }: {
   address: string
-  fields: AboutUpdate
+  name: string
   capability_id?: string | undefined
 }): Promise<void> => {
   await serialise_write(context, async () => {
     const target = resolve_write_target(context, { library_address: address, capability_id, kind: 'about' })
-    const current = get_about({ db: context.db, library_address: address })?.name ?? undefined
-    const name = fields.name === undefined ? current : fields.name ?? undefined
-    if (name === undefined) throw new PeerError('invalid', 'an About record always carries a name, so it is never absent or cleared')
-    if (name === current) return
+    if (name === get_about({ db: context.db, library_address: address })?.name) return
     await append_write(context, target, build_about_put({ name, capability_id: target.capability_id }))
   })
+}
+
+// A profile record as the API Profile: an absent field is null.
+export const to_api_profile = (public_key: string, record: ProfileRecord | undefined): Profile => ({
+  public_key, name: record?.name ?? null, bio: record?.bio ?? null, avatar: record?.avatar ?? null
+})
+
+// The owner profile of another library: the latest one a verified
+// announcement carried for the single key of its write list (§5.3.2).
+const announced_profile = (context: PeerContext, address: string): Profile | undefined => {
+  const owner = context.announced.owners.get(address)
+  const profile = owner === undefined ? undefined : context.announced.profiles.get(owner)
+  return profile === undefined ? undefined : to_api_profile(profile.hashed.entry.key, profile.record)
 }
 
 const read_about = (context: PeerContext, address: string): About => {
@@ -63,7 +74,8 @@ const listens_addresses = (context: PeerContext): string[] =>
 export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
   'list_libraries' | 'get_library' | 'link_library' | 'unlink_library' | 'connect_library' | 'disconnect_library' |
   'get_replication_policy' | 'set_replication_policy' | 'list_capabilities' | 'issue_capability' | 'revoke_capability' |
-  'get_about' | 'set_about' | 'list_listens' | 'record_listen' | 'get_identity' | 'list_own_libraries' | 'create_own_library' |
+  'get_about' | 'set_about' | 'get_library_profile' | 'list_listens' | 'record_listen' | 'get_identity' | 'get_profile' | 'set_profile' |
+  'list_own_libraries' | 'create_own_library' |
   'retire_own_library' | 'list_held_capabilities' | 'read_meta_log'> => ({
   list_libraries: async () => list_known(context),
 
@@ -123,9 +135,14 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
     return about === undefined ? undefined : to_api_about(about)
   },
 
-  set_about: async ({ address, fields, capability_id }) => {
-    await write_about(context, { address, fields, capability_id })
+  set_about: async ({ address, name, capability_id }) => {
+    await write_about(context, { address, name, capability_id })
     return read_about(context, address)
+  },
+
+  get_library_profile: async (address) => {
+    if (find_own_library(context, address) === undefined) return announced_profile(context, address)
+    return to_api_profile(require_identity(context).key_pair.public_key, read_profile(context))
   },
 
   list_listens: async ({ offset, limit }) => {
@@ -155,16 +172,18 @@ export const create_library_methods = (context: PeerContext): Pick<ApiPeer,
     return { public_key: key_pair.public_key, meta_log_address: identity_address, own_library_address: default_own_library(context) ?? '' }
   },
 
+  get_profile: async () => to_api_profile(require_identity(context).key_pair.public_key, read_profile(context)),
+
+  set_profile: async (profile) => to_api_profile(require_identity(context).key_pair.public_key, await write_profile(context, profile)),
+
   list_own_libraries: async () => {
     const scope = library_scope(context)
     return [...scope.own.keys()].flatMap((address) => describe_library(context, address, scope) ?? [])
   },
 
-  create_own_library: async ({ discriminator, about }) => {
-    const address = await create_own_library(context, { discriminator })
-    if (about !== undefined && Object.values(about).some((value) => typeof value === 'string')) {
-      await write_about(context, { address, fields: about })
-    }
+  create_own_library: async ({ name }) => {
+    const address = await create_own_library(context)
+    await write_about(context, { address, name })
     return require_library(context, address)
   },
 

@@ -304,10 +304,14 @@ export const get_track = ({ db, track_id, own_library_addresses = [], library_ad
 // bounds the labels by range, so it reads only theirs: every label starting
 // with it sorts at or after it and before it followed by the byte 0xff, which
 // UTF-8 never contains.
-export const list_tags = ({ db, library_addresses, label_libraries, prefix }) => cached_count(db, JSON.stringify(['tags', library_addresses ?? null, label_libraries ?? null, prefix ?? null]), () => {
+// managed_libraries are the node-managed label libraries (chapter 7): a label
+// one of them in label_libraries holds is managed.
+export const list_tags = ({ db, library_addresses, label_libraries, prefix, managed_libraries = [] }) => cached_count(db, JSON.stringify(['tags', library_addresses ?? null, label_libraries ?? null, prefix ?? null, managed_libraries]), () => {
     const scoped = library_addresses !== undefined;
     const rows = db.prepare(`
-    SELECT g.tag, count(DISTINCT g.track_id) AS count FROM tags AS g
+    SELECT g.tag, count(DISTINCT g.track_id) AS count,
+      max(g.library_address IN (SELECT value FROM json_each(:managed_libraries))) AS managed
+    FROM tags AS g
     WHERE g.library_address IN (${label_scope(label_libraries)})
       ${prefix === undefined ? '' : "AND g.tag >= :prefix AND g.tag < :prefix || CAST(x'ff' AS TEXT)"}
       AND EXISTS (SELECT 1 FROM tracks AS t WHERE t.track_id = g.track_id
@@ -315,9 +319,10 @@ export const list_tags = ({ db, library_addresses, label_libraries, prefix }) =>
     GROUP BY g.tag ORDER BY count DESC, g.tag ASC`).all({
         ...(scoped ? { library_addresses: JSON.stringify(library_addresses) } : {}),
         ...label_parameters(label_libraries),
+        managed_libraries: JSON.stringify(managed_libraries),
         ...(prefix === undefined ? {} : { prefix })
     });
-    return rows.map((row) => ({ tag: String(row.tag), count: Number(row.count) }));
+    return rows.map((row) => ({ tag: String(row.tag), count: Number(row.count), managed: Number(row.managed) === 1 }));
 });
 // The labels the label_libraries apply to one track id, held or not, sorted.
 export const track_labels = ({ db, track_id, label_libraries }) => db.prepare(`
@@ -380,31 +385,21 @@ export const list_listens = ({ db, own_library_addresses = [], listens_addresses
     return { items, total };
 };
 // The counts of the API Library shape, from the trigger-kept library_totals
-// row (schema.ts); a library with no rows has none. A link is an identity
-// library record (§4.8.4), which no recordstore carries, so none links.
+// row (schema.ts); a library with no rows has none.
 export const get_library_summary = ({ db, library_address }) => {
     const row = db.prepare('SELECT track_count, audio_size_bytes, put_count FROM library_totals WHERE library_address = ?')
         .get(library_address);
     return {
         track_count: Number(row?.track_count ?? 0),
         audio_size_bytes: Number(row?.audio_size_bytes ?? 0),
-        linked_library_count: 0,
         length: Number(row?.put_count ?? 0)
     };
 };
-// The library's profile under its canonical about id (§2.6).
+// The library's name under its canonical about id (§2.6).
 export const get_about = ({ db, library_address }) => {
-    const row = db.prepare('SELECT name, bio, location, avatar FROM about WHERE library_address = ? AND about_id = ?')
+    const row = db.prepare('SELECT name FROM about WHERE library_address = ? AND about_id = ?')
         .get(library_address, ABOUT_KEY);
-    if (row === undefined)
-        return undefined;
-    return {
-        library_address,
-        name: nullable_text(row.name),
-        bio: nullable_text(row.bio),
-        location: nullable_text(row.location),
-        avatar: nullable_text(row.avatar)
-    };
+    return row === undefined ? undefined : { library_address, name: nullable_text(row.name) };
 };
 // The track a library holds under a source pointer (§2.4.2), the §6.4.2
 // step 2 cache lookup.

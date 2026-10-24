@@ -7,6 +7,7 @@ import type { Download } from '#ingest/download.ts';
 import type { LabelledTrack, TrackTarget } from '#ingest/put-track.ts';
 import type { Toolchain } from '#ingest/toolchain.ts';
 import type { IngestedTrack } from '#types/ingest.ts';
+import type { AnnouncedState } from './announcements.ts';
 import type { AudioSource } from './audio.ts';
 import type { BlobKeeper } from './blobs.ts';
 import type { PeerConfig } from './config.ts';
@@ -56,6 +57,7 @@ export interface PeerContext {
         in_flight: Set<Promise<void>>;
     };
     readonly policies: Map<string, StoredPolicy>;
+    readonly announced: AnnouncedState;
     blobs: BlobKeeper;
 }
 export declare const require_identity: (context: PeerContext) => PeerIdentity;

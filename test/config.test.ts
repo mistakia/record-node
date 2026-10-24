@@ -59,6 +59,16 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ remote_listener: '127.0.0.1:8130' }) })).rejects.toThrow('remote_listener must be')
   })
 
+  test('reads managed_label_libraries as library addresses to access-token ids, and refuses anything else', async () => {
+    const address = '/record/zBwWX6eaeb5ZhToR5AL62215fMiLTZYAtYpnDcBCebF4PJiLWK2n8MnGCArMMZc3nbLvaCGsg51etXpMrdVH5rgd9DUf8/library'
+    expect((await load_config({ env: {} })).managed_label_libraries).toEqual(new Map())
+    expect((await load_config({ config_path: config_file({ managed_label_libraries: { [address]: '0123456789ab' } }) })).managed_label_libraries)
+      .toEqual(new Map([[address, '0123456789ab']]))
+    await expect(load_config({ config_path: config_file({ managed_label_libraries: { 'not-an-address': '0123456789ab' } }) })).rejects.toThrow('invalid library address')
+    await expect(load_config({ config_path: config_file({ managed_label_libraries: { [address]: 'a-token-value' } }) })).rejects.toThrow('access-token id')
+    await expect(load_config({ config_path: config_file({ managed_label_libraries: [address] }) })).rejects.toThrow('managed_label_libraries must map')
+  })
+
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
     await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
     await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')

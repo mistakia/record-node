@@ -144,7 +144,7 @@ test('label_libraries narrows every label read by an index, in filters, counts, 
     expect(reads.every((detail) => /^SEARCH (tags|g) USING (COVERING INDEX tags_by_(library_tag|track_id)|PRIMARY KEY)/.test(detail))).toBe(true)
   }
   expect(list_tracks({ db, ...scope, tag_groups: [['tier/t0', 'tier/t1']], limit: 50 }).total).toBe(200)
-  expect(list_tags({ db, ...scope, prefix: 'tier/t1' })).toEqual([{ tag: 'tier/t1', count: 100 }])
+  expect(list_tags({ db, ...scope, prefix: 'tier/t1' })).toEqual([{ tag: 'tier/t1', count: 100, managed: false }])
   // Labels another library applies do not count when it is left out.
   expect(list_tags({ db, library_addresses: [LIBRARIES[0] as string], label_libraries: [LIBRARIES[0] as string] })).toEqual([])
   db.close()

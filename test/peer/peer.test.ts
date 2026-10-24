@@ -135,7 +135,7 @@ describe('peer', () => {
     const stale_bytes = encode_canonical({ ...content, audio: { ...decoded, duration: 600, bitrate: 32000, numberOfSamples: 1 } })
     const stale_cid = compute_cid_string(stale_bytes)
     await peer.content_store.put(stale_cid, stale_bytes)
-    const stale = await peer.create_own_library({ discriminator: 'stale' })
+    const stale = await peer.create_own_library({ name: 'Stale' })
     await peer.add_track({ content_cid: stale_cid, library_address: stale.address })
     await peer.add_tag({ track_id: f7.track_id, tag: 'kept', library_address: stale.address })
     const entry_count = (address: string) => peer.context.libraries.get(address)?.oplog.entries.size ?? 0
@@ -160,7 +160,7 @@ describe('peer', () => {
     await peer.ingest_file(f7.fixture_path)
     const { own_address } = peer.identity()
     const [ingested] = (await peer.list_tracks(QUERY)).items
-    const mixes = await peer.create_own_library({ discriminator: 'mixes' })
+    const mixes = await peer.create_own_library({ name: 'Mixes' })
     await peer.add_track({ content_cid: ingested?.content_cid as string, library_address: mixes.address })
 
     expect((await peer.list_tracks(QUERY)).items).toEqual([expect.objectContaining({ id: f7.track_id, library_addresses: [own_address, mixes.address].sort() })])
@@ -183,19 +183,19 @@ describe('peer', () => {
     await expect(peer.remove_track({ track_id: f7.track_id })).rejects.toMatchObject({ code: 'not_found' })
   })
 
-  test('§2.6 an About record carries a name only, and an unchanged name appends nothing', async () => {
+  test('§2.6 an About record carries a name, and an unchanged name appends nothing', async () => {
     const peer = await start()
     const address = peer.identity().own_address
     const entries = () => peer.context.libraries.get(address)?.oplog.entries.size ?? 0
-    expect(await peer.set_about({ address, fields: { name: 'mine' } })).toEqual({ library_address: address, name: 'mine' })
+    expect(await peer.set_about({ address, name: 'mine' })).toEqual({ library_address: address, name: 'mine' })
     const written = entries()
-    expect(await peer.set_about({ address, fields: { bio: 'ignored' } })).toEqual({ library_address: address, name: 'mine' })
+    expect(await peer.set_about({ address, name: 'mine' })).toEqual({ library_address: address, name: 'mine' })
     expect(entries()).toBe(written)
     expect(await peer.get_library(address)).toMatchObject({ name: 'mine' })
     // The labels library takes an About record; the listens library does not (§4.9).
     const { labels_address, listens_address } = peer.identity()
-    expect(await peer.set_about({ address: labels_address, fields: { name: 'Labels' } })).toEqual({ library_address: labels_address, name: 'Labels' })
-    await expect(peer.set_about({ address: listens_address, fields: { name: 'Listens' } })).rejects.toMatchObject({ code: 'invalid' })
+    expect(await peer.set_about({ address: labels_address, name: 'Labels' })).toEqual({ library_address: labels_address, name: 'Labels' })
+    await expect(peer.set_about({ address: listens_address, name: 'Listens' })).rejects.toMatchObject({ code: 'invalid' })
   })
 
   test('linking an unknown library records it as loading; unlinking ends the link', async () => {

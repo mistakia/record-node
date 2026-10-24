@@ -26,7 +26,7 @@ export interface NetworkConfig {
     readonly tor?: TorConfig | undefined;
     readonly peer_allowlist?: readonly string[] | undefined;
 }
-export declare const RENDEZVOUS_NAME = "record-network-v1";
+export declare const RENDEZVOUS_NAME = "record-network-v2";
 export declare const DEFAULT_MAINLINE_RENDEZVOUS: MainlineRendezvousConfig;
 export declare const VPS_PEER_ID = "12D3KooWQLvRR8WUAsgQWaduVRtSwKTheBtGCnNtm9QF1ZNvFvy5";
 export declare const DEFAULT_MASKED_BOOTSTRAP: readonly string[];

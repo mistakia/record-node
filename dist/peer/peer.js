@@ -11,6 +11,7 @@ import { create_commit_batcher, DEFAULT_COMMIT_POLICY } from '#fabric/commit-bat
 import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts';
 import { open_query_db } from '#query-db/schema.ts';
 import { SYSTEM_TIMERS } from '#replication/timers.ts';
+import { create_announced_state } from "./announcements.js";
 import { create_library_methods } from "./api-libraries.js";
 import { create_track_methods } from "./api-tracks.js";
 import { create_audio_source } from "./audio.js";
@@ -25,7 +26,7 @@ import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key,
 import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_sync } from "./identity-library.js";
 import { import_files, import_url, local_file_phases } from "./imports.js";
 import { create_library_manager } from "./library.js";
-import { project_entry_events } from "./notify.js";
+import { label_track_ids, project_entry_events } from "./notify.js";
 import { default_own_library, labels_library, listens_library } from "./ownership.js";
 import { keeps_blobs } from "./policy.js";
 import { create_peer_replication } from "./replication.js";
@@ -77,10 +78,14 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
                 }
                 queue_identity_sync(context);
             }
-            // Item 6: a track's audio and artwork, or the profile's avatar (§4.6).
+            // Item 6: a track's audio and artwork, or the profile's avatar (§4.6),
+            // and a selective policy re-read for the tracks whose labels changed.
             if (context.identity !== undefined) {
-                context.blobs.entries(input.library_address, input.entries)
-                    .catch((error) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${error.message}`); });
+                const warn = (error) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${error.message}`); };
+                context.blobs.entries(input.library_address, input.entries).catch(warn);
+                const labelled = label_track_ids(input.entries);
+                if (labelled.length > 0)
+                    context.blobs.labels_changed(input.library_address, labelled).catch(warn);
             }
         }
     });
@@ -108,6 +113,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         known: { ready: false, links: new Set(), libraries: new Map() },
         prepares: { active: 0, waiting: [], in_flight: new Set() },
         policies: new Map(await libraries.load_policies()),
+        announced: create_announced_state(),
         blobs: undefined
     };
     context.blobs = create_blob_keeper({ context, network, timers: SYSTEM_TIMERS, timeout_ms: config.blob_fetch_timeout_ms });

@@ -1,4 +1,5 @@
-// The access-token store behind the remote listener (§8.7.3): a JSON array
+// The access-token store behind the remote listener (§8.7.3), and behind the
+// optional token a loopback caller may present: a JSON array
 // at <data_dir>/access-tokens.json holding each token's SHA-256, never the
 // token itself. Tokens are issued, listed and revoked out of band by the
 // `record-node token` subcommands; the node re-reads the file when it
@@ -127,8 +128,9 @@ const store_unavailable = (path, error) => {
     return new ApiError({ status: 503, code: 'INTERNAL_ERROR', message: 'the access-token store is unavailable' });
 };
 export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }) => {
-    // The parsed active hashes, keyed on the file's identity and mtime: a
-    // request costs one stat, and the rename in each write changes the inode.
+    // The parsed active hashes with their token ids, keyed on the file's
+    // identity and mtime: a request costs one stat, and the rename in each
+    // write changes the inode.
     let cached;
     const listeners = new Set();
     let timer;
@@ -153,21 +155,30 @@ export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }) =>
             throw store_unavailable(path, error);
         }
         const changed = cached !== undefined;
-        cached = { key, hashes: entries.filter(({ revoked_at }) => revoked_at === null).map(({ token_sha256 }) => Buffer.from(token_sha256, 'hex')) };
+        cached = { key, hashes: entries.filter(({ revoked_at }) => revoked_at === null).map(({ id, token_sha256 }) => ({ id, hash: Buffer.from(token_sha256, 'hex') })) };
         if (changed)
             for (const listener of listeners)
                 listener();
         return cached.hashes;
     };
-    const authenticate = async (token) => {
+    // Every active hash is compared, so the time taken says nothing of which matched.
+    const identify = async (token) => {
         const hashes = await active_hashes();
-        if (token === undefined || token === '')
-            return false;
+        if (token === '')
+            return undefined;
         const presented = createHash('sha256').update(token).digest();
-        let matched = false;
-        for (const hash of hashes)
-            matched = timingSafeEqual(hash, presented) || matched;
+        let matched;
+        for (const { id, hash } of hashes)
+            if (timingSafeEqual(hash, presented))
+                matched = id;
         return matched;
+    };
+    const authenticate = async (token) => {
+        if (token === undefined) {
+            await active_hashes();
+            return false;
+        }
+        return await identify(token) !== undefined;
     };
     const watch = (listener) => {
         listeners.add(listener);
@@ -180,5 +191,5 @@ export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }) =>
             }
         };
     };
-    return { authenticate, watch };
+    return { authenticate, identify, watch };
 };

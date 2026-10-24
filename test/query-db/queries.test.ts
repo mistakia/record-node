@@ -164,11 +164,14 @@ describe('query-db list_tracks', () => {
 
 describe('query-db tags and listens', () => {
   test('list_tags counts distinct live tracks in the membership scope per label of the label_libraries', () => {
-    expect(list_tags({ db })).toEqual([{ tag: 'house', count: 3 }, { tag: 'deep', count: 2 }, { tag: 'techno', count: 1 }])
+    expect(list_tags({ db })).toEqual([{ tag: 'house', count: 3, managed: false }, { tag: 'deep', count: 2, managed: false }, { tag: 'techno', count: 1, managed: false }])
     // Delta is only the friend's, so its label leaves the own scope.
-    expect(list_tags({ db, library_addresses: [own] })).toEqual([{ tag: 'house', count: 3 }, { tag: 'deep', count: 2 }])
-    expect(list_tags({ db, library_addresses: [own], label_libraries: [own] })).toEqual([{ tag: 'deep', count: 2 }, { tag: 'house', count: 2 }])
-    expect(list_tags({ db, label_libraries: [friend] })).toEqual([{ tag: 'house', count: 1 }, { tag: 'techno', count: 1 }])
+    expect(list_tags({ db, library_addresses: [own] })).toEqual([{ tag: 'house', count: 3, managed: false }, { tag: 'deep', count: 2, managed: false }])
+    expect(list_tags({ db, library_addresses: [own], label_libraries: [own] })).toEqual([{ tag: 'deep', count: 2, managed: false }, { tag: 'house', count: 2, managed: false }])
+    expect(list_tags({ db, label_libraries: [friend] })).toEqual([{ tag: 'house', count: 1, managed: false }, { tag: 'techno', count: 1, managed: false }])
+    // A label a managed library in label_libraries holds is managed, whatever else holds it.
+    expect(list_tags({ db, managed_libraries: [friend] })).toEqual([{ tag: 'house', count: 3, managed: true }, { tag: 'deep', count: 2, managed: false }, { tag: 'techno', count: 1, managed: true }])
+    expect(list_tags({ db, label_libraries: [own], managed_libraries: [friend] }).some(({ managed }) => managed)).toBe(false)
   })
 
   test('get_track carries listen timestamps, newest first', () => {

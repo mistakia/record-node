@@ -62,7 +62,7 @@ export interface NetworkConfig {
 }
 
 // sha1 of this name is the §5.2.1 info hash.
-export const RENDEZVOUS_NAME = 'record-network-v1'
+export const RENDEZVOUS_NAME = 'record-network-v2'
 
 export const DEFAULT_MAINLINE_RENDEZVOUS: MainlineRendezvousConfig = Object.freeze({
   port: 0,

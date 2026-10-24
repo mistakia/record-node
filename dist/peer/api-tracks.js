@@ -339,11 +339,12 @@ export const create_track_methods = (context) => ({
             await append_identity_record(context, build_identity_del({ type: 'pin', key: identity_record_key({ type: 'pin', v: 1, timestamp: 0, cid: key }) }));
         });
     },
-    list_tags: async ({ library_addresses, label_libraries, prefix }) => list_tags({
+    list_tags: async ({ library_addresses, label_libraries, prefix, managed_libraries }) => list_tags({
         db: context.db,
         library_addresses: library_addresses ?? visible_addresses(context),
         label_libraries: label_libraries ?? default_label_libraries(context, library_addresses),
-        prefix
+        prefix,
+        managed_libraries
     }),
     add_tag: async ({ track_id, tag, library_address, capability_id }) => await write_label_change(context, { track_id, change: { add: [tag] }, library_address, capability_id }),
     remove_tag: async ({ track_id, tag, library_address, capability_id }) => await write_label_change(context, { track_id, change: { remove: [tag] }, library_address, capability_id }),

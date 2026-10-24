@@ -30,21 +30,22 @@ afterAll(async () => { await api.stop() })
 const resolve = async (url: string) => await fetch(api.url(`/resolve?url=${encodeURIComponent(url)}`))
 
 describe('http-api', () => {
-  test('§7 POST /libraries/{address}/about [MUST] rejects an avatar that is not a CID (§2.6)', async () => {
-    const about_url = api.url(`${library_path(OWN_ADDRESS)}/about`)
+  test('§7 PUT /identity/profile [MUST] rejects an avatar that is not a CID (§4.8.2)', async () => {
+    const put = async (body: unknown) => await fetch(api.url('/identity/profile'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     for (const avatar of ['https://example.com/me.png', 'ipfs://not-a-cid', '']) {
-      const response = await post_json(about_url, { avatar })
+      const response = await put({ avatar })
       expect(response.status).toBe(400)
       expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR', details: [{ field: 'avatar' }] } })
     }
-    expect(api.peer.calls.some(({ method }) => method === 'set_about')).toBe(false)
+    expect(api.peer.calls.some(({ method }) => method === 'set_profile')).toBe(false)
+    // A CID is accepted, and omitting the avatar clears it.
+    expect((await put({ avatar: audio_pipeline_vector.audio_cid })).status).toBe(200)
+    expect(await (await put({ name: 'Ada' })).json()).toMatchObject({ name: 'Ada', avatar: null })
+  })
 
-    // A CID is accepted, and null clears the avatar.
-    for (const avatar of [audio_pipeline_vector.audio_cid, null]) {
-      const response = await post_json(about_url, { avatar })
-      expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({ library_address: OWN_ADDRESS, avatar })
-    }
+  test('§7 POST /libraries/{address}/about [MUST] takes a name only (§2.6)', async () => {
+    const response = await post_json(api.url(`${library_path(OWN_ADDRESS)}/about`), { name: 'Mine' })
+    expect(await response.json()).toEqual({ library_address: OWN_ADDRESS, name: 'Mine' })
   })
 
   test('§7 ResolverEntry [MUST] (extractor, id) uniquely identifies a source pointer (§2.4.2)', async () => {

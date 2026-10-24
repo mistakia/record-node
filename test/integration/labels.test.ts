@@ -94,12 +94,12 @@ describe('labels', () => {
     await peer.add_tag({ track_id, tag: 'mine' })
     await peer.add_tag({ track_id: other, tag: 'shared', library_address: own_address })
 
-    expect(await peer.list_tags({ library_addresses: [own_address] })).toEqual([{ tag: 'mine', count: 1 }, { tag: 'shared', count: 1 }])
+    expect(await peer.list_tags({ library_addresses: [own_address] })).toEqual([{ tag: 'mine', count: 1, managed: false }, { tag: 'shared', count: 1, managed: false }])
     const filtered = await peer.list_tracks({ ...QUERY, library_addresses: [own_address], tags: ['mine'] })
     expect(filtered.total).toBe(1)
     expect(filtered.items[0]?.tags).toEqual([{ library_address: labels_address, tag: 'mine' }])
     // An explicit label_libraries narrows whose labels count.
-    expect(await peer.list_tags({ library_addresses: [own_address], label_libraries: [own_address] })).toEqual([{ tag: 'shared', count: 1 }])
+    expect(await peer.list_tags({ library_addresses: [own_address], label_libraries: [own_address] })).toEqual([{ tag: 'shared', count: 1, managed: false }])
     expect((await peer.list_tracks({ ...QUERY, library_addresses: [own_address], label_libraries: [own_address], tags: ['mine'] })).total).toBe(0)
   })
 
@@ -150,7 +150,11 @@ describe('labels', () => {
     expect(record?.set).toHaveLength(4)
     expect(await labels_of(peer, first)).toEqual(['view/a', 'view/c'])
     expect(events.filter(({ type }) => type === 'track:added')).toEqual([])
-    expect(events.filter(({ type }) => type === 'library:index-updated')).toHaveLength(1)
+    // One labels-changed event names every changed track, and no index-updated event goes with it.
+    expect(events.filter(({ type }) => type === 'library:index-updated')).toEqual([])
+    expect(events.filter(({ type }) => type === 'library:labels-changed')).toEqual([
+      { type: 'library:labels-changed', payload: { library_address: labels_address, track_ids: [first, second, UNHELD] } }
+    ])
 
     // A malformed item fails the batch before any item applies.
     await expect(peer.change_labels_batch({ items: [{ track_id: first, add: ['x'] }, { track_id: second }] })).rejects.toMatchObject({ code: 'invalid' })
@@ -257,6 +261,45 @@ describe('labels', () => {
     expect(await follower.content_store.is_pinned(skipped.audio_cid)).toBe(false)
   })
 
+  test('§4.6.1 a label change re-decides the selective pins of the tracks it names', async () => {
+    const owner = await peers.start()
+    const follower = await peers.start()
+    const address = owner.identity().own_address
+    const first = await append_track({ peer: owner, fingerprint: 'AQADfirst', audio: 'first audio' })
+    const second = await append_track({ peer: owner, fingerprint: 'AQADsecond', audio: 'second audio' })
+    await follower.link_library({ address, alias: null })
+    await follower.set_replication_policy({ address, mode: 'selective', filter: { type: 'match', fields: { tags: 'keep' } } })
+    await wait_until(() => follower.context.libraries.get(address)?.oplog.entries.size === entry_count(owner, address))
+    await follower.context.blobs.settled()
+    expect(await follower.content_store.is_pinned(first.audio_cid)).toBe(false)
+    // An own label selects a track, and unsetting it releases the track again.
+    await follower.add_tag({ track_id: compute_track_id('AQADfirst'), tag: 'keep' })
+    await wait_until(async () => await follower.content_store.is_pinned(first.audio_cid))
+    await follower.remove_tag({ track_id: compute_track_id('AQADfirst'), tag: 'keep' })
+    await follower.context.blobs.settled()
+    await follower.context.libraries.pins_settled()
+    expect(await follower.content_store.is_pinned(first.audio_cid)).toBe(false)
+    // So does a label the holding library applies, once it merges.
+    await owner.add_tag({ track_id: compute_track_id('AQADsecond'), tag: 'keep', library_address: address })
+    await wait_until(async () => await follower.content_store.is_pinned(second.audio_cid))
+  })
+
+  test('§4.6.1 a selective policy reads the labels that merge with their track', async () => {
+    const owner = await peers.start()
+    const follower = await peers.start()
+    const address = owner.identity().own_address
+    const kept = await append_track({ peer: owner, fingerprint: 'AQADmerged', audio: 'merged audio' })
+    const skipped = await append_track({ peer: owner, fingerprint: 'AQADunlabelled', audio: 'unlabelled audio' })
+    await owner.add_tag({ track_id: compute_track_id('AQADmerged'), tag: 'keep', library_address: address })
+    // The policy holds from the first merge, which brings the tracks and the label record together.
+    follower.context.policies.set(address, { mode: 'selective', filter: { type: 'match', fields: { tags: 'keep' } } })
+    await follower.link_library({ address, alias: null })
+    await wait_until(() => follower.context.libraries.get(address)?.oplog.entries.size === entry_count(owner, address))
+    await wait_until(async () => await follower.content_store.is_pinned(kept.audio_cid))
+    await follower.context.blobs.settled()
+    expect(await follower.content_store.is_pinned(skipped.audio_cid)).toBe(false)
+  })
+
   test('label groups match any label within a group and every group across them', async () => {
     const peer = await peers.start()
     const [house, techno, ambient] = await own_tracks(peer, ['AQADhouse', 'AQADtechno', 'AQADambient']) as [string, string, string]
@@ -279,14 +322,14 @@ describe('labels', () => {
     expect(await ids({ tags: ['era/2010s'], tag_groups: [['genre/ambient', 'genre/techno']] })).toEqual([ambient])
     expect(await ids({ tag_groups: [['genre/none']] })).toEqual([])
 
-    expect(await peer.list_tags({ prefix: 'era/' })).toEqual([{ tag: 'era/2010s', count: 2 }, { tag: 'era/2020s', count: 1 }])
-    expect(await peer.list_tags({ prefix: 'genre/t' })).toEqual([{ tag: 'genre/techno', count: 1 }])
+    expect(await peer.list_tags({ prefix: 'era/' })).toEqual([{ tag: 'era/2010s', count: 2, managed: false }, { tag: 'era/2020s', count: 1, managed: false }])
+    expect(await peer.list_tags({ prefix: 'genre/t' })).toEqual([{ tag: 'genre/techno', count: 1, managed: false }])
     expect(await peer.list_tags({ prefix: 'nothing' })).toEqual([])
     expect((await peer.list_tags({})).length).toBe(5)
 
     // Counts follow the index, not a cache that outlived it.
     await peer.change_labels({ track_id: techno, set: ['era/2010s'] })
     await peer.context.libraries.settled()
-    expect(await peer.list_tags({ prefix: 'era/' })).toEqual([{ tag: 'era/2010s', count: 3 }])
+    expect(await peer.list_tags({ prefix: 'era/' })).toEqual([{ tag: 'era/2010s', count: 3, managed: false }])
   })
 })

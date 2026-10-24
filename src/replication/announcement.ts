@@ -2,22 +2,22 @@
 // joins the topic, and for each remote peer join at most one per 5 seconds
 // per target peer, with simultaneous joins batched into one message. Library
 // state changes are never announced here; they replicate on the per-library
-// topics. A received announcement is an untrusted hint until
-// authenticate_announced has verified it against the library's AC chain.
+// topics. A received announcement is an untrusted hint until its signed
+// entries verify from the JSON alone, under the §5.3.2 trust checks.
 
 import { resolve_ac_chain, type ResolvedAcChain } from '#access-control/resolve.ts'
-import { encode_canonical } from '#encoding/canonical-bytes.ts'
-import { is_about_put } from '#entry/operations.ts'
+import { identity_library_address } from '#encoding/library-address.ts'
+import { PROFILE_KEY } from '#entry/identity-record.ts'
+import { is_about_put, is_identity_operation, validate_operation } from '#entry/operations.ts'
 import { ABOUT_KEY } from '#entry/records.ts'
-import { decode_signed_entry } from '#entry/signed.ts'
+import { assert_signed_entry_shape, hash_signed_entry, type HashedEntry } from '#entry/signed.ts'
 import { RECORD_TOPIC, type PubSub } from '#fabric/pubsub.ts'
+import { verify_entry_signature } from '#identity/verification.ts'
 import { check_entry } from '#oplog/accept.ts'
-import type { AboutRecord } from '#types/entry.ts'
+import type { AboutRecord, ProfileRecord, SignedEntry } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import type { AnnouncedLibrary } from './messages.ts'
 import type { Timers } from './timers.ts'
-
-const equal_bytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((byte, index) => byte === b[index])
 
 export interface Announcer {
   // This peer joined RECORD.
@@ -68,33 +68,69 @@ export const create_announcer = ({ pubsub, interval_ms, timers, build }: {
   }
 }
 
-export interface AuthenticatedAbout {
-  readonly chain: ResolvedAcChain
-  readonly about: AboutRecord
+// A signed entry from an announcement, re-encoded to its canonical bytes and
+// hash, with its signature verified; undefined when it is malformed or the
+// signature fails.
+const verified_entry = (value: SignedEntry): HashedEntry | undefined => {
+  try {
+    const hashed = hash_signed_entry(assert_signed_entry_shape(value))
+    return verify_entry_signature({ entry: hashed.entry }) ? hashed : undefined
+  } catch (error) {
+    if (error instanceof ProtocolError) return undefined
+    throw error
+  }
 }
 
-// §5.3.2: re-fetches the canonical signed entry by hash and accepts the hint
-// only when that entry verifies against the library's AC chain as its About
-// PUT and the hint carries the payload the entry signs. The resolved chain is
-// the read-only handle of §5.3.4 step 3; nothing replicates.
-export const authenticate_announced = async ({ announced, get_block }: {
+export interface VerifiedLibrary {
+  readonly chain: ResolvedAcChain
+  // The library's About record, when the announcement carried one that verified.
+  readonly about?: { readonly hashed: HashedEntry, readonly record: AboutRecord } | undefined
+}
+
+// §5.3.2 and §5.3.4 step 2 for one announced library: its AC chain resolves,
+// and its about entry, if any, is kept only when it verifies, names the
+// library as its id, carries the About record, and is signed by a key of the
+// write list. A grantee's About would need its causal past to verify (§3.5.9),
+// which an announcement does not carry. Undefined when the chain does not
+// resolve; the chain is the read-only handle of step 3, and nothing replicates.
+export const verify_announced_library = async ({ announced, get_block }: {
   announced: AnnouncedLibrary
   get_block: (cid: string) => Promise<Uint8Array | undefined>
-}): Promise<AuthenticatedAbout | undefined> => {
-  const { address, hint } = announced
+}): Promise<VerifiedLibrary | undefined> => {
+  const { address, about } = announced
+  let chain: ResolvedAcChain
   try {
-    const chain = await resolve_ac_chain({ library_address: address, block_store: { get: get_block, put: async () => {} } })
-    const bytes = await get_block(hint.hash)
-    if (bytes === undefined) return undefined
-    const hashed = decode_signed_entry(bytes)
-    if (hashed.hash !== hint.hash || hashed.entry.id !== address) return undefined
-    // Only a write-list About is taken as a hint: a grantee's would need its
-    // causal past to verify (§3.5.9), which an announcement does not carry.
+    chain = await resolve_ac_chain({ library_address: address, block_store: { get: get_block, put: async () => {} } })
+  } catch (error) {
+    if (error instanceof ProtocolError) return undefined
+    throw error
+  }
+  const hashed = about === undefined ? undefined : verified_entry(about)
+  if (hashed === undefined || hashed.entry.id !== address || !chain.write_list.includes(hashed.entry.key)) return { chain }
+  try {
     const { operation } = check_entry({ hashed, chain })
-    if (!chain.write_list.includes(hashed.entry.key)) return undefined
-    if (!is_about_put(operation) || operation.key !== ABOUT_KEY) return undefined
-    if (!equal_bytes(encode_canonical(hint.payload), encode_canonical(hashed.entry.payload))) return undefined
-    return { chain, about: operation.value }
+    return is_about_put(operation) && operation.key === ABOUT_KEY ? { chain, about: { hashed, record: operation.value } } : { chain }
+  } catch (error) {
+    if (error instanceof ProtocolError) return { chain }
+    throw error
+  }
+}
+
+export interface VerifiedProfile {
+  readonly hashed: HashedEntry
+  readonly record: ProfileRecord
+}
+
+// §5.3.2: a profile entry verifies when its signature holds, its id is the
+// identity library address of its own key, and it carries a profile record
+// this node defines. Whose profile it is follows from the key alone.
+export const verify_announced_profile = (value: SignedEntry): VerifiedProfile | undefined => {
+  const hashed = verified_entry(value)
+  if (hashed === undefined || hashed.entry.id !== identity_library_address(hashed.entry.key)) return undefined
+  try {
+    const operation = validate_operation({ payload: hashed.entry.payload, library_type: 'identity', write_list_signer: true })
+    if (!is_identity_operation(operation) || operation.op !== 'PUT' || operation.key !== PROFILE_KEY || operation.value.type !== 'profile') return undefined
+    return { hashed, record: operation.value }
   } catch (error) {
     if (error instanceof ProtocolError) return undefined
     throw error

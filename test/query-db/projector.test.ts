@@ -26,7 +26,6 @@ const scanned_summary = (db: DatabaseSync, library_address: string) => {
   return {
     track_count: Number(row.track_count),
     audio_size_bytes: Number(row.audio_size_bytes),
-    linked_library_count: 0,
     length: Number(row.length)
   }
 }
@@ -145,7 +144,7 @@ describe('query-db projector', () => {
     for (const table of ['tracks', 'resolvers']) {
       expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count).toBe(0)
     }
-    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, length: 0 })
   })
 
   test('the About record projects its name', async () => {
@@ -153,12 +152,9 @@ describe('query-db projector', () => {
     await projector.project_entries({ oplog, entries: [set_about({ oplog, key_pair: writer, name: 'Mine' })] })
     expect(get_about({ db, library_address: oplog.chain.address })).toEqual({
       library_address: oplog.chain.address,
-      name: 'Mine',
-      bio: null,
-      location: null,
-      avatar: null
+      name: 'Mine'
     })
-    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 1 })
+    expect(get_library_summary({ db, library_address: oplog.chain.address })).toEqual({ track_count: 0, audio_size_bytes: 0, length: 1 })
   })
 
   test('a track whose content is not stored yet fills in when re-projected', async () => {
@@ -214,9 +210,9 @@ describe('query-db projector', () => {
     await projector.project_keys({ oplog, keys: [compute_track_id('AQAA-late')] })
     await projector.project_entries({ oplog, entries: [delete_track({ oplog, key_pair: writer, key: compute_track_id('AQAA-2') })] })
     check()
-    expect(get_library_summary({ db, library_address: address })).toMatchObject({ track_count: 3, audio_size_bytes: 3 * 4096, linked_library_count: 0 })
+    expect(get_library_summary({ db, library_address: address })).toMatchObject({ track_count: 3, audio_size_bytes: 3 * 4096 })
     await projector.remove_library({ library_address: address })
-    expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 0, audio_size_bytes: 0, linked_library_count: 0, length: 0 })
+    expect(get_library_summary({ db, library_address: address })).toEqual({ track_count: 0, audio_size_bytes: 0, length: 0 })
   })
 
   test('an index of an older schema version is dropped at open, so the next library open rebuilds it by replay', async () => {

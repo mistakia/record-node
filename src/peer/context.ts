@@ -10,6 +10,7 @@ import type { Download } from '#ingest/download.ts'
 import type { LabelledTrack, TrackTarget } from '#ingest/put-track.ts'
 import type { Toolchain } from '#ingest/toolchain.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
+import type { AnnouncedState } from './announcements.ts'
 import type { AudioSource } from './audio.ts'
 import type { BlobKeeper } from './blobs.ts'
 import type { PeerConfig } from './config.ts'
@@ -74,6 +75,8 @@ export interface PeerContext {
   readonly prepares: { active: number, waiting: Array<() => void>, in_flight: Set<Promise<void>> }
   // Node-local replication policies, as stored (§4.6.1).
   readonly policies: Map<string, StoredPolicy>
+  // Owners' profiles and library owners from verified announcements (§5.3.4).
+  readonly announced: AnnouncedState
   // Item 6 and pinned blobs (§4.6.1, §4.6.2, §5.4.6). Set by create_peer.
   blobs: BlobKeeper
 }

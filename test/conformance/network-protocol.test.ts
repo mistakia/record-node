@@ -19,7 +19,8 @@ import { ABOUT_KEY } from '#entry/records.ts'
 import { assert_signed_entry_shape } from '#entry/signed.ts'
 import { RECORD_TOPIC, type PubSubMessage } from '#fabric/pubsub.ts'
 import type { Peer } from '#peer/peer.ts'
-import { build_loaded_about_entry, encode_heads_message } from '#replication/messages.ts'
+import { verify_announced_profile } from '#replication/announcement.ts'
+import { announced_entry, decode_announcement, encode_announcement, encode_heads_message } from '#replication/messages.ts'
 import { create_replicator } from '#replication/replicator.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import { open_offline_helia_store } from '#test/helpers/helia.ts'
@@ -28,6 +29,8 @@ import { open_test_library, sign_raw, TEST_PRIVATE_KEY } from '#test/helpers/lib
 import { append_track, create_memory_peers, wait_for_event, wait_until } from '#test/helpers/network.ts'
 import {
   announced_about_vector,
+  announced_profile_vector,
+  announcement_vector,
   audio_pipeline_vector,
   build_multi_block_input,
   heads_message_vector,
@@ -109,7 +112,7 @@ describe('network-protocol', () => {
     expect([...utf8ToBytes(RECORD_TOPIC)]).toEqual([0x52, 0x45, 0x43, 0x4f, 0x52, 0x44])
     const peer = await memory_peers.start()
     const address = peer.identity().own_address
-    await peer.set_about({ address, fields: { name: 'A' } })
+    await peer.set_about({ address, name: 'A' })
     const peer_id = (await peer.get_settings()).peer_id
     const observer = memory_peers.network.join({ content_store: create_memory_content_store() })
     const received: PubSubMessage[] = []
@@ -144,14 +147,28 @@ describe('network-protocol', () => {
     for (const topic of [address, address.slice(0, 64), sha256_hex(address)]) expect(observer.pubsub.subscribers(topic)).toEqual([])
     expect(network.published).toEqual([])
   })
-  test('§5.3.2 [vector] F6 the announced About entry is the signed entry carrying the About record, as signed', () => {
-    const { entry: vector, entry_hash } = announced_about_vector
-    expect<string>(vector.payload.key).toBe(ABOUT_KEY)
-    const { key: _key, sig: _sig, ...fields } = vector
-    const hashed = sign_raw({ private_key: TEST_PRIVATE_KEY, fields })
-    expect(hashed.hash).toBe(entry_hash)
-    expect(assert_signed_entry_shape(hashed.entry)).toEqual(vector as unknown as typeof hashed.entry)
-    expect(JSON.stringify(build_loaded_about_entry({ hash: hashed.hash, entry: hashed.entry }))).toBe(JSON.stringify({ hash: entry_hash, ...vector }))
+  test('§5.3.2 [vector] F6 the announcement carries the signed About and profile entries, as signed', () => {
+    expect<string>(announced_about_vector.entry.payload.key).toBe(ABOUT_KEY)
+    const signed = [announced_about_vector, announced_profile_vector].map(({ entry: vector, entry_hash }) => {
+      const { key: _key, sig: _sig, ...fields } = vector
+      const hashed = sign_raw({ private_key: TEST_PRIVATE_KEY, fields })
+      expect(hashed.hash).toBe(entry_hash)
+      expect(assert_signed_entry_shape(hashed.entry)).toEqual(vector as unknown as typeof hashed.entry)
+      return hashed.entry
+    })
+    const [about, profile] = signed as [typeof signed[0], typeof signed[0]]
+    const bytes = encode_announcement({
+      libraries: [{ address: announcement_vector.message.libraries[0].address, about: announced_entry(about) }],
+      profiles: [announced_entry(profile)]
+    })
+    expect(new TextDecoder().decode(bytes)).toBe(JSON.stringify(announcement_vector.message))
+    expect(bytes?.length).toBe(announcement_vector.json_byte_length)
+    // The receiver recovers both entries and verifies the profile from the JSON alone.
+    const decoded = decode_announcement(bytes as Uint8Array)
+    expect(decoded?.libraries).toEqual(JSON.parse(JSON.stringify(announcement_vector.message.libraries)))
+    const verified = verify_announced_profile(decoded?.profiles[0] as never)
+    expect(verified?.hashed.hash).toBe(announced_profile_vector.entry_hash)
+    expect(verified?.record).toMatchObject({ type: 'profile', name: 'Test', bio: 'A fixture identity.' })
   })
   test('§5.4.1 [vector] the single-entry heads message is the 122-byte spec JSON', () => {
     const json = encode_heads_message({ heads: [announced_about_vector.entry_hash] })
@@ -202,7 +219,9 @@ describe('network-protocol', () => {
       }
     }
     expect(results).toEqual({ record: true, other_key: false, no_key: false })
-  })
+    // A keyless dialer's fixed first bytes decrypt under the swarm key to a
+    // long frame the listener waits out, so that dial ends only at its deadline.
+  }, 15_000)
   test('§5.5.1 [vector] F7 the fixture audio imports with unixfs-v1-2025 to its base58btc content.hash', async () => {
     expect(await import_with_helia(audio_pipeline_vector.fixture_path)).toBe(audio_pipeline_vector.audio_cid)
   })

@@ -16,7 +16,7 @@ describe('query database rebuild', () => {
     const a = await peers.start()
     const b = await peers.start()
     const address = a.identity().own_address
-    await a.set_about({ address, fields: { name: 'A', bio: 'replicated' } })
+    await a.set_about({ address, name: 'A' })
     const tracks = []
     for (const fingerprint of ['AQADone', 'AQADtwo', 'AQADthree']) tracks.push(await append_track({ peer: a, fingerprint }))
     const [first, second] = tracks.map(({ entry }) => (entry.operation as { key: string }).key) as [string, string]

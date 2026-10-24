@@ -202,16 +202,12 @@ const SCHEMA = `
     PRIMARY KEY (library_address, track_id, extractor, id)
   ) WITHOUT ROWID;
 
-  -- Library profiles (§2.6), keyed by about id. Only payloads present in the
-  -- local store produce a row.
+  -- Library names (§2.6): the current About record, keyed by about id.
   CREATE TABLE IF NOT EXISTS about (
     library_address TEXT NOT NULL,
     about_id TEXT NOT NULL,
     entry_hash TEXT NOT NULL,
     name TEXT,
-    bio TEXT,
-    location TEXT,
-    avatar TEXT,
     PRIMARY KEY (library_address, about_id)
   ) WITHOUT ROWID;
 

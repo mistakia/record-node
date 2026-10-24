@@ -1,4 +1,4 @@
-import { type Authenticate } from './middleware.ts';
+import { type Authenticate, type IdentifyToken } from './middleware.ts';
 export interface AccessToken {
     readonly id: string;
     readonly label: string;
@@ -24,6 +24,7 @@ export declare const revoke_access_token: ({ path, id, now }: {
 }) => Promise<AccessTokenSummary>;
 export interface TokenAuthenticator {
     authenticate: Authenticate;
+    identify: IdentifyToken;
     watch: (listener: () => void) => () => void;
 }
 export declare const create_token_authenticator: ({ path, poll_interval_ms }: {

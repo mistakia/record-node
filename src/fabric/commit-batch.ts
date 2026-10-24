@@ -15,10 +15,7 @@
 // whole open batch back: the batch is small and its contents are rebuilt by
 // the next open, so a rollback costs at most a few derived writes.
 //
-// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it, and a
-// hold that would begin with the WAL past its bound first commits any open
-// batch and awaits a drain, which is what keeps the WAL bounded under
-// continuous writes.
+// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it.
 
 import type { DatabaseSync } from 'node:sqlite'
 
@@ -36,10 +33,6 @@ export const DEFAULT_COMMIT_POLICY: CommitPolicy = { window_ms: 100, max_transac
 export interface CommitBatcher {
   // Applies fn under the open batch, auto-committing at the policy limits.
   run: (fn: () => void) => void
-  // Runs job with commits held: the runs it makes, and any others meanwhile,
-  // join one batch that commits as the last hold ends, so a write of many
-  // entries pays one commit stall instead of one per max_transactions runs.
-  hold: <T>(job: () => Promise<T>) => Promise<T>
   // Commits an open batch now; no-op when none is open.
   flush: () => void
   // Flushes and stops the window timer. Call before the connection closes.
@@ -49,7 +42,6 @@ export interface CommitBatcher {
 export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy, checkpointer?: WalCheckpointer): CommitBatcher => {
   let open = false
   let count = 0
-  let holds = 0
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const stop_timer = () => {
@@ -93,22 +85,8 @@ export const create_commit_batcher = (db: DatabaseSync, policy: CommitPolicy, ch
         throw error
       }
       count += 1
-      if (holds > 0) return
       if (count >= policy.max_transactions) commit()
       else schedule()
-    },
-    async hold (job) {
-      if (holds === 0 && checkpointer?.over_bound() === true) {
-        commit()
-        await checkpointer.drain()
-      }
-      holds += 1
-      try {
-        return await job()
-      } finally {
-        holds -= 1
-        if (holds === 0) commit()
-      }
     },
     flush: commit,
     close: commit

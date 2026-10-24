@@ -57,12 +57,38 @@ export const bearer_token = (header) => {
     const match = /^Bearer (.+)$/i.exec(header ?? '');
     return match?.[1];
 };
-export const authenticate_requests = (authenticate) => async (req, _res, next) => {
-    if (authenticate === undefined || await authenticate(bearer_token(req.headers.authorization))) {
-        next();
+// authenticate, when set, requires a valid token of every request. identify
+// names the token a request presents, in res.locals.token_id; on a listener
+// that requires none, a request without one keeps every right it has today,
+// and one presenting a token that is none is refused, so a caller never
+// mistakes a lost token for its own rights.
+export const authenticate_requests = (authenticate, identify) => async (req, res, next) => {
+    const token = bearer_token(req.headers.authorization);
+    if (authenticate !== undefined && !await authenticate(token)) {
+        next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'a valid bearer token is required' }));
         return;
     }
-    next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'a valid bearer token is required' }));
+    if (token !== undefined && identify !== undefined) {
+        const token_id = await identify(token);
+        if (token_id === undefined) {
+            next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'the bearer token is not a valid access token' }));
+            return;
+        }
+        res.locals.token_id = token_id;
+    }
+    next();
+};
+// A label write to a node-managed library is refused unless the request
+// presents that library's token, so a tokenless loopback caller cannot write
+// it either. A write naming no library goes to the labels library, which no
+// configuration manages.
+export const assert_label_writer = (managed, res, library_address) => {
+    if (typeof library_address !== 'string')
+        return;
+    const token_id = managed.get(library_address);
+    if (token_id === undefined || res.locals.token_id === token_id)
+        return;
+    throw new ApiError({ status: 403, code: 'FORBIDDEN', message: `the node manages the labels of ${library_address}; only its access token may write them` });
 };
 const send_error = (res, { status, code, message, resolver_code, details }) => {
     res.status(status).json({

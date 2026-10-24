@@ -20,7 +20,7 @@ import type { Envelope, LabelPair } from '#types/entry.ts'
 import { ProtocolError } from '#types/errors.ts'
 import { IngestError } from '#types/ingest.ts'
 import {
-  PeerError, type ApiPeer, type LabelBatchResult, type LabelChange, type LabelStatePage, type Track, type TrackLabels
+  PeerError, type ApiPeer, type LabelBatchResult, type LabelChange, type Track, type TrackLabels
 } from '#types/peer.ts'
 import { ingest_into, require_identity, require_toolchain, serialise_write, type PeerContext } from './context.ts'
 import { append_identity_record } from './identity-library.ts'
@@ -266,9 +266,7 @@ const pin_key_of = (cid: string): string => {
 
 export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
   'list_tracks' | 'add_track' | 'update_track' | 'rederive_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' |
-  'change_labels' | 'change_labels_batch' | 'get_audio' | 'has_audio' | 'get_image'> & {
-    list_library_labels: (input: { address: string, offset?: number, limit?: number }) => Promise<LabelStatePage>
-  } => ({
+  'change_labels' | 'change_labels_batch' | 'list_library_labels' | 'get_audio' | 'has_audio' | 'get_image'> => ({
   list_tracks: async ({ library_addresses, label_libraries, ...query }) => {
     const { items, total } = list_tracks({
       db: context.db,
@@ -368,11 +366,12 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
     })
   },
 
-  list_tags: async ({ library_addresses, label_libraries, prefix }) => list_tags({
+  list_tags: async ({ library_addresses, label_libraries, prefix, managed_libraries }) => list_tags({
     db: context.db,
     library_addresses: library_addresses ?? visible_addresses(context),
     label_libraries: label_libraries ?? default_label_libraries(context, library_addresses),
-    prefix
+    prefix,
+    managed_libraries
   }),
 
   add_tag: async ({ track_id, tag, library_address, capability_id }) =>

@@ -13,34 +13,17 @@ export interface HeadsMessage {
     readonly incomplete: boolean;
 }
 export declare const decode_heads_message: (data: Uint8Array) => HeadsMessage | undefined;
-export declare const build_loaded_about_entry: ({ hash, entry }: {
-    hash: string;
-    entry: SignedEntry;
-}) => {
-    hash: string;
-    id: string;
-    payload: {
-        op: string;
-        key: string;
-        value: Record<string, unknown>;
-    };
-    next: readonly string[];
-    refs: readonly string[];
-    v: 2;
-    clock: import("#types/entry.ts").LamportClock;
-    key: import("../types/identity.ts").CompressedPubkeyHex;
-    sig: string;
-};
-export type LoadedAboutEntry = ReturnType<typeof build_loaded_about_entry>;
-export declare const encode_announcement: ({ about, logs }: {
-    about: LoadedAboutEntry;
-    logs: readonly LoadedAboutEntry[];
-}) => Uint8Array | undefined;
+export declare const announced_entry: ({ id, payload, next, refs, v, clock, key, sig }: SignedEntry) => SignedEntry;
 export interface AnnouncedLibrary {
     readonly address: string;
-    readonly hint: LoadedAboutEntry;
+    readonly about?: SignedEntry | undefined;
 }
-export declare const decode_announcement: (data: Uint8Array) => {
-    about: AnnouncedLibrary;
-    logs: AnnouncedLibrary[];
-} | undefined;
+export interface Announcement {
+    readonly libraries: readonly AnnouncedLibrary[];
+    readonly profiles: readonly SignedEntry[];
+}
+export declare const encode_announcement: ({ libraries, profiles, own_count, owners }: Announcement & {
+    own_count?: number;
+    owners?: ReadonlyMap<string, string>;
+}) => Uint8Array | undefined;
+export declare const decode_announcement: (data: Uint8Array) => Announcement | undefined;

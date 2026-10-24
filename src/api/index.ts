@@ -12,7 +12,9 @@ import morgan from 'morgan'
 
 import { IMAGE_MAX_BYTES } from '#peer/images.ts'
 import type { ApiPeer, Resolver } from '#types/peer.ts'
-import { authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads, type Authenticate } from './middleware.ts'
+import {
+  authenticate_requests, cors, handle_errors, KNOWN_CLIENT_ORIGINS, no_cache, skip_abandoned_reads, type Authenticate, type IdentifyToken, type ManagedLabelLibraries
+} from './middleware.ts'
 import { create_docs_router, create_validator, load_api_spec, parse_image_upload, parse_uploads } from './openapi.ts'
 import { attach_event_bridge, type EventBridge } from './websocket.ts'
 import { audio_router } from './routes/audio.ts'
@@ -41,9 +43,15 @@ export interface ApiServerOptions {
   // Loopback by default: the local-first node is not a network service.
   host?: string
   // The origins a browser page may call the API from (the known-client
-  // default when unset), and a bearer-token verifier (hosted mode).
+  // default when unset), and a bearer-token verifier every request must pass
+  // (hosted mode).
   cors_origins?: readonly string[] | undefined
   authenticate?: Authenticate
+  // Names the access token a request presents, so a listener needing none
+  // still knows the caller who sends one.
+  identify?: IdentifyToken
+  // Label libraries only their access token may write (chapter 7).
+  managed_label_libraries?: ManagedLabelLibraries
   // Serve the interactive spec at /api/docs (default on).
   docs?: boolean
   // Request logging (default on).
@@ -65,6 +73,8 @@ export const create_api_server = async ({
   host = '127.0.0.1',
   cors_origins = KNOWN_CLIENT_ORIGINS,
   authenticate,
+  identify,
+  managed_label_libraries = new Map(),
   docs = true,
   log = true,
   validate_responses = false
@@ -74,15 +84,15 @@ export const create_api_server = async ({
 
   const api = Router()
   if (docs) api.use('/docs', create_docs_router(spec))
-  api.use(authenticate_requests(authenticate))
+  api.use(authenticate_requests(authenticate, identify))
   api.use(express.json())
   api.post('/import/file', parse_uploads(UPLOAD_DIR))
   api.post('/images', parse_image_upload(IMAGE_MAX_BYTES))
   // Off-spec, so ahead of the validator.
   api.use('/network-census', network_census_router(peer))
   api.use(create_validator({ spec, validate_responses }))
-  api.use('/tracks', tracks_router(peer))
-  api.use('/tags', tags_router(peer))
+  api.use('/tracks', tracks_router(peer, managed_label_libraries))
+  api.use('/tags', tags_router(peer, managed_label_libraries))
   api.use('/libraries', libraries_router(peer))
   api.use('/listens', listens_router(peer))
   api.use('/peers', peers_router(peer))

@@ -91,6 +91,17 @@ describe('cli: token subcommands and the remote listener', () => {
     expect(token(config, 'revoke', 'missing').status).not.toBe(0)
   })
 
+  test('token issue --manages prints the managed_label_libraries entry for the new token', () => {
+    const address = '/record/zBwWX6eaeb5ZhToR5AL62215fMiLTZYAtYpnDcBCebF4PJiLWK2n8MnGCArMMZc3nbLvaCGsg51etXpMrdVH5rgd9DUf8/library'
+    const result = token(config, 'issue', '--label', 'exporter', '--manages', address)
+    expect(result.status).toBe(0)
+    const id = /issued ([0-9a-f]+)/.exec(result.stderr)?.[1] as string
+    expect(result.stderr).toContain(`"managed_label_libraries": ${JSON.stringify({ [address]: id })}`)
+    expect(result.stdout.trim()).toMatch(TOKEN_CHARS)
+    expect(token(config, 'issue', '--label', 'x', '--manages', 'not-an-address').status).not.toBe(0)
+    expect(token(config, 'list', '--manages', address).status).not.toBe(0)
+  })
+
   test('the remote listener requires a token, the loopback listener does not, and /api/docs is loopback-only', async () => {
     expect(node.remote).toBeDefined()
     const remote = node.remote as string

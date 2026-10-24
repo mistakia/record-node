@@ -1,4 +1,5 @@
-// The access-token store behind the remote listener (§8.7.3): a JSON array
+// The access-token store behind the remote listener (§8.7.3), and behind the
+// optional token a loopback caller may present: a JSON array
 // at <data_dir>/access-tokens.json holding each token's SHA-256, never the
 // token itself. Tokens are issued, listed and revoked out of band by the
 // `record-node token` subcommands; the node re-reads the file when it
@@ -8,7 +9,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { ApiError, type Authenticate } from './middleware.ts'
+import { ApiError, type Authenticate, type IdentifyToken } from './middleware.ts'
 
 export interface AccessToken {
   readonly id: string
@@ -129,6 +130,8 @@ export const revoke_access_token = async ({ path, id, now = new Date() }: { path
 
 export interface TokenAuthenticator {
   authenticate: Authenticate
+  // The id of the active token presented, or undefined.
+  identify: IdentifyToken
   // Calls the listener whenever a changed store is read, and polls the
   // store's metadata while any listener is registered, so a revocation
   // reaches open event streams without waiting for a request.
@@ -144,13 +147,14 @@ const store_unavailable = (path: string, error: unknown): ApiError => {
 }
 
 export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }: { path: string, poll_interval_ms?: number }): TokenAuthenticator => {
-  // The parsed active hashes, keyed on the file's identity and mtime: a
-  // request costs one stat, and the rename in each write changes the inode.
-  let cached: { key: string, hashes: Buffer[] } | undefined
+  // The parsed active hashes with their token ids, keyed on the file's
+  // identity and mtime: a request costs one stat, and the rename in each
+  // write changes the inode.
+  let cached: { key: string, hashes: Array<{ id: string, hash: Buffer }> } | undefined
   const listeners = new Set<() => void>()
   let timer: NodeJS.Timeout | undefined
 
-  const active_hashes = async (): Promise<Buffer[]> => {
+  const active_hashes = async (): Promise<Array<{ id: string, hash: Buffer }>> => {
     let key: string
     try {
       const { ino, mtimeMs, size } = await stat(path)
@@ -167,18 +171,27 @@ export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }: { 
       throw store_unavailable(path, error)
     }
     const changed = cached !== undefined
-    cached = { key, hashes: entries.filter(({ revoked_at }) => revoked_at === null).map(({ token_sha256 }) => Buffer.from(token_sha256, 'hex')) }
+    cached = { key, hashes: entries.filter(({ revoked_at }) => revoked_at === null).map(({ id, token_sha256 }) => ({ id, hash: Buffer.from(token_sha256, 'hex') })) }
     if (changed) for (const listener of listeners) listener()
     return cached.hashes
   }
 
-  const authenticate: Authenticate = async (token) => {
+  // Every active hash is compared, so the time taken says nothing of which matched.
+  const identify: IdentifyToken = async (token) => {
     const hashes = await active_hashes()
-    if (token === undefined || token === '') return false
+    if (token === '') return undefined
     const presented = createHash('sha256').update(token).digest()
-    let matched = false
-    for (const hash of hashes) matched = timingSafeEqual(hash, presented) || matched
+    let matched: string | undefined
+    for (const { id, hash } of hashes) if (timingSafeEqual(hash, presented)) matched = id
     return matched
+  }
+
+  const authenticate: Authenticate = async (token) => {
+    if (token === undefined) {
+      await active_hashes()
+      return false
+    }
+    return await identify(token) !== undefined
   }
 
   const watch = (listener: () => void): () => void => {
@@ -193,5 +206,5 @@ export const create_token_authenticator = ({ path, poll_interval_ms = 1000 }: { 
     }
   }
 
-  return { authenticate, watch }
+  return { authenticate, identify, watch }
 }

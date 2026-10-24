@@ -4,7 +4,7 @@
 import { isIP } from 'node:net';
 export const NETWORK_MODES = ['public', 'masked', 'relayed'];
 // sha1 of this name is the §5.2.1 info hash.
-export const RENDEZVOUS_NAME = 'record-network-v1';
+export const RENDEZVOUS_NAME = 'record-network-v2';
 export const DEFAULT_MAINLINE_RENDEZVOUS = Object.freeze({
     port: 0,
     lookup_interval_ms: 15 * 60_000,

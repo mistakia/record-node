@@ -116,6 +116,7 @@ export const create_peer_replication = ({ context, network, describe_library, on
       }
     }
     await replicate(library_address)
+    context.blobs.keep_avatar(library_address).catch(() => {})
   }
 
   // Fetches the AC chain from peers, then opens and replicates the library,
@@ -158,7 +159,13 @@ export const create_peer_replication = ({ context, network, describe_library, on
       }
     },
     on_peer_leave: (peer_id) => { events.emit({ type: 'peer:left', payload: { peer_id, peer_count: peer_count() } }) },
-    on_library_verified
+    on_library_verified,
+    // A linked owner's newer profile brings its avatar (§4.6.1).
+    on_profile: (key) => {
+      for (const address of linked_addresses(context)) {
+        if (context.announced.owners.get(address) === key) context.blobs.keep_avatar(address).catch(() => {})
+      }
+    }
   })
 
   const settled = async (library_address: string) => {

@@ -12,14 +12,12 @@ export declare const link_address: (context: PeerContext, { address, alias }: {
     alias: string | null;
 }) => Promise<void>;
 export declare const unlink_library: (context: PeerContext, address: string) => Promise<void>;
-export declare const create_own_library: (context: PeerContext, { discriminator }: {
-    discriminator?: string | undefined;
-}) => Promise<string>;
+export declare const create_own_library: (context: PeerContext) => Promise<string>;
 export declare const read_profile: (context: PeerContext) => ProfileRecord | undefined;
 export declare const write_profile: (context: PeerContext, fields: {
-    name?: string;
-    bio?: string;
-    avatar?: string;
+    name?: string | undefined;
+    bio?: string | undefined;
+    avatar?: string | undefined;
 }) => Promise<ProfileRecord | undefined>;
 export declare const retire_own_library: (context: PeerContext, address: string) => Promise<void>;
 export declare const ensure_listens_library: (context: PeerContext) => Promise<string>;

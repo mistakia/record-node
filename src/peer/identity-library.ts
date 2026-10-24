@@ -134,9 +134,11 @@ const create_recorded_library = async (context: PeerContext, { type, discriminat
   return address
 }
 
-export const create_own_library = async (context: PeerContext, { discriminator }: { discriminator?: string | undefined }): Promise<string> =>
+// A new recordstore under a random discriminator, which the caller never
+// chooses (§3.6.1).
+export const create_own_library = async (context: PeerContext): Promise<string> =>
   await serialise_write(context, async () =>
-    await create_recorded_library(context, { type: 'recordstore', discriminator: discriminator ?? fresh_discriminator(context, 'recordstore') }))
+    await create_recorded_library(context, { type: 'recordstore', discriminator: fresh_discriminator(context, 'recordstore') }))
 
 // The identity's current profile (§4.8.2), if it has written one.
 export const read_profile = (context: PeerContext): ProfileRecord | undefined => identity_state(context).profile
@@ -144,7 +146,7 @@ export const read_profile = (context: PeerContext): ProfileRecord | undefined =>
 // Writes the whole profile (§4.8.2): a later PUT replaces it, so an absent
 // field is cleared. The avatar is stored in canonical form. An unchanged
 // profile appends nothing.
-export const write_profile = async (context: PeerContext, fields: { name?: string, bio?: string, avatar?: string }): Promise<ProfileRecord | undefined> =>
+export const write_profile = async (context: PeerContext, fields: { name?: string | undefined, bio?: string | undefined, avatar?: string | undefined }): Promise<ProfileRecord | undefined> =>
   await serialise_write(context, async () => {
     try {
       const wanted = {

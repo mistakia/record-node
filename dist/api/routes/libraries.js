@@ -1,27 +1,7 @@
 import { Router } from 'express';
-import { is_cid_string } from '#encoding/cid.ts';
 import { ApiError } from "../middleware.js";
-import { query_value } from "./query.js";
-const ABOUT_FIELDS = ['name', 'bio', 'location', 'avatar'];
+import { page, query_value } from "./query.js";
 const not_found = (address) => new ApiError({ status: 404, code: 'NOT_FOUND', message: `unknown library: ${address}` });
-// An avatar is a CID, never a URL that would leak a viewer's network identity (§2.6).
-export const about_fields = (body) => {
-    const avatar = body.avatar;
-    if (avatar !== undefined && avatar !== null && !is_cid_string(avatar)) {
-        throw new ApiError({
-            status: 400,
-            code: 'VALIDATION_ERROR',
-            message: 'avatar must be a content-addressed CID, not a URL',
-            details: [{ field: 'avatar', message: 'not a base58btc CID' }]
-        });
-    }
-    const fields = {};
-    for (const field of ABOUT_FIELDS) {
-        if (body[field] !== undefined)
-            fields[field] = body[field];
-    }
-    return fields;
-};
 export const libraries_router = (peer) => {
     const router = Router();
     const known_library = async (address) => {
@@ -92,11 +72,19 @@ export const libraries_router = (peer) => {
     // The owner writes it, or a holder of library.update_about (§3.5.6).
     router.post('/:address/about', async (req, res) => {
         const { address } = req.params;
-        const body = req.body;
-        const fields = about_fields(body);
+        const { name, capability_id } = req.body;
         await known_library(address);
-        const capability_id = typeof body.capability_id === 'string' ? body.capability_id : undefined;
-        res.json(await peer.set_about({ address, fields, capability_id }));
+        res.json(await peer.set_about({ address, name, capability_id }));
+    });
+    // The library's label state, whatever holds the tracks (§2.5).
+    router.get('/:address/labels', async (req, res) => {
+        res.json(await peer.list_library_labels({ address: req.params.address, ...page(req) }));
+    });
+    router.get('/:address/profile', async (req, res) => {
+        const profile = await peer.get_library_profile(req.params.address);
+        if (profile === undefined)
+            throw new ApiError({ status: 404, code: 'NOT_FOUND', message: `no owner profile known for ${req.params.address}` });
+        res.json(profile);
     });
     return router;
 };

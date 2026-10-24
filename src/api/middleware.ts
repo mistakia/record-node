@@ -38,6 +38,13 @@ export class ApiError extends Error {
 // own operator's (§8.7.3).
 export type Authenticate = (token: string | undefined) => boolean | Promise<boolean>
 
+// The id of the access token a bearer token is, or undefined when it is none.
+export type IdentifyToken = (token: string) => Promise<string | undefined>
+
+// Node-managed label libraries (chapter 7): each library address with the id
+// of the one access token allowed to write labels to it.
+export type ManagedLabelLibraries = ReadonlyMap<string, string>
+
 // The known-client default allowlist, used when the operator configures none
 // (spec §8.7.5). It is empty at v1: the desktop application calls the node
 // from its main process, which sends no Origin.
@@ -85,12 +92,37 @@ export const bearer_token = (header: string | undefined): string | undefined => 
   return match?.[1]
 }
 
-export const authenticate_requests = (authenticate: Authenticate | undefined): RequestHandler => async (req, _res, next) => {
-  if (authenticate === undefined || await authenticate(bearer_token(req.headers.authorization))) {
-    next()
+// authenticate, when set, requires a valid token of every request. identify
+// names the token a request presents, in res.locals.token_id; on a listener
+// that requires none, a request without one keeps every right it has today,
+// and one presenting a token that is none is refused, so a caller never
+// mistakes a lost token for its own rights.
+export const authenticate_requests = (authenticate: Authenticate | undefined, identify?: IdentifyToken): RequestHandler => async (req, res, next) => {
+  const token = bearer_token(req.headers.authorization)
+  if (authenticate !== undefined && !await authenticate(token)) {
+    next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'a valid bearer token is required' }))
     return
   }
-  next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'a valid bearer token is required' }))
+  if (token !== undefined && identify !== undefined) {
+    const token_id = await identify(token)
+    if (token_id === undefined) {
+      next(new ApiError({ status: 401, code: 'UNAUTHORIZED', message: 'the bearer token is not a valid access token' }))
+      return
+    }
+    res.locals.token_id = token_id
+  }
+  next()
+}
+
+// A label write to a node-managed library is refused unless the request
+// presents that library's token, so a tokenless loopback caller cannot write
+// it either. A write naming no library goes to the labels library, which no
+// configuration manages.
+export const assert_label_writer = (managed: ManagedLabelLibraries, res: Response, library_address: unknown): void => {
+  if (typeof library_address !== 'string') return
+  const token_id = managed.get(library_address)
+  if (token_id === undefined || res.locals.token_id === token_id) return
+  throw new ApiError({ status: 403, code: 'FORBIDDEN', message: `the node manages the labels of ${library_address}; only its access token may write them` })
 }
 
 const send_error = (res: Response, { status, code, message, resolver_code, details }: {

@@ -40,7 +40,7 @@ import { mainline_rendezvous, type MainlineRendezvousService } from './mainline-
 import { tor_transport } from './tor-transport.ts'
 
 // The swarm key file (§5.5.1): peers with any other key cannot connect.
-export const RECORD_SWARM_KEY = '/key/swarm/psk/1.0.0/\n/base16/\ncbad12031badbcad2a3cd5a373633fa725a7874de942d451227a9e909733454a'
+export const RECORD_SWARM_KEY = '/key/swarm/psk/1.0.0/\n/base16/\n759610a71c3687e6644664f722dbc6d83c6c0651266f4b2f4c91beecbfb61a55'
 
 export type RecordServices = {
   identify: ReturnType<ReturnType<typeof identify>>

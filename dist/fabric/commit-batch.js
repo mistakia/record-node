@@ -15,15 +15,11 @@
 // whole open batch back: the batch is small and its contents are rebuilt by
 // the next open, so a rollback costs at most a few derived writes.
 //
-// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it, and a
-// hold that would begin with the WAL past its bound first commits any open
-// batch and awaits a drain, which is what keeps the WAL bounded under
-// continuous writes.
+// With a WAL checkpointer (wal-checkpointer.ts), each commit nudges it.
 export const DEFAULT_COMMIT_POLICY = { window_ms: 100, max_transactions: 8 };
 export const create_commit_batcher = (db, policy, checkpointer) => {
     let open = false;
     let count = 0;
-    let holds = 0;
     let timer;
     const stop_timer = () => {
         if (timer !== undefined)
@@ -70,27 +66,10 @@ export const create_commit_batcher = (db, policy, checkpointer) => {
                 throw error;
             }
             count += 1;
-            if (holds > 0)
-                return;
             if (count >= policy.max_transactions)
                 commit();
             else
                 schedule();
-        },
-        async hold(job) {
-            if (holds === 0 && checkpointer?.over_bound() === true) {
-                commit();
-                await checkpointer.drain();
-            }
-            holds += 1;
-            try {
-                return await job();
-            }
-            finally {
-                holds -= 1;
-                if (holds === 0)
-                    commit();
-            }
         },
         flush: commit,
         close: commit

@@ -54,6 +54,7 @@ export interface Page<T> {
 export interface TagCount {
     readonly tag: string;
     readonly count: number;
+    readonly managed: boolean;
 }
 export interface ListenCount {
     readonly track_id: string;
@@ -71,15 +72,11 @@ export interface LabelState {
 export interface LibrarySummary {
     readonly track_count: number;
     readonly audio_size_bytes: number;
-    readonly linked_library_count: number;
     readonly length: number;
 }
 export interface About {
     readonly library_address: string;
     readonly name: string | null;
-    readonly bio: string | null;
-    readonly location: string | null;
-    readonly avatar: string | null;
 }
 export interface ListTracksInput {
     readonly own_library_addresses?: readonly string[] | undefined;
@@ -104,11 +101,12 @@ export declare const get_track: ({ db, track_id, own_library_addresses, library_
     library_addresses?: readonly string[] | undefined;
     label_libraries?: readonly string[] | undefined;
 }) => TrackRow | undefined;
-export declare const list_tags: ({ db, library_addresses, label_libraries, prefix }: {
+export declare const list_tags: ({ db, library_addresses, label_libraries, prefix, managed_libraries }: {
     db: DatabaseSync;
     library_addresses?: readonly string[] | undefined;
     label_libraries?: readonly string[] | undefined;
     prefix?: string | undefined;
+    managed_libraries?: readonly string[] | undefined;
 }) => readonly TagCount[];
 export declare const track_labels: ({ db, track_id, label_libraries }: {
     db: DatabaseSync;

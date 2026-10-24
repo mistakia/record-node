@@ -1,32 +1,11 @@
 import { Router } from 'express'
 
-import { is_cid_string } from '#encoding/cid.ts'
-import type { AboutUpdate, ApiPeer, Library } from '#types/peer.ts'
+import type { ApiPeer, Library } from '#types/peer.ts'
 import { ApiError } from '../middleware.ts'
-import { query_value } from './query.ts'
-
-const ABOUT_FIELDS = ['name', 'bio', 'location', 'avatar'] as const
+import { page, query_value } from './query.ts'
 
 const not_found = (address: string) =>
   new ApiError({ status: 404, code: 'NOT_FOUND', message: `unknown library: ${address}` })
-
-// An avatar is a CID, never a URL that would leak a viewer's network identity (§2.6).
-export const about_fields = (body: Record<string, unknown>): AboutUpdate => {
-  const avatar = body.avatar
-  if (avatar !== undefined && avatar !== null && !is_cid_string(avatar)) {
-    throw new ApiError({
-      status: 400,
-      code: 'VALIDATION_ERROR',
-      message: 'avatar must be a content-addressed CID, not a URL',
-      details: [{ field: 'avatar', message: 'not a base58btc CID' }]
-    })
-  }
-  const fields: AboutUpdate = {}
-  for (const field of ABOUT_FIELDS) {
-    if (body[field] !== undefined) fields[field] = body[field] as string | null
-  }
-  return fields
-}
 
 export const libraries_router = (peer: ApiPeer): Router => {
   const router = Router()
@@ -110,11 +89,20 @@ export const libraries_router = (peer: ApiPeer): Router => {
   // The owner writes it, or a holder of library.update_about (§3.5.6).
   router.post('/:address/about', async (req, res) => {
     const { address } = req.params
-    const body = req.body as Record<string, unknown>
-    const fields = about_fields(body)
+    const { name, capability_id } = req.body as { name: string, capability_id?: string }
     await known_library(address)
-    const capability_id = typeof body.capability_id === 'string' ? body.capability_id : undefined
-    res.json(await peer.set_about({ address, fields, capability_id }))
+    res.json(await peer.set_about({ address, name, capability_id }))
+  })
+
+  // The library's label state, whatever holds the tracks (§2.5).
+  router.get('/:address/labels', async (req, res) => {
+    res.json(await peer.list_library_labels({ address: req.params.address, ...page(req) }))
+  })
+
+  router.get('/:address/profile', async (req, res) => {
+    const profile = await peer.get_library_profile(req.params.address)
+    if (profile === undefined) throw new ApiError({ status: 404, code: 'NOT_FOUND', message: `no owner profile known for ${req.params.address}` })
+    res.json(profile)
   })
 
   return router

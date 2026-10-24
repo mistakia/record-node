@@ -1,14 +1,18 @@
-// Content replication (§4.6.1, §4.6.2, §5.4.6): the audio, artwork, and
-// avatar a library's replication policy keeps, and the blobs the identity library
-// pins, fetched from peers over the content channel and pinned recursively.
+// Content replication (§4.6.1, §4.6.2, §5.4.6): the audio and artwork a
+// library's replication policy keeps, the avatar of a linked library's owner
+// from its announced profile, and the blobs the identity library pins,
+// fetched from peers over the content channel and pinned recursively.
 // Fetches are bounded: a fixed number in flight, a timeout per blob, and a
 // retry under backoff for one that fails, so a blob no peer serves never
 // stalls log replication or another blob. Its track stays listed.
 import { canonical_cid } from '#entry/identity-record.ts';
+import { is_put } from '#entry/operations.ts';
 import { read_unixfs_file } from '#fabric/unixfs.ts';
+import { get_live_entry } from '#oplog/dag.ts';
 import { ProtocolError } from '#types/errors.ts';
+import { linked_addresses, own_label_addresses } from "./ownership.js";
 import { has_item_6, stored_item_6 } from "./pins.js";
-import { keeps_blobs } from "./policy.js";
+import { effective_policy, keeps_blobs } from "./policy.js";
 const RETRY_FIRST_MS = 30_000;
 const RETRY_MAX_MS = 30 * 60_000;
 export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => {
@@ -178,36 +182,92 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
         pump();
     };
     const live_item_6_entries = (library_address) => [...libraries.get(library_address)?.oplog.current.values() ?? []].filter(has_item_6);
+    // The avatar of the latest verified profile of a linked library's single
+    // write-list key (§5.3.2). An own library's owner is this identity, whose
+    // avatar the identity library keeps.
+    const owner_avatar = (library_address) => {
+        const write_list = libraries.get(library_address)?.chain.write_list;
+        if (write_list?.length !== 1 || write_list[0] === context.identity?.key_pair.public_key)
+            return undefined;
+        return context.announced.profiles.get(write_list[0])?.record.avatar;
+    };
+    // A filter reads a track view, which a profile has not, so only the mode
+    // decides the avatar (§4.6.1).
+    const keeps_avatar = (library_address) => {
+        const mode = effective_policy(context, library_address)?.mode;
+        return mode === 'full' || mode === 'selective';
+    };
+    const keep_avatar = async (library_address) => {
+        const handle = libraries.get(library_address);
+        const avatar = owner_avatar(library_address);
+        if (stopped || handle === undefined || avatar === undefined || !keeps_avatar(library_address))
+            return;
+        await libraries.hold_blobs({ library_address, cids: [avatar] });
+        if (handle.pins.get(avatar) !== true)
+            want({ cid: avatar, library_address });
+        pump();
+    };
+    // Each item 6 among the entries is released when the policy no longer
+    // keeps it, then what it keeps is held or fetched.
+    const redecide = async (library_address, entries, keeps) => {
+        const released = [];
+        for (const entry of entries) {
+            const item = await stored_item_6({ content_store, library_address, entry });
+            if (item !== undefined && !keeps({ entry, content: item.content }))
+                released.push(...item.blobs);
+        }
+        await libraries.release_blobs({ library_address, cids: released });
+        await keep_library_blobs(library_address, entries);
+    };
+    // The selective libraries whose track view reads a library's labels: the
+    // library itself, or every one when it is an own label library (§4.6.1).
+    const reading_labels_of = (library_address) => {
+        const selective = (address) => effective_policy(context, address)?.mode === 'selective';
+        if (own_label_addresses(context).includes(library_address))
+            return linked_addresses(context).filter(selective);
+        return selective(library_address) ? [library_address] : [];
+    };
+    // Tracked with the fetches, so settled waits for its holds; none starts once stopped.
+    const tracked = async (job) => {
+        if (stopped)
+            return;
+        const running_job = job();
+        const settled = running_job.catch(() => { });
+        in_flight.add(settled);
+        try {
+            await running_job;
+        }
+        finally {
+            in_flight.delete(settled);
+        }
+    };
     return {
-        // Tracked with the fetches, so settled waits for its holds; none starts once stopped.
-        entries: async (library_address, entries) => {
-            if (stopped)
-                return;
-            const keeping = keep_library_blobs(library_address, entries);
-            const tracked = keeping.catch(() => { });
-            in_flight.add(tracked);
-            try {
-                await keeping;
-            }
-            finally {
-                in_flight.delete(tracked);
-            }
-        },
+        entries: async (library_address, entries) => { await tracked(async () => { await keep_library_blobs(library_address, entries); }); },
         policy_changed: async (library_address) => {
             const handle = libraries.get(library_address);
             if (handle === undefined)
                 return;
             generations.set(library_address, generation(library_address) + 1);
-            const keeps = keeps_blobs(context)(handle.chain);
-            const released = [];
-            for (const entry of live_item_6_entries(library_address)) {
-                const item = await stored_item_6({ content_store, library_address, entry });
-                if (item !== undefined && !keeps({ entry, content: item.content }))
-                    released.push(...item.blobs);
-            }
-            await libraries.release_blobs({ library_address, cids: released });
-            await keep_library_blobs(library_address, live_item_6_entries(library_address));
+            const avatar = owner_avatar(library_address);
+            if (avatar !== undefined && !keeps_avatar(library_address))
+                await libraries.release_blobs({ library_address, cids: [avatar] });
+            await redecide(library_address, live_item_6_entries(library_address), keeps_blobs(context)(handle.chain));
+            await keep_avatar(library_address);
         },
+        keep_avatar: async (library_address) => { await tracked(async () => { await keep_avatar(library_address); }); },
+        labels_changed: async (library_address, track_ids) => await tracked(async () => {
+            for (const address of reading_labels_of(library_address)) {
+                const handle = libraries.get(address);
+                if (handle === undefined)
+                    continue;
+                const entries = track_ids.flatMap((track_id) => {
+                    const live = get_live_entry({ oplog: handle.oplog, key: track_id });
+                    return live !== undefined && is_put(live.operation) ? [live] : [];
+                });
+                if (entries.length > 0)
+                    await redecide(address, entries, keeps_blobs(context)(handle.chain));
+            }
+        }),
         sync_pins: async (pins) => {
             const previous = retained;
             retained = new Set(pins);

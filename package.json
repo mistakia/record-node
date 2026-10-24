@@ -1,7 +1,7 @@
 {
   "name": "record-node",
-  "version": "1.1.0-alpha.2",
-  "description": "Reference implementation of Record Protocol v1: a spec-conformant peer for distributed audio libraries",
+  "version": "2.0.0",
+  "description": "Reference implementation of Record Protocol v2: a spec-conformant peer for distributed audio libraries",
   "license": "MIT",
   "type": "module",
   "engines": {

@@ -33,12 +33,11 @@ describe('api v1.1: identity', () => {
 
   test('GET, POST, and DELETE /identity/libraries list, create, and retire own libraries', async () => {
     expect((await (await fetch(api.url('/identity/libraries'))).json() as unknown[]).length).toBe(1)
-    const created = await post_json(api.url('/identity/libraries'), { discriminator: 'mixes', about: { name: 'Mixes' } })
+    const created = await post_json(api.url('/identity/libraries'), { name: 'Mixes' })
     expect(created.status).toBe(201)
-    expect(last_call('create_own_library')).toEqual([{ discriminator: 'mixes', about: { name: 'Mixes' } }])
+    expect(last_call('create_own_library')).toEqual([{ name: 'Mixes' }])
     const { address } = await created.json() as { address: string }
-    expect(await error_code(await post_json(api.url('/identity/libraries'), { discriminator: 'mixes' }))).toBe('CONFLICT')
-    expect((await post_json(api.url('/identity/libraries'), { discriminator: 'bad name' })).status).toBe(400)
+    expect((await post_json(api.url('/identity/libraries'), { discriminator: 'mixes' })).status).toBe(400)
     expect((await request(`/identity/libraries/${encodeURIComponent(address)}`, { method: 'DELETE' })).status).toBe(204)
     expect(last_call('retire_own_library')).toEqual([address])
     expect(await error_code(await request(`/identity/libraries/${encodeURIComponent(LINKED_ADDRESS)}`, { method: 'DELETE' }))).toBe('NOT_FOUND')
@@ -106,7 +105,7 @@ describe('api v1.1: write targets and pins', () => {
     expect((await request(`/tracks/${TRACK_ID}?library_address=${encodeURIComponent(OWN_ADDRESS)}`, { method: 'DELETE' })).status).toBe(204)
     expect(last_call('remove_track')).toEqual([{ track_id: TRACK_ID, library_address: OWN_ADDRESS }])
     expect((await post_json(api.url(`${library_path(LINKED_ADDRESS)}/about`), { name: 'shared', capability_id: CAPABILITY_ID })).status).toBe(200)
-    expect(last_call('set_about')).toEqual([{ address: LINKED_ADDRESS, fields: { name: 'shared' }, capability_id: CAPABILITY_ID }])
+    expect(last_call('set_about')).toEqual([{ address: LINKED_ADDRESS, name: 'shared', capability_id: CAPABILITY_ID }])
     expect((await post_json(api.url('/import/url'), { url: 'https://example.test/a', ...target })).status).toBe(202)
     expect(last_call('import_url')).toEqual([{ url: 'https://example.test/a', ...target }])
   })

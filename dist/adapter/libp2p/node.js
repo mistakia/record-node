@@ -34,7 +34,7 @@ import { SHA3_512_CODE } from '#encoding/cid.ts';
 import { mainline_rendezvous } from "./mainline-rendezvous.js";
 import { tor_transport } from "./tor-transport.js";
 // The swarm key file (§5.5.1): peers with any other key cannot connect.
-export const RECORD_SWARM_KEY = '/key/swarm/psk/1.0.0/\n/base16/\ncbad12031badbcad2a3cd5a373633fa725a7874de942d451227a9e909733454a';
+export const RECORD_SWARM_KEY = '/key/swarm/psk/1.0.0/\n/base16/\n759610a71c3687e6644664f722dbc6d83c6c0651266f4b2f4c91beecbfb61a55';
 // Entries and protocol objects are sha3-512 (§2.1), so bitswap must know the
 // hasher to verify a block it receives. Helia is on multiformats 14 and the
 // core on 13, whose hasher types differ only nominally.

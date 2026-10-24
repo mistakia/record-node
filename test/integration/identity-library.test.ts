@@ -86,7 +86,7 @@ describe('identity library', () => {
   test('chapter 7 [MUST] own_library_address is the oldest active own recordstore', async () => {
     const peer = await peers.start()
     const { own_address } = peer.identity()
-    const second = await peer.create_own_library({})
+    const second = await peer.create_own_library({ name: 'Second' })
     expect(second.address.split('/')[3]).toMatch(/^[a-z2-7]{26}$/)
     expect((await peer.get_identity()).own_library_address).toBe(own_address)
     await peer.retire_own_library(own_address)
@@ -108,13 +108,17 @@ describe('identity library', () => {
     expect((await first.read_meta_log({ offset: 0, limit: 100, type: 'profile', current_only: false })).total).toBe(2)
     await expect(write_profile(first.context, { avatar: 'https://example.com/a.png' })).rejects.toMatchObject({ code: 'invalid' })
     await expect(write_profile(first.context, { name: 'x'.repeat(129) })).rejects.toMatchObject({ code: 'invalid' })
+    // The API profile names every field, null when absent.
+    expect(await first.get_profile()).toEqual({ public_key: first.identity().key_pair.public_key, name: null, bio: 'hello', avatar: null })
+    expect(await first.set_profile({ name: 'Ada' })).toEqual({ public_key: first.identity().key_pair.public_key, name: 'Ada', bio: null, avatar: null })
+    expect(await first.get_library_profile(first.identity().own_address)).toEqual(await first.get_profile())
   })
 
   test('§4.8.3 [MUST] an own library is created and retired for good, and a retired one refuses writes', async () => {
     const peer = await peers.start()
     const { entry } = await append_track({ peer, fingerprint: 'AQADretire' })
     const track_id = (entry.operation as { key: string }).key
-    const mixes = await peer.create_own_library({ discriminator: 'mixes', about: { name: 'Mixes' } })
+    const mixes = await peer.create_own_library({ name: 'Mixes' })
     expect(mixes).toMatchObject({ is_own: true, is_retired: false, library_type: 'recordstore', name: 'Mixes', replication_mode: 'full' })
     // Two active own recordstores: a track write must name its target, and a
     // label write with none goes to the labels library (§4.9).
@@ -127,8 +131,7 @@ describe('identity library', () => {
 
     await peer.retire_own_library(mixes.address)
     expect(await peer.get_library(mixes.address)).toMatchObject({ is_own: true, is_retired: true })
-    await expect(peer.set_about({ address: mixes.address, fields: { name: 'again' } })).rejects.toMatchObject({ code: 'conflict' })
-    await expect(peer.create_own_library({ discriminator: 'mixes' })).rejects.toMatchObject({ code: 'conflict' })
+    await expect(peer.set_about({ address: mixes.address, name: 'again' })).rejects.toMatchObject({ code: 'conflict' })
     await expect(peer.add_tag({ track_id, tag: 'y', library_address: mixes.address })).rejects.toMatchObject({ code: 'conflict' })
     // One active recordstore again, so it is the default target.
     await peer.remove_track({ track_id })

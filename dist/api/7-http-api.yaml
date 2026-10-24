@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 1.8.1
+  version: 2.0.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -35,22 +35,51 @@ info:
       else does: a node that cannot read its token store answers 503
       (spec §8.7.3, token-management surface).
 
-    Write targets (v1.1):
+    Write targets:
     - Every endpoint that appends to a library takes `library_address`,
       the target, and `capability_id`, the capability authorising the
       write when the identity does not own the target (spec §3.5.9).
-    - When `library_address` is omitted, the target is the identity's own
-      recordstore library if it has exactly one active one (spec §4.8.3).
-      Otherwise the request fails with 400 `VALIDATION_ERROR`, so v1.0
-      clients keep working against single-library identities.
+    - When `library_address` is omitted from a label write (`PATCH
+      /tracks/{id}/tags`, `POST /tags`, `DELETE /tags`, `POST
+      /tags/batch`), the target is the identity's labels library (spec
+      §4.9). When it is omitted from any other write, the target is the
+      identity's own recordstore library if it has exactly one active
+      one (spec §4.8.3); otherwise the request fails with 400
+      `VALIDATION_ERROR`. A labels library takes label and About writes
+      only; any other write to one fails with 400.
     - A write the identity cannot make fails with 403: `FORBIDDEN` when
       it neither owns the target nor cites a capability that authorises
       the write, `CAPABILITY_EXPIRED` or `CAPABILITY_REVOKED` when the
       cited capability no longer applies. A retired target fails with
       409 `CONFLICT`.
     - Identity-library writes (library create and retire, link, unlink,
-      pin, unpin) take no target (spec §4.8). Listens go to the
+      pin, unpin, profile) take no target (spec §4.8). Listens go to the
       identity's listens library (spec §4.8.3).
+
+    Labels:
+    - Labels are label records (spec §2.5), separate from tracks. Each
+      label write appends at most one label record to its target,
+      carrying every pair it sets and unsets, under
+      `library.write_label` (spec §3.5.6) when the target is not own. A
+      write may name any track id, held by a library or not. A pair
+      already in the requested state is omitted, and a write that leaves
+      nothing appends nothing, so it is safe to repeat. A write that
+      appends sends one `library:labels-changed` event.
+    - The node normalises a label to NFC before writing it. A label of
+      more than 128 UTF-8 bytes after normalisation, or one holding a
+      control character, fails with 400 (spec §2.5).
+    - Reads separate membership from labelling. `library_addresses`
+      picks the libraries whose live tracks are in scope, and
+      `label_libraries` picks the libraries whose labels count (see the
+      `LabelLibraries` parameter).
+
+    Node-managed label libraries:
+    - Node-local configuration MAY name label libraries the node
+      manages, each with the bearer token allowed to write labels to it,
+      so an automated writer owns its labels. A label write to a
+      node-managed library from any other caller, a tokenless loopback
+      caller included, fails with 403 `FORBIDDEN`. `TagCount.managed`
+      marks labels from such a library, which clients show read-only.
 
     URL resolution (spec §6.4.2 step 1):
     - A URL the resolver refuses as input (malformed, not http(s), a
@@ -99,15 +128,21 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - name: library_addresses
           in: query
-          description: Filter by one or more library addresses.
+          description: |
+            Membership scope: only tracks a live PUT in one of these
+            libraries holds. Without it, every library the node shows.
+            Membership only; which labels count is `label_libraries`.
           schema:
             type: array
             items: { type: string }
           style: form
           explode: true
+        - $ref: '#/components/parameters/LabelLibraries'
         - name: tags
           in: query
-          description: Filter by tag labels. All supplied tags must match (AND semantics).
+          description: |
+            Filter by labels. All supplied labels must apply (AND
+            semantics), each from any library in `label_libraries`.
           schema:
             type: array
             items: { type: string }
@@ -120,7 +155,7 @@ paths:
             labels. A track matches a group when it carries any label in
             it, and matches the filter when it matches every group.
             Combines with `tags`, each of which acts as a group of one.
-            Labels count from every scoped library, as for `tags`.
+            Labels count from `label_libraries`, as for `tags`.
           content:
             application/json:
               schema:
@@ -173,13 +208,12 @@ paths:
         `library.append_track`. For URL ingest use `POST /import/url`; for
         file upload use `POST /import/file`.
 
-        `tags` gives the entry's envelope labels (spec §2.4.3), so a track
-        joins the library with its labels in one PUT. A track the target
-        already holds keeps its entry when its labels equal `tags` as a
-        set, and otherwise is relabelled to them with a PUT of its current
-        content, as `PATCH /tracks/{id}/tags` with `set` would. Without
-        `tags`, a held track is left as it is and a new one carries no
-        labels.
+        A track the target already holds keeps its entry. `tags` sets the
+        target's labels on the track, as `PATCH /tracks/{id}/tags` with
+        `set` would: the node appends the track PUT, when needed, and one
+        label record in one batch, so the track joins with its labels.
+        Under a capability, `tags` also needs `library.write_label`
+        (spec §3.5.6). Without `tags`, no label record is written.
       requestBody:
         required: true
         content:
@@ -221,8 +255,9 @@ paths:
         Writes a new content object (spec §2.4.1) for the same audio, with
         `content.tags` changed as the request says, and appends a PUT of it
         under the same track id, which supersedes the current one (spec
-        §4.4.2). The audio blob and its size, `audio`, `artwork`,
-        `resolver`, and the envelope's labels (spec §2.4.3) are kept.
+        §4.4.2). The audio blob and its size, `audio`, `artwork`, and
+        `resolver` are kept. Labels are separate records (spec §2.5) and
+        are untouched.
 
         Each field of `tags` sets that tag, and `null` removes it.
         `acoustid_fingerprint` derives the track id, so a request that
@@ -268,7 +303,8 @@ paths:
       description: |
         Appends a DEL to the target library. No capability action
         authorises a DEL (spec §3.5.6), so the target must be an own
-        library.
+        library. The library's labels on the track stay, and apply again
+        if the track returns (spec §2.5).
       parameters:
         - $ref: '#/components/parameters/WriteTarget'
       responses:
@@ -298,7 +334,7 @@ paths:
         from the stored value, it writes a new content object with only
         those fields changed and appends a PUT of it under the same track
         id, which supersedes the current one (spec §4.4.2). Everything
-        else, including the envelope's labels, is kept. A track whose
+        else is kept, and labels are untouched. A track whose
         stored fields already match appends nothing, so the request is
         safe to repeat.
 
@@ -345,18 +381,20 @@ paths:
       tags: [tags]
       summary: Change a track's labels in the target library.
       description: |
-        Appends a PUT of the track's current content with the envelope
-        labels (spec §2.4.3) the request gives: `add` and `remove` change
-        the current labels, and `set` replaces them. `set` excludes `add`
-        and `remove`, a request gives at least one of the three, and no
-        label is both added and removed; otherwise it fails with 400.
-        Adding a label the track carries, or removing one it does not,
-        changes nothing. A request that leaves the labels equal as a set
-        appends nothing, so it is safe to repeat.
+        Appends one label record (spec §2.5) to the target: `add` sets
+        labels and `remove` unsets them, and `set` makes the target's
+        labels on the track exactly the given ones, setting the missing
+        and unsetting the rest. `set` excludes `add` and `remove`, a
+        request gives at least one of the three, and no label is both
+        added and removed; otherwise it fails with 400. Adding a label
+        the target applies, or removing one it does not, changes nothing.
+        A request that changes nothing appends nothing, so it is safe to
+        repeat.
 
-        Under a capability, a change that only adds labels needs
-        `library.append_tag` or `library.append_track`, and any other
-        needs `library.append_track` (spec §3.5.6).
+        The track id need not be held by the target or by any library.
+        Under a capability the write needs `library.write_label`, and the
+        capability's filter must hold for every pair (spec §3.5.6). A
+        404 means only that the target library is unknown.
       requestBody:
         required: true
         content:
@@ -377,10 +415,10 @@ paths:
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
-          description: The track as the target library now holds it.
+          description: The track after the write, or its labels when no library holds it.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Track' }
+              schema: { $ref: '#/components/schemas/LabelWriteResult' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -428,16 +466,23 @@ paths:
   /tags:
     get:
       tags: [tags]
-      summary: List tags with occurrence counts.
+      summary: List labels with occurrence counts.
+      description: |
+        Every label that applies, from a library in `label_libraries`, to
+        a live track in the membership scope, with the number of such
+        tracks.
       parameters:
         - name: library_addresses
           in: query
-          description: Optional filter by library addresses.
+          description: |
+            Membership scope: count only tracks a live PUT in one of these
+            libraries holds. Without it, every library the node shows.
           schema:
             type: array
             items: { type: string }
           style: form
           explode: true
+        - $ref: '#/components/parameters/LabelLibraries'
         - name: prefix
           in: query
           description: |
@@ -457,10 +502,11 @@ paths:
 
     post:
       tags: [tags]
-      summary: Attach a tag to a track in the target library.
+      summary: Set a label on a track in the target library.
       description: |
-        Under a capability, needs `library.append_tag` or
-        `library.append_track` (spec §3.5.6).
+        Appends a label record setting the pair, as `PATCH
+        /tracks/{id}/tags` with `add` would, on any track id. Under a
+        capability, needs `library.write_label` (spec §3.5.6).
       requestBody:
         required: true
         content:
@@ -469,16 +515,16 @@ paths:
               type: object
               required: [track_id, tag]
               properties:
-                track_id: { type: string }
+                track_id: { type: string, pattern: '^[a-f0-9]{64}$' }
                 tag: { $ref: '#/components/schemas/Label' }
                 library_address: { $ref: '#/components/schemas/WriteTargetAddress' }
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
-          description: OK. Returns the updated track.
+          description: The track after the write, or its labels when no library holds it.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Track' }
+              schema: { $ref: '#/components/schemas/LabelWriteResult' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -488,15 +534,17 @@ paths:
 
     delete:
       tags: [tags]
-      summary: Detach a tag from a track in the target library.
+      summary: Unset a label on a track in the target library.
       description: |
-        Under a capability, needs `library.append_track`:
-        `library.append_tag` only adds tags (spec §3.5.6).
+        Appends a label record unsetting the pair, as `PATCH
+        /tracks/{id}/tags` with `remove` would, on any track id. Under a
+        capability, needs `library.write_label`, whose filter sees the
+        pair with `op` `unset` (spec §3.5.6).
       parameters:
         - name: track_id
           in: query
           required: true
-          schema: { type: string }
+          schema: { type: string, pattern: '^[a-f0-9]{64}$' }
         - name: tag
           in: query
           required: true
@@ -505,10 +553,10 @@ paths:
         - $ref: '#/components/parameters/WriteCapability'
       responses:
         '200':
-          description: OK. Returns the updated track.
+          description: The track after the write, or its labels when no library holds it.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Track' }
+              schema: { $ref: '#/components/schemas/LabelWriteResult' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -524,15 +572,17 @@ paths:
         Applies each item as `PATCH /tracks/{id}/tags` would, in request
         order, to the one target library, and answers with one result per
         item in the same order. Items naming the same track apply one
-        after the other. An item whose track the target does not hold, or
-        whose change the cited capability does not authorise, fails alone
+        after the other. Any track id is accepted, held or not. An item
+        whose change the cited capability does not authorise fails alone
         and the others still apply. A request that fails as a whole (its
-        target, or an item breaking the rules of `PATCH
-        /tracks/{id}/tags`) fails before any item applies.
+        target, an item breaking the rules of `PATCH /tracks/{id}/tags`,
+        or a label record over the spec §2.8.3 entry bound) fails before
+        any item applies.
 
-        The node appends the changed entries as one batch: it sends one
-        `library:index-updated` event for the batch, and no `track:added`
-        event per track.
+        The node appends every applied item's pairs as one label record,
+        and nothing when no item changed. It sends one
+        `library:labels-changed` event naming every changed track, and no
+        `track:added` or `library:index-updated` event.
       requestBody:
         required: true
         content:
@@ -593,8 +643,7 @@ paths:
       description: |
         Appends a `link` PUT to the identity library (spec §4.8.4).
         Replication then starts under the library's replication policy,
-        `full` unless configured. A link made before v1.1 defaults to
-        `index_only` (spec §4.6.1).
+        `full` unless configured (spec §4.6.1).
       requestBody:
         required: true
         content:
@@ -837,10 +886,13 @@ paths:
       - $ref: '#/components/parameters/LibraryAddress'
     get:
       tags: [about]
-      summary: Get the profile for a library.
+      summary: Get the name of a library.
       description: |
-        Profile-only projection of the library. For full library metadata
-        including replication status, use `GET /libraries/:address`.
+        The library's current About record (spec §2.6), which carries its
+        name and nothing else. For full library metadata including
+        replication status, use `GET /libraries/:address`. The person who
+        owns a library is described by their profile, `GET
+        /libraries/{address}/profile`.
       responses:
         '200':
           description: OK
@@ -852,26 +904,26 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
     post:
       tags: [about]
-      summary: Update the profile for a library.
+      summary: Rename a library.
       description: |
-        Returns 403 unless the caller owns the target library or cites a
-        capability granting `library.update_about` (spec §3.5.6). Any
-        subset of mutable fields may be supplied; omitted fields remain
-        unchanged. Per protocol spec §2.6, `avatar` MUST be a
-        content-addressed CID.
+        Appends an About record (spec §2.6) with the given name, which
+        replaces the current one. Returns 403 unless the caller owns the
+        target library or cites a capability granting
+        `library.update_about` (spec §3.5.6). A name equal to the current
+        one appends nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [name]
               properties:
-                name: { type: [string, 'null'], maxLength: 128 }
-                bio: { type: [string, 'null'], maxLength: 1024 }
-                location: { type: [string, 'null'], maxLength: 128 }
-                avatar:
-                  type: [string, 'null']
-                  description: CID of an image blob, served by `/images/{cid}`.
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  description: 1 to 128 UTF-8 bytes.
                 capability_id: { $ref: '#/components/schemas/WriteCapabilityId' }
       responses:
         '200':
@@ -882,6 +934,56 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/labels:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [tags]
+      summary: List a library's label state.
+      description: |
+        Every track id the library currently applies at least one label
+        to (spec §2.5), with those labels, whether or not any library
+        holds the track. Membership plays no part, so a writer can
+        reconcile the labels it owns against what it means to hold.
+        Items are ordered by `track_id` ascending, so pages are stable
+        while the library is unchanged.
+      parameters:
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LabelStatePage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /libraries/{address}/profile:
+    parameters:
+      - $ref: '#/components/parameters/LibraryAddress'
+    get:
+      tags: [identity]
+      summary: Get the profile of a library's owner.
+      description: |
+        For an own library, the identity's own profile. For any other
+        library, the owner's profile carried in that library's latest
+        verified announcement (spec §5.3.2). A library whose `write` list
+        is not a single key has no owner profile, and answers 404, as
+        does one for which no announcement has carried a profile.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -1039,13 +1141,67 @@ paths:
                   own_library_address:
                     type: string
                     description: |
-                      The identity's default own recordstore library: its
-                      only active one, or else the one with discriminator
-                      `record`, record-node's v1.0 own library (spec
-                      §3.6.1). `GET /identity/libraries` lists them all.
+                      The identity's default import target, as
+                      `Identity.own_library_address`. `GET
+                      /identity/libraries` lists every own library.
                   meta_log_address:
                     type: string
                     description: Address of the identity library (spec §3.6.2).
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /identity/profile:
+    get:
+      tags: [identity]
+      summary: Read the identity's profile.
+      description: |
+        The identity's current `profile` record (spec §4.8.2). An
+        identity that has written none has a profile with every field
+        null.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [identity]
+      summary: Replace the identity's profile.
+      description: |
+        Appends a `profile` PUT to the identity library (spec §4.8.2),
+        which replaces the whole profile: a field the request omits is
+        absent afterwards. The profile is never deleted. `avatar` takes
+        any valid CID form, such as the `cid` `POST /images` returns, and
+        the node records it in the canonical form of spec §4.8.2 (CIDv1,
+        base32). A request equal to the current profile appends nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  description: 1 to 128 UTF-8 bytes.
+                bio:
+                  type: string
+                  maxLength: 1024
+                  description: At most 1024 UTF-8 bytes.
+                avatar:
+                  type: string
+                  description: CID of an image blob, served by `/images/{cid}`. Never a URL.
+      responses:
+        '200':
+          description: The stored profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1056,7 +1212,7 @@ paths:
       summary: List the identity's own libraries.
       description: |
         Every library the identity library records as owned (spec §4.8.3),
-        active and retired, including the listens library.
+        active and retired, including the listens and labels libraries.
       responses:
         '200':
           description: OK
@@ -1071,29 +1227,24 @@ paths:
       tags: [identity]
       summary: Create an own recordstore library.
       description: |
-        Derives the address from the identity key and the discriminator
-        (spec §3.6.1), appends a `library` PUT to the identity library,
-        and, when `about` is given, an About entry to the new library. If
-        `discriminator` is omitted the node generates one. A discriminator
-        the identity library already records, active or retired, is
-        refused with 409.
+        The node generates a random discriminator (spec §3.6.1), derives
+        the address from it and the identity key, appends a `library` PUT
+        to the identity library, and appends an About record carrying
+        `name` to the new library (spec §2.6). The client never chooses
+        the discriminator, which is not a display name.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [name]
               properties:
-                discriminator:
+                name:
                   type: string
-                  pattern: '^[0-9a-zA-Z-]{1,64}$'
-                about:
-                  type: object
-                  properties:
-                    name: { type: [string, 'null'], maxLength: 128 }
-                    bio: { type: [string, 'null'], maxLength: 1024 }
-                    location: { type: [string, 'null'], maxLength: 128 }
-                    avatar: { type: [string, 'null'] }
+                  minLength: 1
+                  maxLength: 128
+                  description: The library's name, 1 to 128 UTF-8 bytes.
       responses:
         '201':
           description: Created.
@@ -1102,7 +1253,6 @@ paths:
               schema: { $ref: '#/components/schemas/Library' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /identity/libraries/{address}:
@@ -1114,8 +1264,8 @@ paths:
       description: |
         Appends a `library` DEL to the identity library (spec §4.8.3).
         Retirement is permanent. The library stays valid and replicable;
-        the node refuses new writes to it. The identity's active listens library cannot be retired
-        (409).
+        the node refuses new writes to it. The identity's active listens
+        and labels libraries cannot be retired (409).
       responses:
         '204':
           description: Retired.
@@ -1158,7 +1308,7 @@ paths:
           description: Only records of this type.
           schema:
             type: string
-            enum: [library, link, pin]
+            enum: [library, link, pin, profile]
         - name: current_only
           in: query
           description: Only the current record of each `(type, key)` (spec §4.8.2).
@@ -1178,8 +1328,8 @@ paths:
       tags: [import]
       summary: Ingest one or more audio files via multipart upload.
       description: |
-        Files are buffered to a temp directory and fed to the protocol-v1
-        ingest pipeline via `import_blob(path)`. Returns an `import_id`
+        Files are buffered to a temp directory and fed to the ingest
+        pipeline (spec §6.4) via `import_blob(path)`. Returns an `import_id`
         immediately; progress is delivered via `import:*` WebSocket
         events. The target and capability are checked before the import
         is accepted. A file with a degenerate fingerprint fails with
@@ -1219,7 +1369,7 @@ paths:
       summary: Ingest a track from a resolver URL.
       description: |
         Resolves the URL via the resolver plugin, downloads, and feeds the
-        result to the protocol-v1 ingest pipeline.
+        result to the ingest pipeline (spec §6.4).
       requestBody:
         required: true
         content:
@@ -1314,15 +1464,15 @@ paths:
   /images:
     post:
       tags: [images]
-      summary: Store an image blob, such as a library avatar.
+      summary: Store an image blob, such as a profile avatar.
       description: |
         Stores the uploaded `file` part in the content store as ingest
         stores artwork: imported as one UnixFS file under the §5.5.1
         profile (spec §6.4.1 step 8) and pinned recursively (step 11).
         `GET /images/{cid}` then serves it, and peers fetch it by CID like
-        artwork. The returned `cid` is the base58btc string a library's
-        `avatar` takes (`POST /libraries/{address}/about`). Uploading bytes
-        the node already holds returns the same CID.
+        artwork. The returned `cid`, a base58btc string, is what the
+        profile's `avatar` takes (`PUT /identity/profile`). Uploading
+        bytes the node already holds returns the same CID.
 
         The node refuses a `file` over 16 MiB (16777216 bytes) with 413
         and one whose first 4100 bytes do not sniff, via file-type, as an
@@ -1365,7 +1515,7 @@ paths:
         in: path
         required: true
         description: |
-          CID of an image blob: a `Track.artwork` element or a library's
+          CID of an image blob: a `Track.artwork` element or a profile's
           `avatar`. Accepts any valid CID string, as `/audio/{cid}` does.
         schema: { type: string }
     head:
@@ -1459,9 +1609,26 @@ components:
       name: library_address
       in: query
       description: |
-        Target library of the write. Optional only when the identity has
-        exactly one active own recordstore library (spec §4.8.3).
+        Target library of the write. When omitted, a label write targets
+        the identity's labels library (spec §4.9), and any other write
+        the identity's only active own recordstore library, failing with
+        400 when it has several (spec §4.8.3).
       schema: { type: string }
+    LabelLibraries:
+      name: label_libraries
+      in: query
+      description: |
+        The libraries whose labels count, for `tags`, `tag_groups`,
+        `Track.tags`, and `TagCount`. A library here need not hold the
+        tracks it labels. Default: every own library of type
+        `recordstore` or `labels`, active and retired, plus the
+        `library_addresses` of the request; with no `library_addresses`,
+        every library the node shows.
+      schema:
+        type: array
+        items: { type: string }
+      style: form
+      explode: true
     WriteCapability:
       name: capability_id
       in: query
@@ -1634,7 +1801,10 @@ components:
           items: { $ref: '#/components/schemas/ResolverEntry' }
         tags:
           type: array
-          description: Library-scoped tag labels attached to this track.
+          description: |
+            The labels applied to this track by the libraries in the
+            request's `label_libraries`, or its default (spec §2.5), one
+            item per library and label.
           items: { $ref: '#/components/schemas/TrackTag' }
         listen_count:
           type: integer
@@ -1659,14 +1829,62 @@ components:
       properties:
         library_address:
           type: string
-          description: Library address that applied the tag.
+          description: The library whose label record applies the label.
         tag: { type: string }
 
     Label:
       type: string
       minLength: 1
       maxLength: 128
-      description: An envelope label (spec §2.4.3).
+      description: |
+        A label (spec §2.5): 1 to 128 UTF-8 bytes after NFC
+        normalisation, with no control characters.
+
+    TrackLabels:
+      type: object
+      required: [track_id, tags]
+      description: |
+        A track id and the labels one library applies to it, for a track
+        no library the node shows holds.
+      properties:
+        track_id: { type: string, pattern: '^[a-f0-9]{64}$' }
+        tags:
+          type: array
+          description: The target library's labels on the track after the write.
+          items: { type: string }
+
+    LabelWriteResult:
+      description: |
+        The result of a label write: the track, with `tags` over the
+        default `label_libraries`, when a library the node shows holds
+        it, and otherwise `TrackLabels`.
+      oneOf:
+        - $ref: '#/components/schemas/Track'
+        - $ref: '#/components/schemas/TrackLabels'
+
+    LabelState:
+      type: object
+      required: [track_id, tags]
+      description: One track id's labels in a library (spec §2.5).
+      properties:
+        track_id: { type: string, pattern: '^[a-f0-9]{64}$' }
+        tags:
+          type: array
+          description: The labels the library currently applies to the track.
+          minItems: 1
+          items: { type: string }
+
+    LabelStatePage:
+      type: object
+      required: [library_address, items, total]
+      properties:
+        library_address: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/LabelState' }
+        total:
+          type: integer
+          description: Number of track ids with at least one label applied.
 
     LabelBatchItem:
       type: object
@@ -1695,12 +1913,13 @@ components:
           type: string
           enum: [updated, unchanged, failed]
           description: |
-            `updated` appended a PUT with the new labels. `unchanged`
-            appended nothing, since the labels were already equal as a
-            set. `failed` appended nothing, for the reason in `error`.
+            `updated` put the item's pairs into the batch's label record.
+            `unchanged` added nothing, since every pair was already in the
+            requested state. `failed` added nothing, for the reason in
+            `error`.
         tags:
           type: array
-          description: The track's labels after the item; absent when it failed.
+          description: The target library's labels on the track after the item; absent when it failed.
           items: { type: string }
         error:
           type: object
@@ -1709,20 +1928,27 @@ components:
           properties:
             code:
               type: string
-              enum: [NOT_FOUND, FORBIDDEN, CAPABILITY_EXPIRED, CAPABILITY_REVOKED, VALIDATION_ERROR]
+              enum: [FORBIDDEN, CAPABILITY_EXPIRED, CAPABILITY_REVOKED, VALIDATION_ERROR]
               description: |
-                `VALIDATION_ERROR` when the item's entry breaks a protocol
-                rule, such as the payload size bound (spec §2.9).
+                `VALIDATION_ERROR` when the item breaks a protocol rule,
+                such as the label size bound (spec §2.8.3).
             message: { type: string }
 
     TagCount:
       type: object
-      required: [tag, count]
+      required: [tag, count, managed]
       properties:
         tag: { type: string }
         count:
           type: integer
-          description: Number of tracks carrying this tag in the filtered address set.
+          description: |
+            Number of live tracks in the membership scope to which a
+            library in `label_libraries` applies the label.
+        managed:
+          type: boolean
+          description: |
+            Whether a node-managed library in `label_libraries` holds the
+            label, so clients show it read-only.
 
     Library:
       type: object
@@ -1737,7 +1963,6 @@ components:
         - library_type
         - track_count
         - audio_size_bytes
-        - linked_library_count
         - length
         - heads
         - replication_status
@@ -1757,15 +1982,11 @@ components:
         address: { type: string }
         library_type:
           type: string
-          description: Manifest type (spec §3.5.1), `recordstore` or `listens`.
-        name: { type: [string, 'null'] }
-        bio: { type: [string, 'null'] }
-        location: { type: [string, 'null'] }
-        avatar:
+          enum: [recordstore, listens, labels]
+          description: Manifest type (spec §3.5.1).
+        name:
           type: [string, 'null']
-          description: |
-            CID of the library's avatar image (protocol spec §2.6), served
-            by `/images/{cid}`.
+          description: The name from the library's About record (spec §2.6); null when it has none.
         alias:
           type: [string, 'null']
           description: |
@@ -1778,7 +1999,6 @@ components:
             Total size of the audio blobs of the library's live tracks
             (`content.size`), for storage estimates. A track whose content
             payload the node does not hold yet counts zero.
-        linked_library_count: { type: integer }
         length:
           type: integer
           description: Oplog length (count of live entries).
@@ -1827,8 +2047,10 @@ components:
     WriteTargetAddress:
       type: string
       description: |
-        Target library of the write. Optional only when the identity has
-        exactly one active own recordstore library (spec §4.8.3).
+        Target library of the write. When omitted, a label write targets
+        the identity's labels library (spec §4.9), and any other write
+        the identity's only active own recordstore library, failing with
+        400 when it has several (spec §4.8.3).
 
     WriteCapabilityId:
       type: string
@@ -1860,10 +2082,13 @@ components:
       required: [type]
       additionalProperties: true
       description: |
-        Recursive predicate (spec §3.5.7). v1.1 node types are `match`,
-        `any_of`, `range`, `and`, `or`, and `not`. The schema admits any
-        `type` so a node can report filters from newer peers; a filter
-        holding a type the node does not recognise matches nothing.
+        Recursive predicate (spec §3.5.7). Node types are `match`,
+        `any_of`, `range`, `prefix` (`{ type: "prefix", field, prefix }`),
+        `and`, `or`, and `not`. A label capability's filter sees each pair
+        as `{ type: "label", op, track_id, label }` (spec §3.5.6). The
+        schema admits any `type` so a node can report filters from newer
+        peers; a filter holding a type the node does not recognise
+        matches nothing.
       properties:
         type: { type: string }
 
@@ -1882,8 +2107,8 @@ components:
       required: [type]
       additionalProperties: true
       description: |
-        Capability condition (spec §3.5.8). v1.1 defines `expires_at`
-        with `at` in Unix milliseconds. Any other `type` never holds.
+        Capability condition (spec §3.5.8): `expires_at` with `at` in
+        Unix milliseconds. Any other `type` never holds.
       properties:
         type: { type: string }
 
@@ -1914,7 +2139,11 @@ components:
         grantee: { $ref: '#/components/schemas/GranteeSpec' }
         actions:
           type: array
-          description: Action verbs (spec §3.5.6), including any the node does not recognise.
+          description: |
+            Action verbs (spec §3.5.6): `library.append_track`,
+            `library.write_label`, `library.update_about`,
+            `library.grant_capability`, and any the node does not
+            recognise.
           items: { type: string }
         filter:
           oneOf:
@@ -1955,7 +2184,7 @@ components:
           enum: [PUT, DEL]
         type:
           type: string
-          description: Record type, `library`, `link`, `pin`, or one the node does not recognise.
+          description: Record type, `library`, `link`, `pin`, `profile`, or one the node does not recognise.
         key: { type: string }
         record:
           type: object
@@ -1998,14 +2227,33 @@ components:
 
     About:
       type: object
-      required: [library_address]
-      description: Profile-only projection of a library.
+      required: [library_address, name]
+      description: A library's name, from its About record (spec §2.6).
       properties:
         library_address: { type: string }
+        name:
+          type: [string, 'null']
+          description: Null when the library has no About record.
+
+    Profile:
+      type: object
+      required: [public_key, name, bio, avatar]
+      description: |
+        An identity's profile (spec §4.8.2): who the person is, as
+        distinct from a library's name. Fields the node does not define
+        are not passed through.
+      properties:
+        public_key:
+          type: string
+          pattern: '^0[23][0-9a-f]{64}$'
+          description: The identity's key (spec §3.1).
         name: { type: [string, 'null'] }
         bio: { type: [string, 'null'] }
-        location: { type: [string, 'null'] }
-        avatar: { type: [string, 'null'] }
+        avatar:
+          type: [string, 'null']
+          description: |
+            Canonical CID (CIDv1, base32) of the avatar image, served by
+            `/images/{cid}`.
 
     ListenCount:
       type: object
@@ -2087,9 +2335,10 @@ components:
         own_library_address:
           type: string
           description: |
-            The identity's default own recordstore library: its only
-            active one, or else the one with discriminator `record`,
-            record-node's v1.0 own library (spec §3.6.1).
+            The identity's default import target: the active own
+            recordstore library whose `library` PUT is least under spec
+            §4.4.2 order, that is, the oldest. Never the labels or listens
+            library (spec §4.9).
 
     IdentityExport:
       type: object
@@ -2190,6 +2439,7 @@ x-websocket-events:
         track_id: { type: string }
 
     library:linked:
+      description: A library was linked; `about` carries its name, when known.
       payload:
         library_address: { type: string }
         about: { $ref: '#/components/schemas/About' }
@@ -2238,9 +2488,27 @@ x-websocket-events:
         entry_hashes:
           type: array
           items: { type: string }
+        label_entry_ids:
+          type: array
+          description: |
+            The hashes, among `entry_hashes`, of entries carrying label
+            records, so clients refresh label counts.
+          items: { type: string }
         track_ids:
           type: array
-          description: Track ids whose current state changed.
+          description: Track ids whose current state or label state changed.
+          items: { type: string }
+
+    library:labels-changed:
+      description: |
+        Label records written here or merged from a peer changed the
+        library's label state (spec §2.5) for these tracks. Each label
+        write sends one, `POST /tags/batch` included. Clients refresh tag
+        counts and the affected rows.
+      payload:
+        library_address: { type: string }
+        track_ids:
+          type: array
           items: { type: string }
 
     library:replication-policy-changed:
@@ -2295,7 +2563,6 @@ x-websocket-events:
       payload:
         library_address: { type: string }
         track_count: { type: integer }
-        linked_library_count: { type: integer }
         is_processing_index: { type: boolean }
         processing_count:
           type: integer

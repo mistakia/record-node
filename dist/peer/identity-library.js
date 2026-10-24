@@ -118,7 +118,9 @@ const create_recorded_library = async (context, { type, discriminator }) => {
     await context.replication?.connect(address);
     return address;
 };
-export const create_own_library = async (context, { discriminator }) => await serialise_write(context, async () => await create_recorded_library(context, { type: 'recordstore', discriminator: discriminator ?? fresh_discriminator(context, 'recordstore') }));
+// A new recordstore under a random discriminator, which the caller never
+// chooses (§3.6.1).
+export const create_own_library = async (context) => await serialise_write(context, async () => await create_recorded_library(context, { type: 'recordstore', discriminator: fresh_discriminator(context, 'recordstore') }));
 // The identity's current profile (§4.8.2), if it has written one.
 export const read_profile = (context) => identity_state(context).profile;
 // Writes the whole profile (§4.8.2): a later PUT replaces it, so an absent

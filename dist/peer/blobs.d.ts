@@ -5,6 +5,8 @@ import type { PeerContext } from './context.ts';
 export interface BlobKeeper {
     entries: (library_address: string, entries: readonly VerifiedEntry[]) => Promise<void>;
     policy_changed: (library_address: string) => Promise<void>;
+    keep_avatar: (library_address: string) => Promise<void>;
+    labels_changed: (library_address: string, track_ids: readonly string[]) => Promise<void>;
     sync_pins: (pins: ReadonlySet<string>) => Promise<void>;
     retained: () => ReadonlySet<string>;
     retry: () => void;

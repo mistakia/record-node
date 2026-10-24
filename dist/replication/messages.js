@@ -50,55 +50,54 @@ export const decode_heads_message = (data) => {
         return undefined;
     return { heads: value.heads, incomplete: value.incomplete === true };
 };
-// A LoadedAboutEntry is the signed entry carrying a library's About record
-// (§2.6), with entry.hash alongside. The record is inline, so the entry is
-// sent as signed. It is a hint only; receivers re-fetch the canonical entry
-// by hash to authenticate it.
-export const build_loaded_about_entry = ({ hash, entry }) => ({
-    hash,
-    id: entry.id,
-    payload: entry.payload,
-    next: entry.next,
-    refs: entry.refs,
-    v: entry.v,
-    clock: entry.clock,
-    key: entry.key,
-    sig: entry.sig
+// A signed entry as an announcement carries it (§5.3.2): the §4.1.1 object
+// as JSON, in its field order, with no hash. A receiver re-encodes it to
+// recover the hash and the signed message.
+export const announced_entry = ({ id, payload, next, refs, v, clock, key, sig }) => ({ id, payload, next, refs, v, clock, key, sig });
+const message_of = ({ libraries, profiles }) => JSON.stringify({
+    libraries: libraries.map(({ address, about }) => about === undefined ? { address } : { address, about }),
+    profiles
 });
-// The announcement within the bound (§5.3.2): linked logs that would push it
-// over are left out, and an about entry too large alone is not sent at all.
-export const encode_announcement = ({ about, logs }) => {
-    const kept = [...logs];
+// The announcement within the bound (§5.3.2): the first own_count libraries
+// are kept, and libraries after them are left out from the end, each with
+// the profile of an owner no kept library names, until the message fits.
+// owners gives each library's single write-list key, when it has one.
+// Undefined when even the own libraries do not fit.
+export const encode_announcement = ({ libraries, profiles, own_count = libraries.length, owners = new Map() }) => {
+    const kept = [...libraries];
     for (;;) {
-        const bytes = encoder.encode(JSON.stringify({ about, logs: kept }));
+        const keys = new Set(kept.flatMap(({ address }) => owners.get(address) ?? []));
+        const bytes = encoder.encode(message_of({ libraries: kept, profiles: owners.size === 0 ? profiles : profiles.filter(({ key }) => keys.has(key)) }));
         if (bytes.length <= NETWORK_MESSAGE_MAX_BYTES)
             return bytes;
-        if (kept.length === 0)
+        if (kept.length <= own_count)
             return undefined;
         kept.pop();
     }
 };
-// The library is the one the signed entry names as its id.
+// A map shaped as a signed entry; its fields are checked when it is verified.
+const entry_like = (value) => is_record(value) && is_record(value.payload) && typeof value.id === 'string' && typeof value.key === 'string' ? value : undefined;
 const announced_library = (value) => {
-    if (!is_record(value) || typeof value.hash !== 'string' || !is_record(value.payload) || typeof value.id !== 'string')
+    if (!is_record(value) || typeof value.address !== 'string')
         return undefined;
     try {
-        parse_library_address(value.id);
+        parse_library_address(value.address);
     }
     catch {
         return undefined;
     }
-    return { address: value.id, hint: value };
+    const about = entry_like(value.about);
+    return about === undefined ? { address: value.address } : { address: value.address, about };
 };
-// §5.3.4 steps 1, 2 and 4: parse, and keep the about and each log whose
-// entry id is a valid library address. Undefined drops the message.
+// §5.3.4 steps 1 and 2: parse, keep each library whose address is a valid
+// library address, and each profile shaped as a signed entry. The entries
+// are untrusted until verified. Undefined drops the message.
 export const decode_announcement = (data) => {
     const value = parse_bounded(data);
-    if (!is_record(value))
+    if (!is_record(value) || !Array.isArray(value.libraries))
         return undefined;
-    const about = announced_library(value.about);
-    if (about === undefined)
-        return undefined;
-    const logs = Array.isArray(value.logs) ? value.logs.flatMap((log) => announced_library(log) ?? []) : [];
-    return { about, logs };
+    return {
+        libraries: value.libraries.flatMap((library) => announced_library(library) ?? []),
+        profiles: Array.isArray(value.profiles) ? value.profiles.flatMap((profile) => entry_like(profile) ?? []) : []
+    };
 };

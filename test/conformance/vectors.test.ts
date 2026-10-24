@@ -22,6 +22,8 @@ import {
   about_record_vector,
   ac_chain_vector,
   announced_about_vector,
+  announced_profile_vector,
+  announcement_vector,
   audio_pipeline_vector,
   build_multi_block_input,
   build_race_entry,
@@ -149,12 +151,16 @@ describe('fixture port self-check', () => {
     expect(sorted[0]?.tag).toBe(current_state_vector.winner)
   })
 
-  test('F6 §5.3.2 announced About entry and §5.4.1 heads message', () => {
-    const { entry, entry_hash } = announced_about_vector
-    expect(entry.payload.key).toBe(about_record_vector.operation_key)
-    const { key: _key, sig, ...unsigned } = entry
-    expect(sign_der(sha256(encode(unsigned)))).toBe(sig)
-    expect(sha3_cid(encode(entry)).toString(base58btc)).toBe(entry_hash)
+  test('F6 §5.3.2 announcement of an About and a profile entry, and §5.4.1 heads message', () => {
+    expect(announced_about_vector.entry.payload.key).toBe(about_record_vector.operation_key)
+    expect<string>(announced_profile_vector.entry.payload.key).toBe(bytesToHex(sha256(utf8('profile'))))
+    for (const { entry, entry_hash } of [announced_about_vector, announced_profile_vector]) {
+      const { key: _key, sig, ...unsigned } = entry
+      expect(sign_der(sha256(encode(unsigned)))).toBe(sig)
+      expect(sha3_cid(encode(entry)).toString(base58btc)).toBe(entry_hash)
+    }
+    expect(Buffer.byteLength(JSON.stringify(announcement_vector.message))).toBe(announcement_vector.json_byte_length)
+    expect(announcement_vector.json_byte_length).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)
     expect(Buffer.byteLength(heads_message_vector.json)).toBe(heads_message_vector.json_byte_length)
     expect(heads_message_vector.json_byte_length).toBeLessThanOrEqual(NETWORK_MESSAGE_SIZE_BOUND)
   })

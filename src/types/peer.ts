@@ -63,6 +63,8 @@ export interface TrackList {
 export interface TagCount {
   tag: string
   count: number
+  // A node-managed library in label_libraries holds the label (chapter 7).
+  managed: boolean
 }
 
 // A track id and the labels the target applies to it, for a label write to a
@@ -95,7 +97,7 @@ export interface LabelChange {
 // One POST /tags/batch result. code is the API error code of a failed item.
 export type LabelBatchResult =
   | { track_id: string, status: 'updated' | 'unchanged', tags: string[] }
-  | { track_id: string, status: 'failed', error: { code: 'NOT_FOUND' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR', message: string } }
+  | { track_id: string, status: 'failed', error: { code: 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR', message: string } }
 
 export interface ReplicationStatus {
   progress: number
@@ -119,14 +121,10 @@ export interface Library {
   address: string
   library_type: string
   name?: string | null
-  bio?: string | null
-  location?: string | null
-  avatar?: string | null
   alias?: string | null
   track_count: number
   // content.size summed over live tracks whose payload is stored.
   audio_size_bytes: number
-  linked_library_count: number
   length: number
   heads: string[]
   replication_status: ReplicationStatus
@@ -177,16 +175,27 @@ export interface MetaLogPage {
   total: number
 }
 
+// A library's name, from its About record (§2.6).
 export interface About {
   library_address: string
-  name?: string | null
-  bio?: string | null
-  location?: string | null
-  avatar?: string | null
+  name: string | null
 }
 
-// The mutable About fields; an omitted field stays unchanged.
-export type AboutUpdate = Partial<Omit<About, 'library_address'>>
+// An identity's profile (§4.8.2): who the person is, apart from any library's
+// name. A field the profile does not carry is null.
+export interface Profile {
+  public_key: string
+  name: string | null
+  bio: string | null
+  avatar: string | null
+}
+
+// The profile a PUT /identity/profile writes whole: an omitted field is absent.
+export interface ProfileUpdate {
+  name?: string | undefined
+  bio?: string | undefined
+  avatar?: string | undefined
+}
 
 export interface ListenCount {
   track_id: string
@@ -302,7 +311,7 @@ export type LibraryEventType =
   | 'capability:issued' | 'capability:revoked'
   | 'library:connected' | 'library:disconnected'
   | 'library:loading' | 'library:loaded'
-  | 'library:replicated' | 'library:replicate-progress' | 'library:index-updated'
+  | 'library:replicated' | 'library:replicate-progress' | 'library:index-updated' | 'library:labels-changed'
   | 'library:peer-joined' | 'library:peer-left'
   | 'peer:joined' | 'peer:left'
 
@@ -339,7 +348,8 @@ export interface ApiPeer {
   pin_track: (cid: string) => Promise<void>
   unpin_track: (cid: string) => Promise<void>
 
-  list_tags: (filter: { library_addresses?: string[], label_libraries?: string[], prefix?: string }) => Promise<readonly TagCount[]>
+  // managed_libraries are the node-managed label libraries, for TagCount.managed.
+  list_tags: (filter: { library_addresses?: string[], label_libraries?: string[], prefix?: string, managed_libraries?: readonly string[] }) => Promise<readonly TagCount[]>
   // Label writes take any track id, held or not, append at most one label
   // record, and append nothing when every pair is already in the requested
   // state. A write to a track no shown library holds answers TrackLabels.
@@ -348,6 +358,8 @@ export interface ApiPeer {
   change_labels: (input: { track_id: string } & LabelChange & WriteTargetInput) => Promise<Track | TrackLabels>
   // Many label changes to one library, appended as one label record.
   change_labels_batch: (input: { items: ReadonlyArray<{ track_id: string } & LabelChange> } & WriteTargetInput) => Promise<LabelBatchResult[]>
+  // A library's applied label state by track id, whatever holds the tracks.
+  list_library_labels: (input: { address: string, offset?: number | undefined, limit?: number | undefined }) => Promise<LabelStatePage>
 
   list_libraries: () => Promise<Library[]>
   get_library: (address: string) => Promise<Library | undefined>
@@ -368,8 +380,11 @@ export interface ApiPeer {
   }) => Promise<Capability>
   revoke_capability: (input: { library_address: string, capability_id: string, via_capability_id?: string | undefined }) => Promise<void>
   get_about: (address: string) => Promise<About | undefined>
-  // Writes an About entry to the library; the address is stamped (§2.6).
-  set_about: (update: { address: string, fields: AboutUpdate, capability_id?: string | undefined }) => Promise<About>
+  // Appends an About record naming the library (§2.6); an unchanged name appends nothing.
+  set_about: (update: { address: string, name: string, capability_id?: string | undefined }) => Promise<About>
+  // The profile of a library's owner: the identity's own for an own library,
+  // else the one its latest verified announcement carried (§5.3.2).
+  get_library_profile: (address: string) => Promise<Profile | undefined>
 
   list_listens: (page: { offset: number, limit: number }) => Promise<TrackList>
   record_listen: (listen: { track_id: string, library_address: string }) => Promise<ListenCount>
@@ -383,8 +398,12 @@ export interface ApiPeer {
   export_identity: () => Promise<IdentityExport>
   // Generates a new key pair when private_key is absent.
   import_identity: (key: { private_key?: string }) => Promise<ImportedIdentity>
+  // The identity's profile record (§4.8.2), every field null before one is written.
+  get_profile: () => Promise<Profile>
+  set_profile: (profile: ProfileUpdate) => Promise<Profile>
   list_own_libraries: () => Promise<Library[]>
-  create_own_library: (input: { discriminator?: string | undefined, about?: AboutUpdate | undefined }) => Promise<Library>
+  // A recordstore under a random discriminator (§3.6.1), named by its About record.
+  create_own_library: (input: { name: string }) => Promise<Library>
   retire_own_library: (address: string) => Promise<void>
   list_held_capabilities: () => Promise<Capability[]>
   read_meta_log: (query: { offset: number, limit: number, type?: string | undefined, current_only: boolean }) => Promise<MetaLogPage>

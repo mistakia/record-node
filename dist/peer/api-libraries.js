@@ -6,7 +6,7 @@ import { PeerError } from '#types/peer.ts';
 import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from "./capabilities.js";
 import { require_identity, serialise_write } from "./context.js";
 import { describe_library } from "./describe.js";
-import { connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, retire_own_library, unlink_library } from "./identity-library.js";
+import { connect_address, create_own_library, ensure_listens_library, link_address, read_meta_log, read_profile, retire_own_library, unlink_library, write_profile } from "./identity-library.js";
 import { record_listen } from "./listens.js";
 import { default_label_libraries, default_own_library, find_own_library, identity_state, library_scope, own_libraries, own_recordstore_addresses } from "./ownership.js";
 import { effective_policy, get_replication_policy, validate_policy } from "./policy.js";
@@ -29,20 +29,27 @@ const list_known = (context) => {
     }
     return [...addresses].flatMap((address) => describe_library(context, address, scope) ?? []);
 };
-// Writes an About record, owned or under a capability granting
-// library.update_about (§2.6, §3.5.6). The record carries a name only, so the
-// other fields are not written; an unchanged name appends nothing.
-const write_about = async (context, { address, fields, capability_id }) => {
+// Writes an About record naming the library, owned or under a capability
+// granting library.update_about (§2.6, §3.5.6); an unchanged name appends
+// nothing.
+const write_about = async (context, { address, name, capability_id }) => {
     await serialise_write(context, async () => {
         const target = resolve_write_target(context, { library_address: address, capability_id, kind: 'about' });
-        const current = get_about({ db: context.db, library_address: address })?.name ?? undefined;
-        const name = fields.name === undefined ? current : fields.name ?? undefined;
-        if (name === undefined)
-            throw new PeerError('invalid', 'an About record always carries a name, so it is never absent or cleared');
-        if (name === current)
+        if (name === get_about({ db: context.db, library_address: address })?.name)
             return;
         await append_write(context, target, build_about_put({ name, capability_id: target.capability_id }));
     });
+};
+// A profile record as the API Profile: an absent field is null.
+export const to_api_profile = (public_key, record) => ({
+    public_key, name: record?.name ?? null, bio: record?.bio ?? null, avatar: record?.avatar ?? null
+});
+// The owner profile of another library: the latest one a verified
+// announcement carried for the single key of its write list (§5.3.2).
+const announced_profile = (context, address) => {
+    const owner = context.announced.owners.get(address);
+    const profile = owner === undefined ? undefined : context.announced.profiles.get(owner);
+    return profile === undefined ? undefined : to_api_profile(profile.hashed.entry.key, profile.record);
 };
 const read_about = (context, address) => {
     const about = get_about({ db: context.db, library_address: address });
@@ -103,9 +110,14 @@ export const create_library_methods = (context) => ({
         const about = get_about({ db: context.db, library_address: address });
         return about === undefined ? undefined : to_api_about(about);
     },
-    set_about: async ({ address, fields, capability_id }) => {
-        await write_about(context, { address, fields, capability_id });
+    set_about: async ({ address, name, capability_id }) => {
+        await write_about(context, { address, name, capability_id });
         return read_about(context, address);
+    },
+    get_library_profile: async (address) => {
+        if (find_own_library(context, address) === undefined)
+            return announced_profile(context, address);
+        return to_api_profile(require_identity(context).key_pair.public_key, read_profile(context));
     },
     list_listens: async ({ offset, limit }) => {
         const pins = identity_state(context).pins;
@@ -131,15 +143,15 @@ export const create_library_methods = (context) => ({
         const { key_pair, identity_address } = require_identity(context);
         return { public_key: key_pair.public_key, meta_log_address: identity_address, own_library_address: default_own_library(context) ?? '' };
     },
+    get_profile: async () => to_api_profile(require_identity(context).key_pair.public_key, read_profile(context)),
+    set_profile: async (profile) => to_api_profile(require_identity(context).key_pair.public_key, await write_profile(context, profile)),
     list_own_libraries: async () => {
         const scope = library_scope(context);
         return [...scope.own.keys()].flatMap((address) => describe_library(context, address, scope) ?? []);
     },
-    create_own_library: async ({ discriminator, about }) => {
-        const address = await create_own_library(context, { discriminator });
-        if (about !== undefined && Object.values(about).some((value) => typeof value === 'string')) {
-            await write_about(context, { address, fields: about });
-        }
+    create_own_library: async ({ name }) => {
+        const address = await create_own_library(context);
+        await write_about(context, { address, name });
         return require_library(context, address);
     },
     retire_own_library: async (address) => { await retire_own_library(context, address); },

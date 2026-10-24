@@ -1,14 +1,23 @@
 // Indexed entries as WebSocket events (x-websocket-events in 7-http-api.yaml):
-// track changes, capabilities issued and revoked, and entries a revocation
-// made inert (§3.5.10, §8.6.8).
+// track changes, label changes, capabilities issued and revoked, and entries
+// a revocation made inert (§3.5.10, §8.6.8).
 
-import { is_access_record, is_envelope_operation, is_put } from '#entry/operations.ts'
+import { is_access_record, is_envelope_operation, is_labels_put, is_put } from '#entry/operations.ts'
 import type { VerifiedEntry } from '#oplog/accept.ts'
 import { get_library_summary, get_track } from '#query-db/queries.ts'
 import { describe_capability, revoked_dependency } from './capabilities.ts'
 import type { PeerContext } from './context.ts'
 import { identity_state, own_recordstore_addresses } from './ownership.ts'
 import { to_api_track } from './views.ts'
+
+// The track ids whose label state label records among the entries name (§2.5).
+export const label_track_ids = (entries: readonly VerifiedEntry[]): string[] =>
+  [...new Set(entries.flatMap(({ operation }) => is_labels_put(operation) ? [...operation.value.set, ...operation.value.unset].map(([track_id]) => track_id) : []))]
+
+const track_ids_of = (entries: readonly VerifiedEntry[]): string[] => [...new Set([
+  ...entries.flatMap(({ operation }) => is_envelope_operation(operation) && operation.value.type === 'track' ? [operation.key] : []),
+  ...label_track_ids(entries)
+])]
 
 const emit_access_events = ({ context, library_address, entries, inert }: {
   context: PeerContext
@@ -40,7 +49,8 @@ const emit_access_events = ({ context, library_address, entries, inert }: {
         library_address,
         capability_id,
         entry_hashes: group.map(({ hash }) => hash),
-        track_ids: [...new Set(group.flatMap(({ operation }) => is_envelope_operation(operation) && operation.value.type === 'track' ? [operation.key] : []))]
+        label_entry_ids: group.flatMap(({ hash, operation }) => is_labels_put(operation) ? [hash] : []),
+        track_ids: track_ids_of(group)
       }
     })
   }
@@ -68,9 +78,13 @@ export const project_entry_events = ({ context, library_address, entries, inert 
     if (track !== undefined) emit({ type: 'track:added', payload: { library_address, track } })
   }
   emit_access_events({ context, library_address, entries, inert })
-  const { track_count, linked_library_count } = get_library_summary({ db: context.db, library_address })
+  const labelled = label_track_ids(entries)
+  if (labelled.length > 0) emit({ type: 'library:labels-changed', payload: { library_address, track_ids: labelled } })
+  // A batch of label records alone changes no track, so only labels-changed tells of it.
+  if (labelled.length > 0 && entries.every(({ operation }) => is_labels_put(operation))) return
+  const { track_count } = get_library_summary({ db: context.db, library_address })
   emit({
     type: 'library:index-updated',
-    payload: { library_address, track_count, linked_library_count, is_processing_index: false, processing_count: 0 }
+    payload: { library_address, track_count, is_processing_index: false, processing_count: 0 }
   })
 }

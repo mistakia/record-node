@@ -49,6 +49,7 @@ export interface TrackList {
 export interface TagCount {
     tag: string;
     count: number;
+    managed: boolean;
 }
 export interface TrackLabels {
     track_id: string;
@@ -76,7 +77,7 @@ export type LabelBatchResult = {
     track_id: string;
     status: 'failed';
     error: {
-        code: 'NOT_FOUND' | 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR';
+        code: 'FORBIDDEN' | 'CAPABILITY_EXPIRED' | 'CAPABILITY_REVOKED' | 'VALIDATION_ERROR';
         message: string;
     };
 };
@@ -98,13 +99,9 @@ export interface Library {
     address: string;
     library_type: string;
     name?: string | null;
-    bio?: string | null;
-    location?: string | null;
-    avatar?: string | null;
     alias?: string | null;
     track_count: number;
     audio_size_bytes: number;
-    linked_library_count: number;
     length: number;
     heads: string[];
     replication_status: ReplicationStatus;
@@ -152,12 +149,19 @@ export interface MetaLogPage {
 }
 export interface About {
     library_address: string;
-    name?: string | null;
-    bio?: string | null;
-    location?: string | null;
-    avatar?: string | null;
+    name: string | null;
 }
-export type AboutUpdate = Partial<Omit<About, 'library_address'>>;
+export interface Profile {
+    public_key: string;
+    name: string | null;
+    bio: string | null;
+    avatar: string | null;
+}
+export interface ProfileUpdate {
+    name?: string | undefined;
+    bio?: string | undefined;
+    avatar?: string | undefined;
+}
 export interface ListenCount {
     track_id: string;
     count: number;
@@ -262,7 +266,7 @@ export type ImportEvent = {
     type: 'import:finished';
     payload: ImportEventPayloads['import:finished'];
 };
-export type LibraryEventType = 'track:added' | 'track:removed' | 'track:pinned' | 'track:unpinned' | 'library:linked' | 'library:unlinked' | 'library:entries-inert' | 'library:replication-policy-changed' | 'identity:library-created' | 'identity:library-retired' | 'identity:meta-log-appended' | 'capability:issued' | 'capability:revoked' | 'library:connected' | 'library:disconnected' | 'library:loading' | 'library:loaded' | 'library:replicated' | 'library:replicate-progress' | 'library:index-updated' | 'library:peer-joined' | 'library:peer-left' | 'peer:joined' | 'peer:left';
+export type LibraryEventType = 'track:added' | 'track:removed' | 'track:pinned' | 'track:unpinned' | 'library:linked' | 'library:unlinked' | 'library:entries-inert' | 'library:replication-policy-changed' | 'identity:library-created' | 'identity:library-retired' | 'identity:meta-log-appended' | 'capability:issued' | 'capability:revoked' | 'library:connected' | 'library:disconnected' | 'library:loading' | 'library:loaded' | 'library:replicated' | 'library:replicate-progress' | 'library:index-updated' | 'library:labels-changed' | 'library:peer-joined' | 'library:peer-left' | 'peer:joined' | 'peer:left';
 export type PeerEvent = ImportEvent | {
     type: LibraryEventType;
     payload: Record<string, unknown>;
@@ -295,6 +299,7 @@ export interface ApiPeer {
         library_addresses?: string[];
         label_libraries?: string[];
         prefix?: string;
+        managed_libraries?: readonly string[];
     }) => Promise<readonly TagCount[]>;
     add_tag: (label: {
         track_id: string;
@@ -312,6 +317,11 @@ export interface ApiPeer {
             track_id: string;
         } & LabelChange>;
     } & WriteTargetInput) => Promise<LabelBatchResult[]>;
+    list_library_labels: (input: {
+        address: string;
+        offset?: number | undefined;
+        limit?: number | undefined;
+    }) => Promise<LabelStatePage>;
     list_libraries: () => Promise<Library[]>;
     get_library: (address: string) => Promise<Library | undefined>;
     link_library: (link: {
@@ -344,9 +354,10 @@ export interface ApiPeer {
     get_about: (address: string) => Promise<About | undefined>;
     set_about: (update: {
         address: string;
-        fields: AboutUpdate;
+        name: string;
         capability_id?: string | undefined;
     }) => Promise<About>;
+    get_library_profile: (address: string) => Promise<Profile | undefined>;
     list_listens: (page: {
         offset: number;
         limit: number;
@@ -363,10 +374,11 @@ export interface ApiPeer {
     import_identity: (key: {
         private_key?: string;
     }) => Promise<ImportedIdentity>;
+    get_profile: () => Promise<Profile>;
+    set_profile: (profile: ProfileUpdate) => Promise<Profile>;
     list_own_libraries: () => Promise<Library[]>;
     create_own_library: (input: {
-        discriminator?: string | undefined;
-        about?: AboutUpdate | undefined;
+        name: string;
     }) => Promise<Library>;
     retire_own_library: (address: string) => Promise<void>;
     list_held_capabilities: () => Promise<Capability[]>;

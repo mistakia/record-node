@@ -7,7 +7,6 @@ export interface CommitPolicy {
 export declare const DEFAULT_COMMIT_POLICY: CommitPolicy;
 export interface CommitBatcher {
     run: (fn: () => void) => void;
-    hold: <T>(job: () => Promise<T>) => Promise<T>;
     flush: () => void;
     close: () => void;
 }

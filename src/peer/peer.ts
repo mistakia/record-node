@@ -17,7 +17,8 @@ import { start_wal_checkpointer } from '#fabric/wal-checkpointer.ts'
 import { open_query_db } from '#query-db/schema.ts'
 import { SYSTEM_TIMERS } from '#replication/timers.ts'
 import type { IngestedTrack } from '#types/ingest.ts'
-import type { ApiPeer, LabelStatePage } from '#types/peer.ts'
+import type { ApiPeer } from '#types/peer.ts'
+import { create_announced_state } from './announcements.ts'
 import { create_library_methods } from './api-libraries.ts'
 import { create_track_methods } from './api-tracks.ts'
 import { create_audio_source } from './audio.ts'
@@ -32,7 +33,7 @@ import { identity_id_of, load_key_pair, marshal_private_key, marshal_public_key,
 import { finish_pending_unlinks, meta_log_record, open_identity, queue_identity_sync } from './identity-library.ts'
 import { import_files, import_url, local_file_phases } from './imports.ts'
 import { create_library_manager } from './library.ts'
-import { project_entry_events } from './notify.ts'
+import { label_track_ids, project_entry_events } from './notify.ts'
 import { default_own_library, labels_library, listens_library } from './ownership.ts'
 import { keeps_blobs } from './policy.ts'
 import { create_peer_replication } from './replication.ts'
@@ -65,9 +66,6 @@ export interface Peer extends ApiPeer {
   // Ingests one local file into the default write target (§6.4.1) and leaves
   // the file in place, unlike import_files.
   readonly ingest_file: (file_path: string) => Promise<IngestedTrack>
-  // A library's applied label state by track id, whatever holds the tracks
-  // (chapter 7 GET /libraries/{address}/labels).
-  readonly list_library_labels: (input: { address: string, offset?: number, limit?: number }) => Promise<LabelStatePage>
   readonly context: PeerContext
 }
 
@@ -122,10 +120,13 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
         }
         queue_identity_sync(context)
       }
-      // Item 6: a track's audio and artwork, or the profile's avatar (§4.6).
+      // Item 6: a track's audio and artwork, or the profile's avatar (§4.6),
+      // and a selective policy re-read for the tracks whose labels changed.
       if (context.identity !== undefined) {
-        context.blobs.entries(input.library_address, input.entries)
-          .catch((error: unknown) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${(error as Error).message}`) })
+        const warn = (error: unknown) => { process.emitWarning(`content fetch for ${input.library_address} failed: ${(error as Error).message}`) }
+        context.blobs.entries(input.library_address, input.entries).catch(warn)
+        const labelled = label_track_ids(input.entries)
+        if (labelled.length > 0) context.blobs.labels_changed(input.library_address, labelled).catch(warn)
       }
     }
   })
@@ -153,6 +154,7 @@ export const create_peer = async ({ config: overrides = {}, resolve, download = 
     known: { ready: false, links: new Set(), libraries: new Map() },
     prepares: { active: 0, waiting: [], in_flight: new Set() },
     policies: new Map(await libraries.load_policies()),
+    announced: create_announced_state(),
     blobs: undefined as never
   }
   context.blobs = create_blob_keeper({ context, network, timers: SYSTEM_TIMERS, timeout_ms: config.blob_fetch_timeout_ms })

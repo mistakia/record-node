@@ -204,6 +204,36 @@ export const announced_about_vector = {
   entry_hash: 'zBwWX58W4xgGQCyXAQHz17NN4gavMie9ABm2cMExP1Tt7F1iK4dvop4H7pPnTYQucmGCyXgNY3ohXG5Ai13db918VJUGp'
 } as const
 
+// F6 — §5.3.2 the signed entry carrying the §3.4.5 test key's profile record
+// in its identity library, as an announcement carries it.
+export const announced_profile_vector = {
+  entry: {
+    id: '/record/zBwWX5yfKGoxN42dyykh9tRxq4CjbydSPBpNkVzLe5bmjCRib33F7AiUsRGchrTCgvjDvRVJsC89Rv7Wfk17n8sqMkEFx/identity',
+    payload: {
+      op: 'PUT',
+      key: '1900eab6c028483d7126599ee6f50de0d27907b5c65fa90524580b4b0f9852b0',
+      value: { type: 'profile', v: 1, timestamp: 1700000000000, name: 'Test', bio: 'A fixture identity.' }
+    },
+    next: [] as string[],
+    refs: [] as string[],
+    v: 2,
+    clock: { id: TEST_PUBKEY_HEX, time: 1 },
+    key: TEST_PUBKEY_HEX,
+    sig: '3045022100f29bde1b588e288d6adbe0378f538de1c37046e69be9e1961c6d82e1bf1c1b380220237abdda92bff3769642bfac47a1f5fc308bc90a52a00df03c032c51c63f9d42'
+  },
+  entry_hash: 'zBwWX8f8xRXvThTFm9BD4zvP3Y5SMQX8n9R6TAu65RijGUsbDGFNscD7SYwZq9qPjJ44LKNoBJpXhVkoFWdM9qS1pfAM3'
+} as const
+
+// F6 — §5.3.2 the announcement of the F3 library, with its About entry and its
+// owner's profile entry: the exact JSON and its length.
+export const announcement_vector = {
+  message: {
+    libraries: [{ address: ac_chain_vector.library_address, about: announced_about_vector.entry }],
+    profiles: [announced_profile_vector.entry]
+  },
+  json_byte_length: 1468
+} as const
+
 export const heads_message_vector = {
   json: `{"type":"heads","heads":["${announced_about_vector.entry_hash}"]}`,
   json_byte_length: 122
