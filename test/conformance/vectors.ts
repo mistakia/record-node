@@ -1,3 +1,7 @@
+// base-secret-scan: declared-fixture
+// The private key below is the scalar 1 and the operation keys are content
+// hashes; none is a real credential.
+
 // Conformance vectors ported from record-docs spec/fixtures (Record Protocol
 // v2.0.0). Inputs and expected outputs are typed constants; vectors.test.ts
 // recomputes every expected value with the same libraries the generators use
