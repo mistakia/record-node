@@ -69,6 +69,27 @@ describe('config', () => {
     await expect(load_config({ config_path: config_file({ managed_label_libraries: [address] }) })).rejects.toThrow('managed_label_libraries must map')
   })
 
+  test('reads node_url as an origin, and refuses one without a port or with a path', async () => {
+    const empty = await load_config({ env: {} })
+    expect(empty.node_url).toBeUndefined()
+    expect(empty.local_network_advertisement).toBe(false)
+    const config = await load_config({ config_path: config_file({ node_url: 'https://10.27.0.22:8972/', local_network_advertisement: true }) })
+    expect(config).toMatchObject({ node_url: 'https://10.27.0.22:8972', local_network_advertisement: true })
+    expect(config.peer).not.toHaveProperty('node_url')
+    expect(config.peer).not.toHaveProperty('local_network_advertisement')
+    await expect(load_config({ config_path: config_file({ node_url: 'https://10.27.0.22:8972/api' }) })).rejects.toThrow('no path')
+    await expect(load_config({ config_path: config_file({ node_url: 'https://10.27.0.22' }) })).rejects.toThrow('must name a port')
+    await expect(load_config({ config_path: config_file({ node_url: 'ftp://10.27.0.22:21' }) })).rejects.toThrow('http or https')
+    await expect(load_config({ config_path: config_file({ node_url: '10.27.0.22:8972' }) })).rejects.toThrow('node_url')
+  })
+
+  test('refuses local_network_advertisement without an IPv4-literal node_url', async () => {
+    await expect(load_config({ config_path: config_file({ local_network_advertisement: true }) })).rejects.toThrow('requires a node_url')
+    await expect(load_config({ config_path: config_file({ node_url: 'http://record.local:18090', local_network_advertisement: true }) })).rejects.toThrow('IPv4')
+    await expect(load_config({ config_path: config_file({ node_url: 'http://10.27.0.161:18090', local_network_advertisement: 'yes' }) })).rejects.toThrow('true or false')
+    expect((await load_config({ config_path: config_file({ node_url: 'http://record.local:18090', local_network_advertisement: false }) })).local_network_advertisement).toBe(false)
+  })
+
   test('refuses heads and announcement intervals below the §5.4.1 and §5.3.3 floors', async () => {
     await expect(load_config({ config_path: config_file({ heads_interval_ms: 999 }) })).rejects.toThrow('heads_interval_ms must be at least 1000')
     await expect(load_config({ config_path: config_file({ announce_interval_ms: 4999 }) })).rejects.toThrow('announce_interval_ms must be at least 5000')
