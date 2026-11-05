@@ -4,7 +4,8 @@
 // when the config names one, and stops them on SIGTERM or SIGINT.
 // `record-node token issue|list|revoke` manages the access tokens (§8.7.3)
 // of the remote listener and of the managed label libraries, without
-// starting the peer.
+// starting the peer. With local_network_advertisement, the node also
+// advertises its node_url on the local network while it runs.
 
 import { parseArgs } from 'node:util'
 
@@ -16,10 +17,11 @@ import { create_peer, start_peer, stop_peer } from '#peer/peer.ts'
 import { DataDirectoryLocked } from '#peer/lock.ts'
 import { as_api_resolver } from '#peer/resolver.ts'
 import { load_config } from './config.ts'
+import { start_local_network_advertisement } from './network/local-network-advertisement.ts'
 
 const USAGE = [
   'usage: record-node [--port <n>] [--data-dir <dir>] [--config <file>]',
-  '       record-node token issue --label <label> [--manages <library address>] [--data-dir <dir>] [--config <file>]',
+  '       record-node token issue --label <label> [--manages <library address>] [--connect-uri] [--data-dir <dir>] [--config <file>]',
   '       record-node token list [--data-dir <dir>] [--config <file>]',
   '       record-node token revoke <id> [--data-dir <dir>] [--config <file>]'
 ].join('\n')
@@ -27,22 +29,29 @@ const USAGE = [
 // The token is the only line on stdout, so a wrapper can render it (as a QR
 // code on canonical) without parsing; everything else goes to stderr. With
 // --manages, stderr also gives the managed_label_libraries entry that makes
-// the token the only writer of that library's labels.
-const run_token_command = async ({ path, args, label, manages }: {
+// the token the only writer of that library's labels. With --connect-uri, the
+// line is instead the record://connect URI carrying the config's node_url and
+// the token, which a client scans to connect without typing either.
+const ISSUE_ONLY_FLAGS = '--label, --manages and --connect-uri apply to token issue only'
+
+const run_token_command = async ({ path, args, label, manages, connect_uri, node_url }: {
   path: string
   args: string[]
   label: string | undefined
   manages: string | undefined
+  connect_uri: boolean
+  node_url: string | undefined
 }): Promise<void> => {
   const [command, ...rest] = args
-  if (command !== 'issue' && (label !== undefined || manages !== undefined)) throw new Error('--label and --manages apply to token issue only')
+  if (command !== 'issue' && (label !== undefined || manages !== undefined || connect_uri)) throw new Error(ISSUE_ONLY_FLAGS)
   if (command === 'issue') {
     if (rest.length > 0 || label === undefined || label === '') throw new Error('token issue takes --label <label> and no other argument')
     if (manages !== undefined) parse_library_address(manages)
+    if (connect_uri && node_url === undefined) throw new Error('--connect-uri needs node_url in the node config')
     const { token, entry } = await issue_access_token({ path, label })
     console.error(`issued ${entry.id} (${entry.label}); the token is shown once`)
     if (manages !== undefined) console.error(`add to the node config: "managed_label_libraries": ${JSON.stringify({ [manages]: entry.id })}`)
-    console.log(token)
+    console.log(connect_uri ? `record://connect?node_url=${encodeURIComponent(node_url as string)}&node_token=${encodeURIComponent(token)}` : token)
   } else if (command === 'list' && rest.length === 0) {
     for (const { id, label, created_at, revoked_at } of await list_access_tokens(path)) {
       console.log([id, revoked_at === null ? 'active' : `revoked ${revoked_at}`, created_at, label].join('\t'))
@@ -63,6 +72,7 @@ const main = async (): Promise<void> => {
       config: { type: 'string' },
       label: { type: 'string' },
       manages: { type: 'string' },
+      'connect-uri': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' }
     },
     allowPositionals: true,
@@ -76,10 +86,12 @@ const main = async (): Promise<void> => {
   const tokens_path = data_paths(config.peer.data_dir as string).access_tokens
   if (positionals.length > 0) {
     if (positionals[0] !== 'token') throw new Error(`unknown command: ${positionals[0]}`)
-    await run_token_command({ path: tokens_path, args: positionals.slice(1), label: values.label, manages: values.manages })
+    await run_token_command({
+      path: tokens_path, args: positionals.slice(1), label: values.label, manages: values.manages, connect_uri: values['connect-uri'] === true, node_url: config.node_url
+    })
     return
   }
-  if (values.label !== undefined || values.manages !== undefined) throw new Error('--label and --manages apply to token issue only')
+  if (values.label !== undefined || values.manages !== undefined || values['connect-uri'] !== undefined) throw new Error(ISSUE_ONLY_FLAGS)
   const started = performance.now()
   const peer = await create_peer({ config: config.peer })
   const created = performance.now()
@@ -116,13 +128,30 @@ const main = async (): Promise<void> => {
     }
   }
 
+  // A failure here, such as node_url naming an address this host no longer
+  // holds, leaves the node serving unadvertised.
+  let stop_advertisement = async (): Promise<void> => {}
+  if (config.local_network_advertisement) {
+    const node_url = config.node_url as string
+    try {
+      const { peer_id } = await peer.get_settings()
+      stop_advertisement = await start_local_network_advertisement({ node_url, peer_id })
+      console.log(`record-node advertising ${node_url} on the local network as _record-api._tcp`)
+    } catch (error) {
+      console.warn(`local network advertisement of ${node_url} failed to start: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   let stopping = false
   const shutdown = (signal: string) => {
     if (stopping) return
     stopping = true
     console.log(`${signal}: stopping`)
     unwatch()
-    Promise.all([stop_api_server(server), remote === undefined ? undefined : stop_api_server(remote)])
+    // The goodbye goes first, so clients drop the node before its API closes.
+    stop_advertisement()
+      .catch(() => {})
+      .then(async () => await Promise.all([stop_api_server(server), remote === undefined ? undefined : stop_api_server(remote)]))
       .then(async () => { await stop_peer(peer) })
       .then(() => { process.exit(0) }, (error: unknown) => {
         console.error(error)

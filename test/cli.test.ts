@@ -6,16 +6,16 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import WebSocket from 'ws'
 
 const CLI = join(import.meta.dir, '..', 'dist', 'cli.js')
 const TOKEN_CHARS = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,2048}$/
 
-const node_config = (remote_port: number): string => {
+const node_config = (remote_port: number, extra: Record<string, unknown> = {}): string => {
   const dir = mkdtempSync(join(tmpdir(), 'record-cli-'))
   const path = join(dir, 'config.json')
-  writeFileSync(path, JSON.stringify({ port: 0, data_dir: join(dir, 'data'), network: false, allow_toolchain_mismatch: true, remote_listener: { host: '127.0.0.1', port: remote_port } }))
+  writeFileSync(path, JSON.stringify({ port: 0, data_dir: join(dir, 'data'), network: false, allow_toolchain_mismatch: true, remote_listener: { host: '127.0.0.1', port: remote_port }, ...extra }))
   return path
 }
 
@@ -100,6 +100,26 @@ describe('cli: token subcommands and the remote listener', () => {
     expect(result.stdout.trim()).toMatch(TOKEN_CHARS)
     expect(token(config, 'issue', '--label', 'x', '--manages', 'not-an-address').status).not.toBe(0)
     expect(token(config, 'list', '--manages', address).status).not.toBe(0)
+  })
+
+  test('token issue --connect-uri prints a record://connect URI of node_url and a working token, and needs node_url', async () => {
+    const remote = node.remote as string
+    const node_url = new URL(remote).origin
+    expect(token(config, 'issue', '--label', 'scan', '--connect-uri').status).not.toBe(0)
+    expect(token(config, 'issue', '--label', 'scan', '--connect-uri').stderr).toContain('needs node_url')
+    expect(token(config, 'list', '--connect-uri').status).not.toBe(0)
+
+    const with_url = node_config(0, { node_url, data_dir: join(dirname(config), 'data') })
+    const result = token(with_url, 'issue', '--label', 'scan', '--connect-uri')
+    expect(result.status).toBe(0)
+    expect(result.stdout.split('\n').filter(Boolean)).toHaveLength(1)
+    const uri = new URL(result.stdout.trim())
+    expect(`${uri.protocol}//${uri.host}`).toBe('record://connect')
+    expect([...uri.searchParams.keys()]).toEqual(['node_url', 'node_token'])
+    expect(uri.searchParams.get('node_url')).toBe(node_url)
+    const scanned = uri.searchParams.get('node_token') as string
+    expect(scanned).toMatch(TOKEN_CHARS)
+    expect((await fetch(`${uri.searchParams.get('node_url') as string}/api/settings`, { headers: { authorization: `Bearer ${scanned}` } })).status).toBe(200)
   })
 
   test('the remote listener requires a token, the loopback listener does not, and /api/docs is loopback-only', async () => {

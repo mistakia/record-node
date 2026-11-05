@@ -12,6 +12,8 @@ export interface NodeConfig {
     readonly cors_origins?: readonly string[] | undefined;
     readonly remote_listener?: RemoteListener | undefined;
     readonly managed_label_libraries: ReadonlyMap<string, string>;
+    readonly node_url?: string | undefined;
+    readonly local_network_advertisement: boolean;
     readonly peer: PeerConfig;
 }
 export declare const load_config: ({ config_path, port, data_dir, env }?: {
