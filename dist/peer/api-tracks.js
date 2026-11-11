@@ -359,7 +359,7 @@ export const create_track_methods = (context) => ({
             throw new PeerError('not_found', `library not open: ${address}`);
         return { library_address: address, ...list_library_labels({ db: context.db, library_address: address, offset, limit }) };
     },
-    get_audio: async (cid) => await context.audio.read(cid),
-    has_audio: async (cid) => await context.audio.read_local(cid) !== undefined,
+    open_audio: async (cid, options) => await context.audio.open(cid, options),
+    has_audio: async (cid) => await context.audio.has_local(cid),
     get_image: async (cid, { local_only = false } = {}) => local_only ? await context.images.read_local(cid) : await context.images.read(cid)
 });

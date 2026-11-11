@@ -113,7 +113,14 @@ const validator_code = (status) => {
         return 'INTERNAL_ERROR';
     return 'VALIDATION_ERROR';
 };
+// A response whose headers are out can no longer carry an error; it is cut
+// short instead, so the client sees the transfer fail.
 export const handle_errors = (log_error) => (error, _req, res, _next) => {
+    if (res.headersSent) {
+        log_error(error);
+        res.destroy();
+        return;
+    }
     if (error instanceof ApiError) {
         send_error(res, error);
     }

@@ -1,3 +1,4 @@
+import type { UnixFsFile } from '#fabric/unixfs.ts';
 import type { ImportEventPayloads } from './ingest.ts';
 export interface ResolverEntry {
     extractor: string;
@@ -388,7 +389,9 @@ export interface ApiPeer {
         type?: string | undefined;
         current_only: boolean;
     }) => Promise<MetaLogPage>;
-    get_audio: (cid: string) => Promise<Uint8Array | undefined>;
+    open_audio: (cid: string, options?: {
+        closed?: AbortSignal | undefined;
+    }) => Promise<UnixFsFile | undefined>;
     has_audio: (cid: string) => Promise<boolean>;
     get_image: (cid: string, options?: {
         local_only?: boolean;

@@ -4,7 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
-import { create_fake_resolver, OWN_ADDRESS } from '#test/api/fake-peer.ts'
+import { AUDIO_CID, create_fake_resolver, OWN_ADDRESS } from '#test/api/fake-peer.ts'
 import { library_path, post_json, start_test_server, type TestServer } from '#test/api/server.ts'
 import { audio_pipeline_vector } from './vectors.ts'
 
@@ -30,6 +30,18 @@ afterAll(async () => { await api.stop() })
 const resolve = async (url: string) => await fetch(api.url(`/resolve?url=${encodeURIComponent(url)}`))
 
 describe('http-api', () => {
+  test('§7 GET /audio/{cid} [MUST] answers a byte range 206 with Content-Range, and an unsatisfiable one 416', async () => {
+    const bytes = Uint8Array.from({ length: 5000 }, (_, index) => index % 256)
+    api.peer.audio.set(AUDIO_CID, bytes)
+    const ranged = await fetch(api.url(`/audio/${AUDIO_CID}`), { headers: { range: 'bytes=4096-4100' } })
+    expect(ranged.status).toBe(206)
+    expect(ranged.headers.get('content-range')).toBe('bytes 4096-4100/5000')
+    expect(new Uint8Array(await ranged.arrayBuffer())).toEqual(bytes.subarray(4096, 4101))
+    const beyond = await fetch(api.url(`/audio/${AUDIO_CID}`), { headers: { range: 'bytes=5000-' } })
+    expect(beyond.status).toBe(416)
+    expect(beyond.headers.get('content-range')).toBe('bytes */5000')
+  })
+
   test('§7 PUT /identity/profile [MUST] rejects an avatar that is not a CID (§4.8.2)', async () => {
     const put = async (body: unknown) => await fetch(api.url('/identity/profile'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     for (const avatar of ['https://example.com/me.png', 'ipfs://not-a-cid', '']) {

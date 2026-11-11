@@ -266,7 +266,7 @@ const pin_key_of = (cid: string): string => {
 
 export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
   'list_tracks' | 'add_track' | 'update_track' | 'rederive_track' | 'remove_track' | 'pin_track' | 'unpin_track' | 'list_tags' | 'add_tag' | 'remove_tag' |
-  'change_labels' | 'change_labels_batch' | 'list_library_labels' | 'get_audio' | 'has_audio' | 'get_image'> => ({
+  'change_labels' | 'change_labels_batch' | 'list_library_labels' | 'open_audio' | 'has_audio' | 'get_image'> => ({
   list_tracks: async ({ library_addresses, label_libraries, ...query }) => {
     const { items, total } = list_tracks({
       db: context.db,
@@ -392,7 +392,7 @@ export const create_track_methods = (context: PeerContext): Pick<ApiPeer,
     return { library_address: address, ...list_library_labels({ db: context.db, library_address: address, offset, limit }) }
   },
 
-  get_audio: async (cid) => await context.audio.read(cid),
-  has_audio: async (cid) => await context.audio.read_local(cid) !== undefined,
+  open_audio: async (cid, options) => await context.audio.open(cid, options),
+  has_audio: async (cid) => await context.audio.has_local(cid),
   get_image: async (cid, { local_only = false } = {}) => local_only ? await context.images.read_local(cid) : await context.images.read(cid)
 })

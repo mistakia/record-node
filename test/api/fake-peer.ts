@@ -3,6 +3,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { create_memory_content_store } from '#adapter/memory/content-store.ts'
+import type { UnixFsFile } from '#fabric/unixfs.ts'
 
 import { ac_chain_vector, audio_pipeline_vector } from '#test/conformance/vectors.ts'
 import {
@@ -18,6 +19,12 @@ import {
   type Track,
   type TrackLabels
 } from '#types/peer.ts'
+
+// Bytes held in memory, served as a file the way the content store serves one.
+export const bytes_as_unixfs_file = (bytes: Uint8Array): UnixFsFile => ({
+  file_size: bytes.length,
+  read_range: async function * ({ start_offset, end_offset }) { yield bytes.subarray(start_offset, end_offset + 1) }
+})
 
 export const OWN_ADDRESS = ac_chain_vector.library_address
 export const LINKED_ADDRESS = '/record/zdpuAxgMzJaTqK1HQU6CKQ9p2vUaG4eR9zUk4HwYj9Q1pK7DC/library'
@@ -318,7 +325,10 @@ export const create_fake_peer = (): FakePeer => {
       }
     },
 
-    get_audio: async (cid) => audio.get(cid),
+    open_audio: async (cid) => {
+      const bytes = audio.get(cid)
+      return bytes === undefined ? undefined : bytes_as_unixfs_file(bytes)
+    },
     has_audio: async (cid) => audio.has(cid),
     get_image: async (cid, options) => {
       record('get_image', cid, options)

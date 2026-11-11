@@ -1,23 +1,26 @@
-// Audio blobs for playback. HEAD reports local availability only; GET reads
-// the local store and, on a networked peer, fetches what is missing from
-// peers under one deadline (chapter 7 /audio, chapter 8 §8.6.5a). Streaming
-// never pins: the blocks it fetched sit in a byte-capped cache and are
+// Audio blobs for playback. HEAD reports local availability only, checking
+// leaves without reading them; GET opens the file and streams the range it
+// asks for, reading only the blocks that cover it, and on a networked peer
+// fetches what is missing from peers within one request's peer-wait budget
+// (chapter 7 /audio, chapter 8 §8.6.5a). Streaming never pins: the blocks it
+// fetched sit in a byte-capped cache, trimmed after each fetch, and are
 // evicted least recently used first, unless a pin has since covered them.
 //
 // @helia/bitswap 4.0.19 never sends the cancel that follows a received block,
 // so the sending peer keeps the want as served and ignores a later want for
 // the same block over that connection: an evicted block fetches again only
 // from another peer or after the connection cycles.
-import { read_unixfs_file } from '#fabric/unixfs.ts';
+import { has_unixfs_file, open_unixfs_file, read_unixfs_file } from '#fabric/unixfs.ts';
 import { ProtocolError } from '#types/errors.ts';
+import { create_peer_wait_budget } from "./peer-wait-budget.js";
 // A missing or non-file blob reads as absent; an invalid CID still throws.
-const read_file = async (cid, read) => {
+const absent_when_unreadable = async (lookup, absent) => {
     try {
-        return await read_unixfs_file({ cid, read });
+        return await lookup;
     }
     catch (error) {
         if (error instanceof ProtocolError && (error.code === 'invalid_shape' || error.code === 'content_unavailable'))
-            return undefined;
+            return absent;
         throw error;
     }
 };
@@ -48,27 +51,30 @@ export const create_audio_source = ({ content_store, network, timeout_ms, max_by
             await content_store.evict(cid);
         }
     };
-    const read_local = async (cid) => await read_file(cid, content_store.get);
     return {
-        read_local,
-        read: async (cid) => {
+        open: async (cid, { closed } = {}) => {
             if (network === undefined)
-                return await read_local(cid);
-            const signal = AbortSignal.timeout(timeout_ms);
-            const bytes = await read_file(cid, async (block) => {
-                const local = await content_store.get(block);
-                if (local !== undefined) {
-                    touch(block);
-                    return local;
+                return await absent_when_unreadable(open_unixfs_file({ cid, read: content_store.get }), undefined);
+            const fetch_within_budget = create_peer_wait_budget({ network, timeout_ms, closed });
+            return await absent_when_unreadable(open_unixfs_file({
+                cid,
+                read: async (block) => {
+                    const local = await content_store.get(block);
+                    if (local !== undefined) {
+                        touch(block);
+                        return local;
+                    }
+                    const fetched = await fetch_within_budget(block);
+                    if (fetched !== undefined) {
+                        remember(block, fetched.length);
+                        await trim();
+                    }
+                    return fetched;
                 }
-                const fetched = signal.aborted ? undefined : await network.fetch_block(block, { signal });
-                if (fetched !== undefined)
-                    remember(block, fetched.length);
-                return fetched;
-            });
-            await trim();
-            return bytes;
+            }), undefined);
         },
+        has_local: async (cid) => await absent_when_unreadable(has_unixfs_file({ cid, read: content_store.get, has: content_store.has }), false),
+        read_local: async (cid) => await absent_when_unreadable(read_unixfs_file({ cid, read: content_store.get }), undefined),
         cached_bytes: () => total
     };
 };

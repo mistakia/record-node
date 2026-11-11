@@ -1,7 +1,8 @@
 // Image blobs for display: track artwork and library avatars (chapter 7
 // /images). A read takes the whole file under IMAGE_MAX_BYTES, checked from
 // the root block before the rest is read. GET reads the local store and, on a
-// networked peer, fetches what is missing from peers under one deadline.
+// networked peer, fetches what is missing from peers within one request's
+// peer-wait budget.
 // Viewing never stores: the blocks a read fetched are evicted after it unless
 // a pin covers them, so images never enter the audio cache. Clients cache by
 // CID instead.
@@ -11,6 +12,7 @@ import type { Network } from '#fabric/network.ts'
 import { upload_artwork } from '#ingest/artwork.ts'
 import { read_unixfs_file } from '#fabric/unixfs.ts'
 import { ProtocolError } from '#types/errors.ts'
+import { create_peer_wait_budget } from './peer-wait-budget.ts'
 
 export const IMAGE_MAX_BYTES = 16 * 1024 * 1024
 
@@ -18,7 +20,7 @@ export interface ImageSource {
   // The file bytes when every block is local; undefined when absent or over the cap.
   read_local: (cid: string) => Promise<Uint8Array | undefined>
   // The file bytes, fetching missing blocks from peers; undefined when no
-  // peer serves them before the deadline, or over the cap.
+  // peer serves them within the budget, or over the cap.
   read: (cid: string) => Promise<Uint8Array | undefined>
   // Imports the bytes as artwork is imported (§6.4.1 step 8), pins them
   // recursively (step 11), and returns the CID. Nothing releases the pin.
@@ -51,13 +53,13 @@ export const create_image_source = ({ content_store, network, timeout_ms }: {
     },
     read: async (cid) => {
       if (network === undefined) return await read_local(cid)
-      const signal = AbortSignal.timeout(timeout_ms)
+      const fetch_within_budget = create_peer_wait_budget({ network, timeout_ms })
       const fetched: string[] = []
       try {
         return await read_file(cid, async (block) => {
           const local = await content_store.get(block)
           if (local !== undefined) return local
-          const bytes = signal.aborted ? undefined : await network.fetch_block(block, { signal })
+          const bytes = await fetch_within_budget(block)
           if (bytes !== undefined) fetched.push(block)
           return bytes
         })

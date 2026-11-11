@@ -82,6 +82,7 @@ export const create_api_server = async ({
   const spec = load_api_spec()
   await mkdir(UPLOAD_DIR, { recursive: true })
 
+  const log_error = (error: unknown) => { console.error(error) }
   const api = Router()
   if (docs) api.use('/docs', create_docs_router(spec))
   api.use(authenticate_requests(authenticate, identify))
@@ -99,7 +100,7 @@ export const create_api_server = async ({
   api.use('/settings', settings_router(peer))
   api.use('/identity', identity_router(peer))
   api.use('/import', import_router(peer))
-  api.use('/audio', audio_router(peer))
+  api.use('/audio', audio_router(peer, log_error))
   api.use('/images', images_router(peer))
   api.use('/resolve', resolve_router(resolver))
 
@@ -108,7 +109,7 @@ export const create_api_server = async ({
   if (log) app.use(morgan('dev'))
   app.use(cors(cors_origins))
   app.use('/api', no_cache, skip_abandoned_reads, api)
-  app.use(handle_errors((error) => { console.error(error) }))
+  app.use(handle_errors(log_error))
 
   const http_server = createServer(app)
   const bridge = attach_event_bridge({ http_server, peer, authenticate, cors_origins })
