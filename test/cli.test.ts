@@ -1,7 +1,7 @@
 // The process entry point (dist/cli.js) under Node: the token subcommands and
 // the token-gated remote listener beside the tokenless loopback one.
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
@@ -10,6 +10,11 @@ import { dirname, join } from 'node:path'
 import WebSocket from 'ws'
 
 const CLI = join(import.meta.dir, '..', 'dist', 'cli.js')
+
+// Each CLI call starts a Node process, about 1.2-1.6 s on a CI runner, and a
+// test makes up to three. Bun's 5 s default left 0.2 s to spare (4.8 s on
+// 2026-11-05), and a timeout kills the shared node the later tests use.
+setDefaultTimeout(30_000)
 const TOKEN_CHARS = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,2048}$/
 
 const node_config = (remote_port: number, extra: Record<string, unknown> = {}): string => {
