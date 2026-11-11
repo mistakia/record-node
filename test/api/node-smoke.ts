@@ -1,7 +1,7 @@
 // Node smoke run of the API server: record-app runs the node as a Node child
 // process (spec §8.3.1), so the API must run there, not only under Bun. Exercises the
-// validated JSON path, a multipart upload through multer, a Range read, and a
-// WebSocket event. Run with `node test/api/node-smoke.ts` (Node 22.18+).
+// validated JSON path, a multipart upload through multer, a Range read, a
+// streamed body cut short and abandoned, and a WebSocket event. Run with `node test/api/node-smoke.ts` (Node 22.18+).
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -9,7 +9,8 @@ import { connect } from 'node:net'
 import WebSocket from 'ws'
 
 import { audio_pipeline_vector } from '#test/conformance/vectors.ts'
-import { AUDIO_CID } from './fake-peer.ts'
+import { ProtocolError } from '#types/errors.ts'
+import { AUDIO_CID, bytes_as_unixfs_file } from './fake-peer.ts'
 import { start_test_server } from './server.ts'
 
 const flac = readFileSync(audio_pipeline_vector.fixture_path)
@@ -31,6 +32,53 @@ try {
   assert.equal(range.status, 206)
   assert.equal(range.headers.get('content-type'), 'audio/flac')
   assert.equal(Buffer.from(await range.arrayBuffer()).toString(), 'fLaC')
+
+  const whole = await fetch(api.url(`/audio/${AUDIO_CID}`))
+  assert.equal(whole.status, 200)
+  assert.deepEqual(Buffer.from(await whole.arrayBuffer()), flac)
+
+  // A block lost mid-body cuts the transfer and is logged once; a client
+  // hanging up mid-body is not logged.
+  const open_audio = api.peer.open_audio
+  const log_error = console.error
+  let logged = 0
+  console.error = () => { logged += 1 }
+  try {
+    api.peer.open_audio = async () => ({
+      file_size: flac.length,
+      read_range: async function * ({ start_offset, end_offset }) {
+        if (end_offset - start_offset < 4100) {
+          yield * bytes_as_unixfs_file(new Uint8Array(flac)).read_range({ start_offset, end_offset })
+          return
+        }
+        yield new Uint8Array(flac.subarray(0, 1000))
+        throw new ProtocolError('content_unavailable', 'block not stored')
+      }
+    })
+    const cut = await fetch(api.url(`/audio/${AUDIO_CID}`))
+    assert.equal(cut.status, 200)
+    await assert.rejects(cut.arrayBuffer())
+    assert.equal(logged, 1)
+
+    api.peer.open_audio = async () => ({
+      file_size: 1000 * 1000,
+      read_range: async function * ({ start_offset, end_offset }) {
+        for (let offset = start_offset; offset <= end_offset; offset += 1000) {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          yield new Uint8Array(Math.min(1000, end_offset - offset + 1))
+        }
+      }
+    })
+    const abort = new AbortController()
+    const abandoned = await fetch(api.url(`/audio/${AUDIO_CID}`), { signal: abort.signal })
+    await abandoned.body!.getReader().read()
+    abort.abort()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.equal(logged, 1)
+  } finally {
+    api.peer.open_audio = open_audio
+    console.error = log_error
+  }
 
   const socket = new WebSocket(`ws://127.0.0.1:${api.server.port}/api/ws`)
   await new Promise((resolve, reject) => { socket.once('open', resolve).once('error', reject) })

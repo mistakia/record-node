@@ -10,6 +10,7 @@ import { ResolverError } from 'record-resolver'
 import { encode_canonical } from '#encoding/canonical-bytes.ts'
 import { compute_cid_string } from '#encoding/cid.ts'
 import { decode_payload, validate_track_content } from '#entry/payload.ts'
+import { collect_bytes } from '#fabric/block.ts'
 import { data_paths } from '#peer/config.ts'
 import { write_profile } from '#peer/identity-library.ts'
 import { DataDirectoryLocked } from '#peer/lock.ts'
@@ -54,7 +55,9 @@ describe('peer', () => {
     expect(second.identity()).toMatchObject({ own_address, listens_address })
     const { items } = await second.list_tracks(QUERY)
     expect(items).toEqual([expect.objectContaining({ id: f7.track_id, tags: [{ library_address: labels_address, tag: 'kept' }], listen_count: 1 })])
-    expect((await second.get_audio(f7.audio_cid))?.length).toBe(items[0]?.audio_size_bytes)
+    const audio = await second.open_audio(f7.audio_cid)
+    expect(audio?.file_size).toBe(items[0]?.audio_size_bytes)
+    expect((await collect_bytes(audio!.read_range({ start_offset: 0, end_offset: audio!.file_size - 1 }))).length).toBe(audio!.file_size)
     expect(await second.content_store.is_pinned(f7.audio_cid)).toBe(true)
   })
 
@@ -242,7 +245,7 @@ describe('peer', () => {
     const track = await peer.ingest_file(f7.fixture_path)
     for (const cid of [track.content_cid, track.entry_hash]) {
       expect(await peer.has_audio(cid)).toBe(false)
-      expect(await peer.get_audio(cid)).toBeUndefined()
+      expect(await peer.open_audio(cid)).toBeUndefined()
     }
     expect(await peer.has_audio(f7.audio_cid)).toBe(true)
   })

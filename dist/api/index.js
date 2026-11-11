@@ -30,6 +30,7 @@ const UPLOAD_DIR = join(tmpdir(), 'record-node-uploads');
 export const create_api_server = async ({ peer, resolve: resolver, port, host = '127.0.0.1', cors_origins = KNOWN_CLIENT_ORIGINS, authenticate, identify, managed_label_libraries = new Map(), docs = true, log = true, validate_responses = false }) => {
     const spec = load_api_spec();
     await mkdir(UPLOAD_DIR, { recursive: true });
+    const log_error = (error) => { console.error(error); };
     const api = Router();
     if (docs)
         api.use('/docs', create_docs_router(spec));
@@ -48,7 +49,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
     api.use('/settings', settings_router(peer));
     api.use('/identity', identity_router(peer));
     api.use('/import', import_router(peer));
-    api.use('/audio', audio_router(peer));
+    api.use('/audio', audio_router(peer, log_error));
     api.use('/images', images_router(peer));
     api.use('/resolve', resolve_router(resolver));
     const app = express();
@@ -57,7 +58,7 @@ export const create_api_server = async ({ peer, resolve: resolver, port, host = 
         app.use(morgan('dev'));
     app.use(cors(cors_origins));
     app.use('/api', no_cache, skip_abandoned_reads, api);
-    app.use(handle_errors((error) => { console.error(error); }));
+    app.use(handle_errors(log_error));
     const http_server = createServer(app);
     const bridge = attach_event_bridge({ http_server, peer, authenticate, cors_origins });
     try {

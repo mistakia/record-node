@@ -7,7 +7,7 @@
 // stalls log replication or another blob. Its track stays listed.
 import { canonical_cid } from '#entry/identity-record.ts';
 import { is_put } from '#entry/operations.ts';
-import { read_unixfs_file } from '#fabric/unixfs.ts';
+import { visit_unixfs_file } from '#fabric/unixfs.ts';
 import { get_live_entry } from '#oplog/dag.ts';
 import { ProtocolError } from '#types/errors.ts';
 import { linked_addresses, own_label_addresses } from "./ownership.js";
@@ -40,12 +40,11 @@ export const create_blob_keeper = ({ context, network, timers, timeout_ms }) => 
     const fetch_blob = async (cid) => {
         const signal = AbortSignal.any([AbortSignal.timeout(timeout_ms), stopping.signal]);
         try {
-            const bytes = await read_unixfs_file({
+            return await visit_unixfs_file({
                 cid,
                 read: async (block) => await content_store.get(block) ??
                     (network === undefined || signal.aborted ? undefined : await network.fetch_block(block, { signal }))
             });
-            return bytes !== undefined;
         }
         catch (error) {
             if (error instanceof ProtocolError)

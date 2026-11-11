@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 2.0.0
+  version: 2.0.1
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -1422,7 +1422,8 @@ paths:
       summary: Stream audio content by CID.
       description: |
         MIME type is detected from the first 4100 bytes via file-type.
-        Supports RFC 7233 Range requests (206 Partial Content). No
+        Supports RFC 7233 Range requests (206 Partial Content); a range
+        the blob cannot satisfy is answered 416. No
         side-effects — pinning is handled when a track is adopted into
         the requestor's own library, not when its audio is streamed.
       parameters:
@@ -1459,6 +1460,11 @@ paths:
               schema: { type: string, format: binary }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '416':
+          description: Range Not Satisfiable. No range of the header lies within the blob.
+          headers:
+            Content-Range:
+              schema: { type: string, example: 'bytes */204800' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /images:

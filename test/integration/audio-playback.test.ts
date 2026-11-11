@@ -46,7 +46,13 @@ const replicated_pair = async ({ sizes, config = {}, mode = 'index_only' }: { si
   servers.push(server)
   const audio_url = (cid: string) => `http://127.0.0.1:${server.port}/api/audio/${cid}`
   const head = async (cid: string) => (await fetch(audio_url(cid), { method: 'HEAD' })).status
-  return { a, b, tracks, audio_url, head }
+  // Blocks are fetched as the body streams, so the whole body is read.
+  const get_whole = async (cid: string) => {
+    const response = await fetch(audio_url(cid))
+    await response.arrayBuffer()
+    return response.status
+  }
+  return { a, b, tracks, audio_url, head, get_whole }
 }
 
 const local_on = async (peer: Peer, cid: string) => await peer.has_audio(cid)
@@ -70,18 +76,49 @@ describe('audio playback', () => {
     expect(await b.content_store.is_pinned(track.audio_cid)).toBe(false)
   })
 
+  test('a range fetches only the root, the first leaf it sniffs, and the leaves covering it', async () => {
+    const { b, tracks: [track], audio_url, head } = await replicated_pair({ sizes: [Math.floor(4.5 * MIB)] })
+    if (track === undefined) throw new Error('no track')
+    const start = 3 * MIB + 10
+    const ranged = await fetch(audio_url(track.audio_cid), { headers: { range: `bytes=${start}-${start + 9}` } })
+    expect(ranged.status).toBe(206)
+    expect(Buffer.from(await ranged.arrayBuffer()).equals(track.bytes.subarray(start, start + 10))).toBe(true)
+    // Leaf 0 and leaf 3, plus a root of five links.
+    expect(b.context.audio.cached_bytes()).toBeGreaterThanOrEqual(2 * MIB)
+    expect(b.context.audio.cached_bytes()).toBeLessThan(2 * MIB + 4096)
+    expect(await head(track.audio_cid)).toBe(404)
+  })
+
+  test('a full GET of a blob over the byte cap streams intact and keeps the cache near its cap throughout', async () => {
+    const cap = 2 * MIB
+    const { b, tracks: [track], audio_url } = await replicated_pair({ sizes: [Math.floor(4.5 * MIB)], config: { audio_cache_max_bytes: cap } })
+    if (track === undefined) throw new Error('no track')
+    const response = await fetch(audio_url(track.audio_cid))
+    expect(response.status).toBe(200)
+    const reader = response.body!.getReader()
+    const chunks: Uint8Array[] = []
+    let most_cached = 0
+    for (let next = await reader.read(); next.done !== true; next = await reader.read()) {
+      chunks.push(next.value)
+      most_cached = Math.max(most_cached, b.context.audio.cached_bytes())
+    }
+    expect(Buffer.concat(chunks).equals(track.bytes)).toBe(true)
+    expect(most_cached).toBeLessThanOrEqual(cap + MIB)
+    expect(b.context.audio.cached_bytes()).toBeLessThanOrEqual(cap)
+  })
+
   test('under the byte cap, unpinned fetched blobs are evicted oldest first and a pinned one never is', async () => {
     const size = Math.floor(1.5 * MIB)
-    const { b, tracks, audio_url, head } = await replicated_pair({ sizes: [size, size, size], config: { audio_cache_max_bytes: 2 * MIB } })
+    const { b, tracks, head, get_whole } = await replicated_pair({ sizes: [size, size, size], config: { audio_cache_max_bytes: 2 * MIB } })
     const [kept, evicted, latest] = tracks as [typeof tracks[number], typeof tracks[number], typeof tracks[number]]
-    expect((await fetch(audio_url(kept.audio_cid))).status).toBe(200)
+    expect(await get_whole(kept.audio_cid)).toBe(200)
     expect(await head(kept.audio_cid)).toBe(200)
     // Adopting the track into B's own library pins its audio.
     await b.add_track({ content_cid: kept.content_cid })
     expect(await b.content_store.is_pinned(kept.audio_cid)).toBe(true)
 
-    expect((await fetch(audio_url(evicted.audio_cid))).status).toBe(200)
-    expect((await fetch(audio_url(latest.audio_cid))).status).toBe(200)
+    expect(await get_whole(evicted.audio_cid)).toBe(200)
+    expect(await get_whole(latest.audio_cid)).toBe(200)
     expect(b.context.audio.cached_bytes()).toBeLessThanOrEqual(2 * MIB)
     expect(await local_on(b, kept.audio_cid)).toBe(true)
     expect(await local_on(b, evicted.audio_cid)).toBe(false)

@@ -1,6 +1,7 @@
 // The peer surface the HTTP and WebSocket API consumes (src/api/). Peer
 // assembly (src/peer/) implements it; the API holds no protocol logic.
 
+import type { UnixFsFile } from '#fabric/unixfs.ts'
 import type { ImportEventPayloads } from './ingest.ts'
 //
 // Values crossing it are the API-layer shapes of record-docs
@@ -408,8 +409,11 @@ export interface ApiPeer {
   list_held_capabilities: () => Promise<Capability[]>
   read_meta_log: (query: { offset: number, limit: number, type?: string | undefined, current_only: boolean }) => Promise<MetaLogPage>
 
-  // The audio blob's file bytes (not its root block), local store only.
-  get_audio: (cid: string) => Promise<Uint8Array | undefined>
+  // The audio blob as a file whose ranges stream from its blocks (not the
+  // root block's bytes), fetching missing blocks from peers on a networked
+  // peer until `closed` aborts; undefined when it is absent or no file.
+  open_audio: (cid: string, options?: { closed?: AbortSignal | undefined }) => Promise<UnixFsFile | undefined>
+  // Whether every block of the audio blob is local.
   has_audio: (cid: string) => Promise<boolean>
   // An image blob's file bytes, at most IMAGE_MAX_BYTES; undefined when absent,
   // over the cap, or (local_only) not wholly in the local store.

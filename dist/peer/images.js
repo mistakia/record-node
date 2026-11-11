@@ -1,13 +1,15 @@
 // Image blobs for display: track artwork and library avatars (chapter 7
 // /images). A read takes the whole file under IMAGE_MAX_BYTES, checked from
 // the root block before the rest is read. GET reads the local store and, on a
-// networked peer, fetches what is missing from peers under one deadline.
+// networked peer, fetches what is missing from peers within one request's
+// peer-wait budget.
 // Viewing never stores: the blocks a read fetched are evicted after it unless
 // a pin covers them, so images never enter the audio cache. Clients cache by
 // CID instead.
 import { upload_artwork } from '#ingest/artwork.ts';
 import { read_unixfs_file } from '#fabric/unixfs.ts';
 import { ProtocolError } from '#types/errors.ts';
+import { create_peer_wait_budget } from "./peer-wait-budget.js";
 export const IMAGE_MAX_BYTES = 16 * 1024 * 1024;
 // A missing, non-file, or oversized blob reads as absent; an invalid CID still throws.
 const read_file = async (cid, read) => {
@@ -32,14 +34,14 @@ export const create_image_source = ({ content_store, network, timeout_ms }) => {
         read: async (cid) => {
             if (network === undefined)
                 return await read_local(cid);
-            const signal = AbortSignal.timeout(timeout_ms);
+            const fetch_within_budget = create_peer_wait_budget({ network, timeout_ms });
             const fetched = [];
             try {
                 return await read_file(cid, async (block) => {
                     const local = await content_store.get(block);
                     if (local !== undefined)
                         return local;
-                    const bytes = signal.aborted ? undefined : await network.fetch_block(block, { signal });
+                    const bytes = await fetch_within_budget(block);
                     if (bytes !== undefined)
                         fetched.push(block);
                     return bytes;
