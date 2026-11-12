@@ -3,7 +3,7 @@
 // process entry point, which calls stop_api_server.
 import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import express, { Router } from 'express';
 import morgan from 'morgan';
@@ -25,11 +25,12 @@ import { tags_router } from "./routes/tags.js";
 import { tracks_router } from "./routes/tracks.js";
 const DRAIN_TIMEOUT_MS = 5000;
 // Uploads wait here for ingest, which removes each file when done with it, so
-// the directory outlives any one server.
-const UPLOAD_DIR = join(tmpdir(), 'record-node-uploads');
+// the directory outlives any one server. It is per user, since tmpdir is
+// shared on a host and another user's directory is not writable.
+const UPLOAD_DIR = join(tmpdir(), `record-node-uploads-${process.getuid?.() ?? userInfo().username}`);
 export const create_api_server = async ({ peer, resolve: resolver, port, host = '127.0.0.1', cors_origins = KNOWN_CLIENT_ORIGINS, authenticate, identify, managed_label_libraries = new Map(), docs = true, log = true, validate_responses = false }) => {
     const spec = load_api_spec();
-    await mkdir(UPLOAD_DIR, { recursive: true });
+    await mkdir(UPLOAD_DIR, { recursive: true, mode: 0o700 });
     const log_error = (error) => { console.error(error); };
     const api = Router();
     if (docs)

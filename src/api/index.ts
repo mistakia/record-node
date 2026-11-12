@@ -5,7 +5,7 @@
 import { mkdir } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import express, { Router } from 'express'
 import morgan from 'morgan'
@@ -33,8 +33,9 @@ import { tracks_router } from './routes/tracks.ts'
 const DRAIN_TIMEOUT_MS = 5000
 
 // Uploads wait here for ingest, which removes each file when done with it, so
-// the directory outlives any one server.
-const UPLOAD_DIR = join(tmpdir(), 'record-node-uploads')
+// the directory outlives any one server. It is per user, since tmpdir is
+// shared on a host and another user's directory is not writable.
+const UPLOAD_DIR = join(tmpdir(), `record-node-uploads-${process.getuid?.() ?? userInfo().username}`)
 
 export interface ApiServerOptions {
   peer: ApiPeer
@@ -80,7 +81,7 @@ export const create_api_server = async ({
   validate_responses = false
 }: ApiServerOptions): Promise<ApiServer> => {
   const spec = load_api_spec()
-  await mkdir(UPLOAD_DIR, { recursive: true })
+  await mkdir(UPLOAD_DIR, { recursive: true, mode: 0o700 })
 
   const log_error = (error: unknown) => { console.error(error) }
   const api = Router()
