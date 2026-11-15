@@ -105,6 +105,7 @@ export interface ListenPayload {
     readonly trackId: string;
     readonly address: string;
     readonly timestamp: number;
+    readonly clientListenId?: string;
 }
 export type EntryPayload = Operation | LabelsPut | AboutPut | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload;
 export interface LamportClock {

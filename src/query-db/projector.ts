@@ -78,9 +78,18 @@ const create_statements = (db: DatabaseSync) => ({
   insert_about: db.prepare(`
     INSERT INTO about (library_address, about_id, entry_hash, name)
     VALUES (?, ?, ?, ?)`),
+  // A listen already projected is ignored. Listens sharing a clientListenId
+  // keep the row of the lowest entry hash (§2.7), whatever order they arrive
+  // in. SQLite compares BLOBs as compare_bytes does, so the raw multihash
+  // bytes order them as §4.4.2 requires; the base58btc text would not.
   insert_listen: db.prepare(`
-    INSERT OR IGNORE INTO listens (library_address, entry_hash, track_id, address, timestamp)
-    VALUES (?, ?, ?, ?, ?)`),
+    INSERT INTO listens (library_address, entry_hash, track_id, address, timestamp, client_listen_id, entry_multihash)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (library_address, entry_hash) DO NOTHING
+    ON CONFLICT (library_address, client_listen_id) WHERE client_listen_id IS NOT NULL DO UPDATE SET
+      entry_hash = excluded.entry_hash, track_id = excluded.track_id, address = excluded.address,
+      timestamp = excluded.timestamp, entry_multihash = excluded.entry_multihash
+      WHERE excluded.entry_multihash < listens.entry_multihash`),
   remove_library: [...KEYED_TABLES.map(([table]) => table), 'tags', 'entries', 'listens', 'library_totals'].map((table) =>
     db.prepare(`DELETE FROM ${table} WHERE library_address = ?`)),
   read_marker: db.prepare('SELECT heads, pending FROM library_heads WHERE library_address = ?'),
@@ -215,8 +224,8 @@ const write_listen = ({ statements, library_address, entry }: {
   library_address: string
   entry: VerifiedEntry
 }) => {
-  const { trackId, address, timestamp } = entry.operation as ListenPayload
-  statements.insert_listen.run(library_address, entry.hash, trackId, address, timestamp)
+  const { trackId, address, timestamp, clientListenId } = entry.operation as ListenPayload
+  statements.insert_listen.run(library_address, entry.hash, trackId, address, timestamp, clientListenId ?? null, entry.multihash)
 }
 
 // The validated content payload behind a PUT, or undefined when the block is

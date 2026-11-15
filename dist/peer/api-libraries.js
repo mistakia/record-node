@@ -1,7 +1,7 @@
 // ApiPeer library, identity, capability, About, and listen methods.
 import { parse_library_address } from '#encoding/library-address.ts';
 import { build_about_put } from '#entry/operations.ts';
-import { get_about, get_listen_count, list_listens } from '#query-db/queries.ts';
+import { get_about, get_listen_count, has_client_listen_id, list_listens } from '#query-db/queries.ts';
 import { PeerError } from '#types/peer.ts';
 import { held_capabilities, held_capability_ids, issue_capability, list_capabilities, revoke_capability } from "./capabilities.js";
 import { require_identity, serialise_write } from "./context.js";
@@ -134,12 +134,25 @@ export const create_library_methods = (context) => ({
         });
         return { items: tracks, total };
     },
-    // Listens go to the identity's listens library (§4.8.3).
-    record_listen: async ({ track_id, library_address }) => {
+    // Listens go to the identity's listens library (§4.8.3). A listen whose
+    // client_listen_id is already held appends nothing (§6.5); the query index
+    // collapses one that slips past this check anyway (§2.7).
+    record_listen: async ({ track_id, library_address, listened_at_ms, client_listen_id }) => {
         await serialise_write(context, async () => {
+            if (client_listen_id !== undefined &&
+                has_client_listen_id({ db: context.db, client_listen_id, listens_addresses: listens_addresses(context) }))
+                return;
             const { key_pair } = require_identity(context);
             const listens_address = await ensure_listens_library(context);
-            await record_listen({ libraries: context.libraries, listens_address, key_pair, track_id, address: library_address });
+            await record_listen({
+                libraries: context.libraries,
+                listens_address,
+                key_pair,
+                track_id,
+                address: library_address,
+                ...(listened_at_ms === undefined ? {} : { timestamp: listened_at_ms }),
+                ...(client_listen_id === undefined ? {} : { client_listen_id })
+            });
         });
         return get_listen_count({ db: context.db, track_id, listens_addresses: listens_addresses(context) });
     },

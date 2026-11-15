@@ -1,6 +1,7 @@
 // The contract: record-docs spec/7-http-api.yaml, vendored byte-identical
-// beside this file (record-docs v2.1.1, ae325a3). It is served as the docs and
-// validates every request, and responses too when asked (the tests ask).
+// beside this file (record-docs v2.2.0, 1aa3a19). It is served as
+// the docs and validates every request, and responses too when asked (the
+// tests ask).
 // No schema is restated in code; a contract change lands in record-docs first.
 
 import { readFileSync } from 'node:fs'

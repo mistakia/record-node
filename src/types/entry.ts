@@ -114,6 +114,8 @@ export interface ListenPayload {
   readonly trackId: string
   readonly address: string
   readonly timestamp: number
+  // Listens sharing one are one listen within a listens library (§2.7).
+  readonly clientListenId?: string
 }
 
 export type EntryPayload = Operation | LabelsPut | AboutPut | AccessRecordPut | OpaqueOperation | IdentityOperation | ListenPayload

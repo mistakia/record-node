@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: record-node HTTP API
-  version: 2.0.1
+  version: 2.1.0
   summary: HTTP + WebSocket API for the rebuilt record-node peer.
   description: |
     OpenAPI 3.1 spec for the record-node API server. This is a clean-slate
@@ -1010,12 +1010,26 @@ paths:
       tags: [listens]
       summary: Record a listen event.
       description: |
-        Server assigns the timestamp. Per protocol spec §2.7, listen
-        entries are `{trackId, address, timestamp}`; the `address` is the
-        library address the track was played from (may differ from the
-        recording library if the listener is attributing a remote track).
-        The listen is written to the identity's listens library (spec
+        Per protocol spec §2.7, listen entries are `{trackId, address,
+        timestamp, clientListenId?}`; the `address` is the library
+        address the track was played from (may differ from the recording
+        library if the listener is attributing a remote track). The
+        listen is written to the identity's listens library (spec
         §4.8.3); there is no write target.
+
+        The node uses `listened_at_ms` as the listen's timestamp, and the
+        current time when it is absent. It returns 400 for a
+        `listened_at_ms` more than 5 minutes ahead of its clock or more
+        than 90 days behind it. A client that queues listens drops a
+        listen that gets 400 rather than retrying it.
+
+        A client that may send a listen more than once sends a
+        `client_listen_id`, minted when the listen is captured and the
+        same on every retry, together with `listened_at_ms`. When this
+        node already holds that `client_listen_id` in the identity's
+        listens libraries, it appends nothing and returns 200 with the
+        current count, as for a fresh listen. A copy it appends before
+        another device's arrives is still one listen (spec §2.7).
       requestBody:
         required: true
         content:
@@ -1023,11 +1037,25 @@ paths:
             schema:
               type: object
               required: [track_id, library_address]
+              dependentRequired:
+                client_listen_id: [listened_at_ms]
               properties:
                 track_id: { type: string }
                 library_address:
                   type: string
                   description: Library address the track was played from.
+                listened_at_ms:
+                  type: integer
+                  minimum: 0
+                  description: |
+                    When the play crossed the client's listen threshold,
+                    in milliseconds since the Unix epoch.
+                client_listen_id:
+                  type: string
+                  pattern: '^[A-Za-z0-9._:-]{1,128}$'
+                  description: |
+                    Client-minted key for this listen (spec §2.7
+                    `clientListenId`). Clients SHOULD use a random UUID.
       responses:
         '200':
           description: OK
