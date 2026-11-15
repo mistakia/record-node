@@ -210,6 +210,20 @@ describe('api: listens, peers, settings, identity', () => {
     await expect_error(await post_json(api.url('/listens'), { library_address: OWN_ADDRESS }), 400, 'VALIDATION_ERROR')
   })
 
+  test('POST /listens passes a client time and key, and refuses a time outside the window', async () => {
+    const day_ms = 24 * 60 * 60 * 1000
+    const listen = { track_id: TRACK_ID, library_address: OWN_ADDRESS }
+    const two_days_ago = Date.now() - 2 * day_ms
+    expect((await post_json(api.url('/listens'), { ...listen, listened_at_ms: two_days_ago, client_listen_id: 'listen-1' })).status).toBe(200)
+    expect(last_call('record_listen')).toEqual([{ ...listen, listened_at_ms: two_days_ago, client_listen_id: 'listen-1' }])
+    // Offsets well clear of the bounds, since the node's clock is not injectable.
+    for (const listened_at_ms of [Date.now() + 10 * 60 * 1000, Date.now() - 91 * day_ms]) {
+      await expect_error(await post_json(api.url('/listens'), { ...listen, listened_at_ms }), 400, 'VALIDATION_ERROR')
+    }
+    await expect_error(await post_json(api.url('/listens'), { ...listen, client_listen_id: 'listen-2' }), 400, 'VALIDATION_ERROR')
+    await expect_error(await post_json(api.url('/listens'), { ...listen, listened_at_ms: two_days_ago, client_listen_id: 'clé' }), 400, 'VALIDATION_ERROR')
+  })
+
   test('GET /peers and GET /settings', async () => {
     expect(((await (await fetch(api.url('/peers'))).json()) as unknown[]).length).toBe(1)
     expect((await (await fetch(api.url('/settings'))).json() as { peer_id: string }).peer_id).toBe('12D3KooWfake')

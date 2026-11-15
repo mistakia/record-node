@@ -388,7 +388,8 @@ export interface ApiPeer {
   get_library_profile: (address: string) => Promise<Profile | undefined>
 
   list_listens: (page: { offset: number, limit: number }) => Promise<TrackList>
-  record_listen: (listen: { track_id: string, library_address: string }) => Promise<ListenCount>
+  // A listen whose client_listen_id is already held appends nothing (§6.5).
+  record_listen: (listen: { track_id: string, library_address: string, listened_at_ms?: number, client_listen_id?: string }) => Promise<ListenCount>
 
   list_peers: () => Promise<PeerInfo[]>
   get_settings: () => Promise<Settings>

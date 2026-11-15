@@ -12,7 +12,7 @@ import { build_about_put, build_del_operation, build_labels_put, validate_operat
 import { resolver_key, validate_track_content } from '#entry/payload.ts'
 import { ABOUT_KEY, build_about_record, build_labels_record, validate_about_record, validate_labels_record } from '#entry/records.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
-import { append_entry } from '#oplog/dag.ts'
+import { append_entry, create_oplog } from '#oplog/dag.ts'
 import { append_listen } from '#oplog/listens.ts'
 import { merge_entries } from '#oplog/merge.ts'
 import { open_test_library, sign_raw, track_put } from '#test/helpers/library.ts'
@@ -184,6 +184,35 @@ describe('data-model', () => {
     expect(() => append_listen({ oplog, track_id: '', address: oplog.chain.address, key_pair: writer })).toThrow('requires trackId')
     expect(() => append_entry({ oplog, key_pair: writer, payload: { address: oplog.chain.address, timestamp: 1 } })).toThrow('requires trackId')
     expect(oplog.entries.size).toBe(0)
+  })
+
+  test('§2.7 a listen carries a matching clientListenId', async () => {
+    const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
+    for (const client_listen_id of ['0b9d6c1e-4f8a-4c5e-9a57-3e2f1d0c8b7a', 'k', 'k'.repeat(128), 'A.b_c:d-9']) {
+      const listen = append_listen({ oplog, track_id: ID, address: oplog.chain.address, key_pair: writer, timestamp: 5, client_listen_id })
+      expect(listen.operation).toEqual({ trackId: ID, address: oplog.chain.address, timestamp: 5, clientListenId: client_listen_id })
+    }
+  })
+
+  test('§2.7 [MUST] a clientListenId outside the pattern is treated as absent, and the listen is still accepted', async () => {
+    const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
+    const address = oplog.chain.address
+    for (const clientListenId of ['', 'k'.repeat(129), 'clé', 7]) {
+      const entry = append_entry({ oplog, key_pair: writer, payload: { trackId: ID, address, timestamp: 1, clientListenId } })
+      expect(entry.operation).toEqual({ trackId: ID, address, timestamp: 1 })
+    }
+    expect(oplog.entries.size).toBe(4)
+  })
+
+  test('§2.7 [MUST] a listen payload field §2.7 does not define is ignored, and the signed bytes are kept', async () => {
+    const { oplog } = await open_test_library({ type: 'listens', writers: [writer] })
+    const payload = { trackId: ID, address: oplog.chain.address, timestamp: 1, mood: 'sunny' }
+    const entry = append_entry({ oplog, key_pair: writer, payload })
+    expect(entry.operation).toEqual({ trackId: ID, address: oplog.chain.address, timestamp: 1 })
+    const replica = create_oplog({ chain: oplog.chain })
+    expect(merge_entries({ oplog: replica, blocks: [entry.bytes] }).rejected).toEqual([])
+    expect(replica.entries.get(entry.hash)?.bytes).toEqual(entry.bytes)
+    expect(replica.entries.get(entry.hash)?.operation).toEqual(entry.operation)
   })
 
   test('§2.8.2 [MUST] a recordstore DEL value.type is "track"', () => {

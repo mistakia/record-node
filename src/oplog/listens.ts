@@ -8,16 +8,22 @@ import { ProtocolError } from '#types/errors.ts'
 import type { VerifiedEntry } from './accept.ts'
 import { append_entry, type Oplog } from './dag.ts'
 
-export const append_listen = ({ oplog, track_id, address, key_pair, timestamp }: {
+export const append_listen = ({ oplog, track_id, address, key_pair, timestamp, client_listen_id }: {
   oplog: Oplog
   track_id: string
   address: string
   key_pair: KeyPair
   timestamp?: number
+  client_listen_id?: string
 }): VerifiedEntry => {
   if (oplog.chain.type !== 'listens') {
     throw new ProtocolError('invalid_operation', `${oplog.chain.address} is not a listens library`)
   }
-  const payload = build_listen_payload(timestamp === undefined ? { track_id, address } : { track_id, address, timestamp })
+  const payload = build_listen_payload({
+    track_id,
+    address,
+    ...(timestamp === undefined ? {} : { timestamp }),
+    ...(client_listen_id === undefined ? {} : { client_listen_id })
+  })
   return append_entry({ oplog, payload, key_pair })
 }

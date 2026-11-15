@@ -8,6 +8,7 @@ import { join } from 'node:path'
 
 import { compute_track_id } from '#entry/id.ts'
 import { generate_key_pair } from '#identity/key-pair.ts'
+import { compare_bytes } from '#oplog/current-state.ts'
 import { append_listen } from '#oplog/listens.ts'
 import { create_projector } from '#query-db/projector.ts'
 import { get_about, get_library_summary, get_listen_count, get_track, list_tracks } from '#query-db/queries.ts'
@@ -180,6 +181,39 @@ describe('query-db projector', () => {
       await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
     }
     expect(get_listen_count({ db, track_id })).toEqual({ track_id, count: 3, timestamps_ms: [300, 200, 100] })
+  })
+
+  test('listens sharing a clientListenId keep the lowest entry hash, whatever order they arrive in (§2.7)', async () => {
+    const writer = generate_key_pair()
+    const library = await open_test_library({ writers: [writer] })
+    const listens = await open_test_library({ name: 'listens', type: 'listens', writers: [writer] })
+    const tracks = [await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-first' }),
+      await add_track({ oplog: library.oplog, key_pair: writer, block_store: library.block_store, fingerprint: 'AQAA-second' })]
+    const [first_track, second_track] = ['AQAA-first', 'AQAA-second'].map(compute_track_id) as [string, string]
+    const keyed = (track_id: string, timestamp: number) => append_listen({
+      oplog: listens.oplog, track_id, address: library.chain.address, key_pair: writer, timestamp, client_listen_id: 'listen-1'
+    })
+    // Same key on different tracks, so the winner is visible in the counts.
+    const entries = [keyed(first_track, 100), keyed(second_track, 200)]
+    const unkeyed = append_listen({ oplog: listens.oplog, track_id: first_track, address: library.chain.address, key_pair: writer, timestamp: 300 })
+    // §4.4.2 orders entry hashes by their raw multihash bytes.
+    const winner = [...entries].sort((a, b) => compare_bytes(a.multihash, b.multihash))[0]!
+    const winner_track = (winner.operation as { trackId: string }).trackId
+    const loser_track = winner_track === first_track ? second_track : first_track
+    for (const order of [entries, [...entries].reverse()]) {
+      const db = open_query_db()
+      const projector = create_projector({ db, read_content: library.block_store.get })
+      await projector.project_entries({ oplog: library.oplog, entries: tracks })
+      for (const entry of [...order, unkeyed, ...order]) await projector.project_entries({ oplog: listens.oplog, entries: [entry] })
+      const rows = db.prepare('SELECT entry_hash, client_listen_id FROM listens WHERE client_listen_id IS NOT NULL').all()
+      expect(rows).toEqual([{ entry_hash: winner.hash, client_listen_id: 'listen-1' }])
+      const stored = (track_id: string) => Number(db.prepare('SELECT listen_count FROM tracks WHERE track_id = ?').get(track_id)?.listen_count)
+      const unkeyed_on = (track_id: string) => (track_id === first_track ? 1 : 0)
+      expect(stored(winner_track)).toBe(1 + unkeyed_on(winner_track))
+      expect(stored(loser_track)).toBe(unkeyed_on(loser_track))
+      expect(get_listen_count({ db, track_id: winner_track }).count).toBe(1 + unkeyed_on(winner_track))
+      db.close()
+    }
   })
 
   test('remove_library drops every row of one library only', async () => {

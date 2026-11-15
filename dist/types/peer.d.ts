@@ -366,6 +366,8 @@ export interface ApiPeer {
     record_listen: (listen: {
         track_id: string;
         library_address: string;
+        listened_at_ms?: number;
+        client_listen_id?: string;
     }) => Promise<ListenCount>;
     list_peers: () => Promise<PeerInfo[]>;
     get_settings: () => Promise<Settings>;

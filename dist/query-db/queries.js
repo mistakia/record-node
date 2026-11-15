@@ -351,6 +351,11 @@ export const get_listen_count = ({ db, track_id, listens_addresses }) => {
     ORDER BY timestamp DESC, entry_hash`).all({ track_id, ...(scoped ? { listens_addresses: JSON.stringify(listens_addresses) } : {}) }).map((row) => Number(row.timestamp));
     return { track_id, count: timestamps_ms.length, timestamps_ms };
 };
+// Whether any of the given listens libraries already holds a listen with this
+// clientListenId (§2.7, §6.5).
+export const has_client_listen_id = ({ db, client_listen_id, listens_addresses }) => db.prepare(`
+  SELECT 1 FROM listens WHERE client_listen_id = :client_listen_id
+  AND library_address IN (SELECT value FROM json_each(:listens_addresses)) LIMIT 1`).get({ client_listen_id, listens_addresses: JSON.stringify(listens_addresses) }) !== undefined;
 // GET /listens: listened tracks by most recent listen, newest first.
 // listens_addresses narrows to the given listens libraries.
 export const list_listens = ({ db, own_library_addresses = [], listens_addresses, label_libraries, offset = 0, limit = DEFAULT_LIMIT }) => {

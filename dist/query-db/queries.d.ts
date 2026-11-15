@@ -124,6 +124,11 @@ export declare const get_listen_count: ({ db, track_id, listens_addresses }: {
     track_id: string;
     listens_addresses?: readonly string[];
 }) => ListenCount;
+export declare const has_client_listen_id: ({ db, client_listen_id, listens_addresses }: {
+    db: DatabaseSync;
+    client_listen_id: string;
+    listens_addresses: readonly string[];
+}) => boolean;
 export declare const list_listens: ({ db, own_library_addresses, listens_addresses, label_libraries, offset, limit }: {
     db: DatabaseSync;
     own_library_addresses?: readonly string[];

@@ -19,8 +19,10 @@ const SEARCH_TABLES = ['track_search', 'track_search_keys'] as const
 // dropped and rebuilt by replay at the next open instead of being misread. A
 // table added empty, whose absence nothing misreads, needs no bump: every
 // open applies the schema. Version 2 keys labels by track id from label
-// records (§2.5), so an index of envelope tags never survives.
-export const SCHEMA_VERSION = 2
+// records (§2.5), so an index of envelope tags never survives. Version 3
+// projects each listen's clientListenId (§2.7), which an index of version 2
+// never recorded.
+export const SCHEMA_VERSION = 3
 
 export type QueryTable = typeof QUERY_TABLES[number]
 
@@ -105,6 +107,11 @@ const LISTEN_COUNT_SCHEMA = `
   END;
   CREATE TRIGGER IF NOT EXISTS listens_count_delete AFTER DELETE ON listens BEGIN
     UPDATE tracks SET listen_count = listen_count - 1 WHERE track_id = OLD.track_id;
+  END;
+  -- A lower-hash listen sharing a clientListenId replaces the row (projector.ts).
+  CREATE TRIGGER IF NOT EXISTS listens_count_update AFTER UPDATE OF track_id ON listens BEGIN
+    UPDATE tracks SET listen_count = listen_count - 1 WHERE track_id = OLD.track_id;
+    UPDATE tracks SET listen_count = listen_count + 1 WHERE track_id = NEW.track_id;
   END;
 `
 
@@ -236,16 +243,22 @@ const SCHEMA = `
     PRIMARY KEY (library_address, about_id)
   ) WITHOUT ROWID;
 
-  -- Every listen in a listens library (§2.7). Append-only, keyed by entry.
+  -- Every listen in a listens library (§2.7), keyed by entry. Listens sharing a
+  -- client_listen_id are one row, the one whose entry_multihash (the raw bytes
+  -- §4.4.2 orders by) is lowest (projector.ts).
   CREATE TABLE IF NOT EXISTS listens (
     library_address TEXT NOT NULL,
     entry_hash TEXT NOT NULL,
     track_id TEXT NOT NULL,
     address TEXT NOT NULL,
     timestamp INTEGER NOT NULL,
+    client_listen_id TEXT,
+    entry_multihash BLOB NOT NULL,
     PRIMARY KEY (library_address, entry_hash)
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS listens_by_track_id ON listens (track_id, timestamp);
+  CREATE UNIQUE INDEX IF NOT EXISTS listens_by_client_listen_id ON listens (library_address, client_listen_id)
+    WHERE client_listen_id IS NOT NULL;
 ${LISTEN_COUNT_SCHEMA}
 
   -- Per-library projection markers (§4.7): the library's entry heads at the
