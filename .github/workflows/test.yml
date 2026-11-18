@@ -28,25 +28,12 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
 
       # Protocol-bound subprocesses (spec section 6), at the versions the F7
-      # vectors were produced with: ffmpeg 7.1.1 and fpcalc 1.5.1. Distro
-      # packages carry other versions, so both come from pinned artifacts:
-      # ffmpeg from the static image by digest, fpcalc from the Chromaprint
-      # release by checksum. The test suite's preflight refuses anything else.
+      # vectors were produced with: ffmpeg 7.1.1 and fpcalc 1.5.1, from the
+      # artifacts cli/fetch-toolchain.sh pins by SHA-256. The test suite's
+      # preflight refuses anything else. GITHUB_PATH carries them to the Node
+      # smokes, which the bun test preload does not reach.
       - name: Install pinned ffmpeg and fpcalc
-        env:
-          FFMPEG_IMAGE: mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c
-          FPCALC_URL: https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-linux-x86_64.tar.gz
-          FPCALC_SHA256: 4d7433a7f778e5946d7225230681cbcd634e153316ecac87c538c33ac32387a5
-        run: |
-          bin="$RUNNER_TEMP/audio-tools"
-          mkdir -p "$bin"
-          container=$(docker create "$FFMPEG_IMAGE")
-          docker cp "$container:/ffmpeg" "$bin/ffmpeg"
-          docker rm "$container"
-          curl -fsSL "$FPCALC_URL" -o "$RUNNER_TEMP/fpcalc.tar.gz"
-          echo "$FPCALC_SHA256  $RUNNER_TEMP/fpcalc.tar.gz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/fpcalc.tar.gz" -C "$bin" --strip-components=1 chromaprint-fpcalc-1.5.1-linux-x86_64/fpcalc
-          echo "$bin" >> "$GITHUB_PATH"
+        run: sh cli/fetch-toolchain.sh "$RUNNER_TEMP/audio-tools" >> "$GITHUB_PATH"
 
       - name: Show audio tool versions
         run: |

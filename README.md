@@ -86,7 +86,7 @@ Each linked library replicates audio and artwork under a node-local policy (spec
 
 ## Development
 
-Requires [bun](https://bun.com) 1.4, plus `fpcalc` (Chromaprint) 1.5.1 and `ffmpeg` 7.1.1 for the content-processing tests. On a machine without those versions, `RECORD_TOOLCHAIN_PREFLIGHT=bypass` runs the suite on whatever is installed and skips the byte-level pin checks; CI runs the pinned binaries without it.
+Requires [bun](https://bun.com) 1.4, plus `fpcalc` (Chromaprint) 1.5.1 and `ffmpeg` 7.1.1 for the content-processing tests. On linux x86_64, `sh cli/fetch-toolchain.sh` installs both from SHA-256-pinned artifacts into `${XDG_CACHE_HOME:-~/.cache}/record-node/toolchain` (or `$RECORD_TOOLCHAIN_DIR`), and the test preload puts them first on PATH. That script is the one home of the artifact pins: CI and record-app run it rather than restating them. Where no pinned artifact exists (macOS), `RECORD_TOOLCHAIN_PREFLIGHT=bypass` runs the suite on whatever is installed and skips the byte-level pin checks.
 
 ```sh
 bun install --ignore-scripts
